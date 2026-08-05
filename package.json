@@ -1,0 +1,21 @@
+{
+  "name": "informtit",
+  "productName": "Informtit",
+  "version": "0.2.0",
+  "description": "Aplicación de escritorio para generar informes del proceso de titulación.",
+  "main": "electron/main.cjs",
+  "author": "Jefferson Villarreal",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "test": "python -m unittest discover -s tests"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-squirrel": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
+    "electron": "43.2.0"
+  }
+}
