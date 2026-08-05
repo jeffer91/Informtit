@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import mimetypes
 import re
+from pathlib import Path
 from typing import Any
 
 import app as core
@@ -21,6 +23,34 @@ core.MAX_BODY_BYTES = 25 * 1024 * 1024
 
 _original_get = core.InformtitHandler._handle_api_get
 _original_write = core.InformtitHandler._handle_api_write
+
+
+def _serve_file_no_cache(
+    self, path: Path, download_name: str | None = None
+) -> None:
+    """Sirve la interfaz sin caché para que Electron muestre cada actualización."""
+    if not path.exists() or not path.is_file():
+        self._send_error_json("Archivo no encontrado.", 404)
+        return
+
+    content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    size = path.stat().st_size
+    self.send_response(200)
+    self.send_header("Content-Type", content_type)
+    self.send_header("Content-Length", str(size))
+    self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+    self.send_header("Pragma", "no-cache")
+    self.send_header("Expires", "0")
+    self.send_header("X-Informtit-Frontend", "0.5")
+    if download_name:
+        self.send_header(
+            "Content-Disposition", f'attachment; filename="{download_name}"'
+        )
+    self.end_headers()
+
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 256):
+            self.wfile.write(chunk)
 
 
 def _handle_api_get(self, path: str, query: dict[str, list[str]]) -> None:
@@ -100,6 +130,7 @@ def _handle_api_write(
     _original_write(self, method, path, payload)
 
 
+core.InformtitHandler._serve_file = _serve_file_no_cache
 core.InformtitHandler._handle_api_get = _handle_api_get
 core.InformtitHandler._handle_api_write = _handle_api_write
 
