@@ -16,16 +16,17 @@ function backendRoot() {
 }
 
 function pythonCandidates() {
-  if (process.env.INFORMTIT_PYTHON) {
-    return [{ command: process.env.INFORMTIT_PYTHON, prefix: [] }];
-  }
-
   const root = backendRoot();
   const localPython = process.platform === 'win32'
     ? path.join(root, '.venv', 'Scripts', 'python.exe')
     : path.join(root, '.venv', 'bin', 'python');
 
   const candidates = [];
+
+  if (process.env.INFORMTIT_PYTHON) {
+    candidates.push({ command: process.env.INFORMTIT_PYTHON, prefix: [] });
+  }
+
   if (fs.existsSync(localPython)) {
     candidates.push({ command: localPython, prefix: [] });
   }
@@ -34,6 +35,7 @@ function pythonCandidates() {
     candidates.push(
       { command: 'py', prefix: ['-3'] },
       { command: 'python', prefix: [] },
+      { command: 'python3', prefix: [] },
     );
   } else {
     candidates.push(
@@ -90,6 +92,7 @@ async function startBackend() {
   let lastError = null;
   for (const candidate of pythonCandidates()) {
     try {
+      console.log(`[Informtit] Probando Python: ${candidate.command} ${candidate.prefix.join(' ')}`);
       const processHandle = spawnPython(candidate);
       backendProcess = processHandle;
 
@@ -119,7 +122,7 @@ async function startBackend() {
     }
   }
 
-  throw lastError || new Error('No se pudo iniciar Python.');
+  throw lastError || new Error('No se encontró una instalación funcional de Python 3.');
 }
 
 function createWindow() {
@@ -157,7 +160,7 @@ async function boot() {
   } catch (error) {
     dialog.showErrorBox(
       'No se pudo iniciar Informtit',
-      `${error.message}\n\nVerifica que Python 3 esté instalado y ejecuta en PowerShell:\npython -m pip install -r requirements.txt`,
+      `${error.message}\n\nEjecuta en PowerShell:\n.\\scripts\\configurar.ps1 -InstalarPython\n\nLuego cierra y abre Visual Studio Code y ejecuta:\nnpm start`,
     );
     app.quit();
   }
