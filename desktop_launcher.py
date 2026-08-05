@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import app as core
+import institutional_export as institutional
+import layout_v2
 from db import (
     connection,
     refresh_report_sections,
@@ -22,9 +24,12 @@ from import_service import (
     settings_for_report,
     update_settings,
 )
-from institutional_export import build_docx, build_pdf
 from roster_service import commit_preview_to_report, get_report_roster
 
+
+layout_v2.install()
+build_docx = institutional.build_docx
+build_pdf = institutional.build_pdf
 
 core.MAX_BODY_BYTES = 25 * 1024 * 1024
 core.build_docx = build_docx
