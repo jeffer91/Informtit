@@ -47,7 +47,7 @@ def _serve_file_no_cache(
     self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
     self.send_header("Pragma", "no-cache")
     self.send_header("Expires", "0")
-    self.send_header("X-Informtit-Frontend", "0.6")
+    self.send_header("X-Informtit-Frontend", "0.7")
     if download_name:
         self.send_header(
             "Content-Disposition", f'attachment; filename="{download_name}"'
@@ -109,6 +109,10 @@ def _handle_api_write(
         result = commit_preview_to_report(match.group(2), report_id, payload)
         with connection() as conn:
             refresh_report_sections(conn, report_id)
+            conn.execute(
+                "UPDATE institutional_sections SET visible = 1 WHERE report_id = ?",
+                (report_id,),
+            )
         self._send_json(result, 201)
         return
 
@@ -129,6 +133,10 @@ def _handle_api_write(
         if any(key in payload for key in ("period", "modality", "name")):
             with connection() as conn:
                 refresh_report_sections(conn, report_id)
+                conn.execute(
+                    "UPDATE institutional_sections SET visible = 1 WHERE report_id = ?",
+                    (report_id,),
+                )
         return
 
     section_match = re.fullmatch(r"/api/reports/(\d+)/sections/(\d+)", path)
@@ -186,6 +194,14 @@ core.InformtitHandler._handle_api_write = _handle_api_write
 def main() -> None:
     core.init_db()
     ensure_schema()
+    with connection() as conn:
+        report_ids = [
+            int(row["id"])
+            for row in conn.execute("SELECT id FROM reports").fetchall()
+        ]
+        for report_id in report_ids:
+            refresh_report_sections(conn, report_id)
+        conn.execute("UPDATE institutional_sections SET visible = 1")
     core.main()
 
 
