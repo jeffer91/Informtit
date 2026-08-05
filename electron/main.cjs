@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, shell } = require('electron');
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 
@@ -19,17 +20,29 @@ function pythonCandidates() {
     return [{ command: process.env.INFORMTIT_PYTHON, prefix: [] }];
   }
 
-  if (process.platform === 'win32') {
-    return [
-      { command: 'py', prefix: ['-3'] },
-      { command: 'python', prefix: [] },
-    ];
+  const root = backendRoot();
+  const localPython = process.platform === 'win32'
+    ? path.join(root, '.venv', 'Scripts', 'python.exe')
+    : path.join(root, '.venv', 'bin', 'python');
+
+  const candidates = [];
+  if (fs.existsSync(localPython)) {
+    candidates.push({ command: localPython, prefix: [] });
   }
 
-  return [
-    { command: 'python3', prefix: [] },
-    { command: 'python', prefix: [] },
-  ];
+  if (process.platform === 'win32') {
+    candidates.push(
+      { command: 'py', prefix: ['-3'] },
+      { command: 'python', prefix: [] },
+    );
+  } else {
+    candidates.push(
+      { command: 'python3', prefix: [] },
+      { command: 'python', prefix: [] },
+    );
+  }
+
+  return candidates;
 }
 
 function checkBackend() {
