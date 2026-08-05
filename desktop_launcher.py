@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import app as core
-from db import connection, rows_to_dicts
+from db import (
+    connection,
+    refresh_report_sections,
+    restore_section_template,
+    rows_to_dicts,
+    utcnow,
+)
 from import_service import (
     commit_preview,
     create_preview,
@@ -41,7 +47,7 @@ def _serve_file_no_cache(
     self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
     self.send_header("Pragma", "no-cache")
     self.send_header("Expires", "0")
-    self.send_header("X-Informtit-Frontend", "0.5")
+    self.send_header("X-Informtit-Frontend", "0.6")
     if download_name:
         self.send_header(
             "Content-Disposition", f'attachment; filename="{download_name}"'
@@ -113,6 +119,47 @@ def _handle_api_write(
     if method == "POST" and path == "/api/reports":
         payload = {**settings_for_report(), **payload}
         _original_write(self, method, path, payload)
+        return
+
+    report_match = re.fullmatch(r"/api/reports/(\d+)", path)
+    if method == "PUT" and report_match:
+        report_id = int(report_match.group(1))
+        _original_write(self, method, path, payload)
+        if any(key in payload for key in ("period", "modality", "name")):
+            with connection() as conn:
+                refresh_report_sections(conn, report_id)
+        return
+
+    section_match = re.fullmatch(r"/api/reports/(\d+)/sections/(\d+)", path)
+    if method == "PUT" and section_match:
+        report_id, section_id = map(int, section_match.groups())
+        with connection() as conn:
+            if payload.get("restore_template"):
+                restore_section_template(conn, report_id, section_id)
+            else:
+                fields: list[str] = []
+                values: list[Any] = []
+                if "content" in payload:
+                    fields.extend(["content = ?", "customized = 1"])
+                    values.append(str(payload.get("content") or ""))
+                if "visible" in payload:
+                    fields.append("visible = ?")
+                    values.append(1 if payload.get("visible") else 0)
+                if "sort_order" in payload:
+                    fields.append("sort_order = ?")
+                    values.append(int(payload.get("sort_order") or 0))
+                if not fields:
+                    raise ValueError("No se enviaron cambios para la sección.")
+                fields.append("updated_at = ?")
+                values.extend([utcnow(), section_id, report_id])
+                conn.execute(
+                    f"""
+                    UPDATE institutional_sections SET {', '.join(fields)}
+                    WHERE id = ? AND report_id = ?
+                    """,
+                    values,
+                )
+        self._send_json({"ok": True})
         return
 
     match = re.fullmatch(r"/api/careers/(\d+)/parse", path)
