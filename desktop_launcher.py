@@ -22,10 +22,13 @@ from import_service import (
     settings_for_report,
     update_settings,
 )
+from institutional_export import build_docx, build_pdf
 from roster_service import commit_preview_to_report, get_report_roster
 
 
 core.MAX_BODY_BYTES = 25 * 1024 * 1024
+core.build_docx = build_docx
+core.build_pdf = build_pdf
 
 _original_get = core.InformtitHandler._handle_api_get
 _original_write = core.InformtitHandler._handle_api_write
@@ -47,7 +50,7 @@ def _serve_file_no_cache(
     self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
     self.send_header("Pragma", "no-cache")
     self.send_header("Expires", "0")
-    self.send_header("X-Informtit-Frontend", "0.7")
+    self.send_header("X-Informtit-Frontend", "0.8")
     if download_name:
         self.send_header(
             "Content-Disposition", f'attachment; filename="{download_name}"'
