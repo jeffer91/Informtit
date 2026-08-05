@@ -105,9 +105,10 @@ def _handle_api_write(
         r"/api/reports/(\d+)/imports/([A-Za-z0-9_-]{10,80})/commit", path
     )
     if method == "POST" and match:
-        result = commit_preview_to_report(
-            match.group(2), int(match.group(1)), payload
-        )
+        report_id = int(match.group(1))
+        result = commit_preview_to_report(match.group(2), report_id, payload)
+        with connection() as conn:
+            refresh_report_sections(conn, report_id)
         self._send_json(result, 201)
         return
 
