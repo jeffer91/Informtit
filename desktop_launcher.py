@@ -89,6 +89,9 @@ core.InformtitHandler._handle_api_write = _handle_api_write
 
 
 def main() -> None:
+    # En una instalación nueva primero se crean las tablas base y luego se
+    # aplican las ampliaciones para importación y configuración institucional.
+    core.init_db()
     ensure_schema()
     core.main()
 
