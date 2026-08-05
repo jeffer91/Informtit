@@ -4,6 +4,9 @@ __pycache__/
 venv/
 .env
 .DS_Store
+node_modules/
+out/
+package-lock.json
 data/*.db
 data/*.db-*
 uploads/*
