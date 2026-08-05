@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Informtit</title>
-  <link rel="stylesheet" href="/styles.css?v=0.7">
+  <link rel="stylesheet" href="/styles.css?v=0.8">
+  <link rel="stylesheet" href="/assets-ui.css?v=0.8">
 </head>
 <body>
   <div id="toast" class="toast" hidden></div>
@@ -116,13 +117,13 @@
 
   <dialog id="image-dialog">
     <form method="dialog" id="image-form" class="dialog-form">
-      <div class="dialog-head"><div><h2>Agregar imagen</h2><p>Puede asociarla al informe general o a una carrera.</p></div><button class="icon-button" value="cancel">×</button></div>
+      <div class="dialog-head"><div><h2>Subir imagen del informe</h2><p>La imagen se ubicará automáticamente según el espacio seleccionado.</p></div><button class="icon-button" value="cancel">×</button></div>
       <label>Archivo<input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/gif" required></label>
-      <label>Título<input name="title" placeholder="Figura 1. Proceso de examen complexivo"></label>
+      <label>Título<input name="title" placeholder="Nombre de la imagen"></label>
       <label>Descripción<textarea name="description" rows="3"></textarea></label>
       <label>Fuente<input name="source" placeholder="Elaboración propia"></label>
       <label>Carrera<select name="career_id"><option value="">Imagen general</option></select></label>
-      <label>Sección<input name="section" value="general"></label>
+      <input type="hidden" name="section" value="evidencia_general">
       <div class="dialog-actions"><button class="button secondary" value="cancel">Cancelar</button><button class="button primary" value="default">Guardar imagen</button></div>
     </form>
   </dialog>
@@ -139,8 +140,8 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=0.7"></script>
-  <script src="/forms-hotfix.js?v=0.7"></script>
-  <script src="/sections-template.js?v=0.7"></script>
+  <script src="/app.js?v=0.8"></script>
+  <script src="/forms-hotfix.js?v=0.8"></script>
+  <script src="/assets-ui.js?v=0.8"></script>
 </body>
 </html>
