@@ -1,6 +1,8 @@
 # Informtit
 
-Aplicación web local para crear informes finales del proceso de titulación en modalidad presencial y en línea.
+Aplicación de escritorio en **Electron** para crear informes finales del proceso de titulación en modalidad presencial y en línea.
+
+La interfaz se abre en una ventana de Electron. El procesamiento local, la base SQLite, el análisis de notas y la generación de documentos se ejecutan mediante el backend local de Python incluido en el proyecto.
 
 ## Funciones incluidas
 
@@ -19,33 +21,62 @@ Aplicación web local para crear informes finales del proceso de titulación en 
 
 ## Requisitos
 
+- Git.
+- Visual Studio Code.
+- Node.js LTS con npm.
 - Python 3.11 o superior.
-- Dependencias de `requirements.txt`.
 
-## Instalación
+## Descargar en el escritorio con PowerShell
 
-```bash
-python -m pip install -r requirements.txt
-python app.py
+Abra Visual Studio Code y luego **Terminal → New Terminal**. En PowerShell ejecute:
+
+```powershell
+cd $HOME\Desktop
+git clone https://github.com/jeffer91/Informtit.git
+cd Informtit
+code .
 ```
 
-En Windows también puede ejecutar `iniciar.bat`.
+## Configuración automática
 
-La aplicación abre en:
+En la terminal integrada de Visual Studio Code:
 
-```text
-http://127.0.0.1:8765
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\configurar.ps1
 ```
+
+El script instala las dependencias de Electron, crea `.venv` e instala las dependencias de Python.
+
+## Abrir en modo Electron
+
+```powershell
+$env:INFORMTIT_PYTHON = ".venv\Scripts\python.exe"
+npm start
+```
+
+No ejecute `python app.py` para el uso normal de escritorio. Ese comando abre únicamente el servidor local. El comando `npm start` abre la aplicación en una ventana de Electron.
 
 ## Base local
 
-La base se crea automáticamente en:
+La base se crea localmente. Durante el desarrollo se encuentra en:
 
 ```text
 data/informtit.db
 ```
 
 Los archivos cargados se guardan en `uploads/` y los documentos generados en `exports/`.
+
+## Crear instalador de Windows
+
+```powershell
+$env:INFORMTIT_PYTHON = ".venv\Scripts\python.exe"
+npm run make
+```
+
+Electron Forge generará los archivos en la carpeta `out/`.
+
+> Estado actual del instalador: la aplicación funciona en Electron, pero el equipo de destino todavía debe tener Python y las dependencias de `requirements.txt`. Para obtener un instalador totalmente independiente será necesario empaquetar también el runtime de Python o migrar el backend a Node.js.
 
 ## Inteligencias artificiales
 
@@ -57,18 +88,10 @@ Abra **Inteligencias artificiales** y configure en cada proveedor:
 - Prioridad.
 - Estado habilitado.
 
-Las claves se almacenan en la base SQLite del equipo. No suba `data/informtit.db` a GitHub ni comparta esa base.
-
-## Copias de seguridad
-
-Para respaldar todo el trabajo, copie estas carpetas:
-
-- `data/`
-- `uploads/`
-- `exports/`
+Las claves se almacenan en la base SQLite local. No suba la base de datos a GitHub.
 
 ## Pruebas
 
-```bash
-python -m unittest discover -s tests
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
