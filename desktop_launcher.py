@@ -14,6 +14,7 @@ from import_service import (
     settings_for_report,
     update_settings,
 )
+from roster_service import commit_preview_to_report, get_report_roster
 
 
 core.MAX_BODY_BYTES = 25 * 1024 * 1024
@@ -38,6 +39,11 @@ def _handle_api_get(self, path: str, query: dict[str, list[str]]) -> None:
         self._send_json({"ok": True, "imports": rows})
         return
 
+    match = re.fullmatch(r"/api/reports/(\d+)/roster", path)
+    if match:
+        self._send_json(get_report_roster(int(match.group(1))))
+        return
+
     _original_get(self, path, query)
 
 
@@ -56,6 +62,16 @@ def _handle_api_write(
     match = re.fullmatch(r"/api/imports/([A-Za-z0-9_-]{10,80})/commit", path)
     if method == "POST" and match:
         result = commit_preview(match.group(1), payload)
+        self._send_json(result, 201)
+        return
+
+    match = re.fullmatch(
+        r"/api/reports/(\d+)/imports/([A-Za-z0-9_-]{10,80})/commit", path
+    )
+    if method == "POST" and match:
+        result = commit_preview_to_report(
+            match.group(2), int(match.group(1)), payload
+        )
         self._send_json(result, 201)
         return
 
@@ -89,8 +105,6 @@ core.InformtitHandler._handle_api_write = _handle_api_write
 
 
 def main() -> None:
-    # En una instalación nueva primero se crean las tablas base y luego se
-    # aplican las ampliaciones para importación y configuración institucional.
     core.init_db()
     ensure_schema()
     core.main()
