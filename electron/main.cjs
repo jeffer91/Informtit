@@ -71,7 +71,7 @@ async function waitForBackend(maxAttempts = 80) {
 
 function spawnPython(candidate) {
   const root = backendRoot();
-  const script = path.join(root, 'app.py');
+  const script = path.join(root, 'desktop_entry.py');
   const args = [...candidate.prefix, script, '--host', HOST, '--port', String(PORT), '--no-browser'];
 
   return spawn(candidate.command, args, {
