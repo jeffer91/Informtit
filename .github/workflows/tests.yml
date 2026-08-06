@@ -28,6 +28,7 @@ jobs:
       - run: node --check static/nuclei-ui.js
       - run: node --check static/nuclei-catalog-ui.js
       - run: node --check static/completion-ui.js
+      - run: node --check static/completion-ui-v2.js
       - run: node --check static/thesis-followup-ui.js
       - run: node -e "const p=require('./package.json'); if(p.main!=='electron/main.cjs') process.exit(1)"
       - run: python -m unittest discover -s tests -v
