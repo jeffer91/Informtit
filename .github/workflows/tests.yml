@@ -27,6 +27,7 @@ jobs:
       - run: node --check static/report-structure-ui.js
       - run: node --check static/nuclei-ui.js
       - run: node --check static/nuclei-catalog-ui.js
+      - run: node --check static/nuclei-organization.js
       - run: node --check static/completion-ui.js
       - run: node --check static/completion-ui-v2.js
       - run: node --check static/thesis-followup-ui.js
