@@ -20,9 +20,11 @@ def prepare() -> None:
 def main() -> None:
     prepare()
     import desktop_launcher
+    import process_export
     import process_routes
 
     process_routes.install()
+    process_export.install()
     desktop_launcher.main()
 
 
