@@ -12,7 +12,9 @@ import optional_content
 import process_export
 import process_routes
 import report_completion
+import report_completion_constants
 import report_completion_fixes
+import report_completion_runtime
 import report_quality
 import report_quality_runtime
 import report_structure
@@ -51,8 +53,10 @@ def prepare() -> None:
     nuclei_export.install()
     report_quality_runtime.install()
     report_quality.install()
+    report_completion_constants.install()
     report_completion.install()
     report_completion_fixes.install()
+    report_completion_runtime.install()
 
 
 def main() -> None:
