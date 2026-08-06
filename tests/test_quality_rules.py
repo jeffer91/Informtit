@@ -2,7 +2,10 @@ import unittest
 
 from analytics import enrich_student, summary
 from parser import canonical_name_key, clean_moodle_name
-from report_quality import ExportContext, _phase_after, _phase_before
+import report_quality
+import report_quality_runtime
+
+report_quality_runtime.install()
 
 
 class QualityRuleTests(unittest.TestCase):
@@ -40,7 +43,7 @@ class QualityRuleTests(unittest.TestCase):
         )
 
     def test_numbering_keeps_four_levels(self):
-        context = ExportContext.create()
+        context = report_quality.ExportContext.create()
         self.assertEqual(context.heading(1, "Introducción"), "1. Introducción")
         self.assertEqual(context.heading(1, "Metodología"), "2. Metodología")
         self.assertEqual(context.heading(2, "Contenido"), "2.1. Contenido")
@@ -56,12 +59,17 @@ class QualityRuleTests(unittest.TestCase):
             "approved_pct": 100.0,
             "average_final": 95.4,
         }
-        self.assertIn("1 estudiante", _phase_before("ADMINISTRACION", "supletorio", data))
-        self.assertIn("resultados consolidados", _phase_before("ADMINISTRACION", "consolidado", data))
-        after = _phase_after(data)
+        self.assertIn("1 estudiante", report_quality._phase_before("ADMINISTRACION", "supletorio", data))
+        self.assertIn("resultados consolidados", report_quality._phase_before("ADMINISTRACION", "consolidado", data))
+        after = report_quality._phase_after(data)
         self.assertIn("1 registro analizado", after)
         self.assertIn("1 alcanzó", after)
         self.assertIn("100,00 %", after)
+
+    def test_pdf_styles_include_heading4_and_nucleus_cells(self):
+        styles = report_quality._pdf_styles()
+        self.assertIn("Heading4", styles.byName)
+        self.assertIn("NucleusCell", styles.byName)
 
 
 if __name__ == "__main__":
