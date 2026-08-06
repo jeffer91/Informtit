@@ -3,6 +3,8 @@ from __future__ import annotations
 import app as core
 import desktop_launcher
 import layout_v3
+import nuclei_export
+import nuclei_routes
 import optional_content
 import process_export
 import process_routes
@@ -10,6 +12,7 @@ import report_structure
 from db import connection
 from import_service import ensure_schema
 from institutional_defaults import apply_defaults
+from nuclei_service import ensure_nuclei_schema
 from process_service import ensure_process_schema
 
 
@@ -19,6 +22,7 @@ def prepare() -> None:
     core.init_db()
     ensure_schema()
     ensure_process_schema()
+    ensure_nuclei_schema()
     with connection() as conn:
         apply_defaults(conn)
 
@@ -26,9 +30,11 @@ def prepare() -> None:
     # siguientes deben quedar como la última capa utilizada por Electron.
     layout_v3.install()
     process_routes.install()
+    nuclei_routes.install()
     process_export.install()
     optional_content.install()
     report_structure.install()
+    nuclei_export.install()
 
 
 def main() -> None:
