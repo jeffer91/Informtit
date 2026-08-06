@@ -63,7 +63,7 @@
     const details = panel.querySelector('.eligibility-details');
     if (details && !panel.querySelector('[data-cumulative-note]')) {
       details.insertAdjacentHTML('beforebegin', `<div class="nuclei-cumulative-note" data-cumulative-note>
-        <strong>Cómo leer esta matriz:</strong> se muestran 15 estudiantes por página y una carrera a la vez. El curso recién pegado puede contener más estudiantes distribuidos en las páginas siguientes. Revise el cuadro de cruce para confirmar el total leído y vinculado.
+        <strong>Cómo leer esta matriz:</strong> se muestran 15 estudiantes por página y una carrera a la vez. El curso recién pegado puede contener más estudiantes distribuidos en las páginas siguientes. Para revisar únicamente las personas y notas del texto pegado, abra <strong>Núcleos guardados → Ver calificaciones</strong>. Revise también el cuadro de cruce para confirmar el total leído y vinculado.
       </div>`);
     }
 
