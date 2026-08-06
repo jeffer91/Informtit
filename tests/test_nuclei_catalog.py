@@ -2,21 +2,24 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nuclei_catalog import catalog_for_career, catalogs_for_report, create_cycle_diagram
+from nuclei_catalog import NUCLEI_CATALOG, catalog_for_career, catalogs_for_report, create_cycle_diagram
 
 
 class NucleiCatalogTests(unittest.TestCase):
+    def test_contains_ten_active_career_catalogs(self):
+        self.assertEqual(len(NUCLEI_CATALOG), 10)
+        self.assertTrue(all(len(item["nuclei"]) == 4 for item in NUCLEI_CATALOG.values()))
+
     def test_matches_esthetics_career_without_accents(self):
         catalog = catalog_for_career("ESTETICA INTEGRAL")
         self.assertIsNotNone(catalog)
-        self.assertEqual(catalog["career"], "ESTÉTICA INTEGRAL")
-        self.assertEqual(len(catalog["nuclei"]), 4)
+        self.assertEqual(catalog["career"], "Estética Integral")
         self.assertEqual(
             catalog["nuclei"][0]["subjects"],
-            ["QUIMÍCA COSMETICA", "COSMIATRÍA", "DERMOCOSMETICA"],
+            ["Química cosmética", "Cosmiatría", "Dermocosmética"],
         )
 
-    def test_only_includes_catalog_when_career_is_in_report(self):
+    def test_only_includes_active_careers(self):
         report = {
             "careers": [
                 {"name": "ADMINISTRACION"},
@@ -24,10 +27,9 @@ class NucleiCatalogTests(unittest.TestCase):
             ]
         }
         catalogs = catalogs_for_report(report)
-        self.assertEqual(len(catalogs), 1)
-        self.assertEqual(catalogs[0]["career"], "ESTÉTICA INTEGRAL")
+        self.assertEqual([item["career"] for item in catalogs], ["Administración", "Estética Integral"])
 
-    def test_creates_four_node_cycle_diagram(self):
+    def test_creates_legible_four_node_cycle_diagram(self):
         catalog = catalog_for_career("Estética Integral")
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "diagram.png"
