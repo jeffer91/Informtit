@@ -126,7 +126,11 @@ def _phase_after(data):
     return sentence
 
 
-def _without_first_career_page_break(original_function, heading_name: str):
+def _without_first_career_page_break(
+    original_function,
+    heading_name: str,
+    level_position: int,
+):
     """Evita que el subtítulo de contenido quede solo antes de la primera carrera."""
 
     def wrapped(*args, **kwargs):
@@ -135,7 +139,11 @@ def _without_first_career_page_break(original_function, heading_name: str):
 
         def heading(*heading_args, **heading_kwargs):
             nonlocal first_career
-            level = heading_args[2] if len(heading_args) > 2 else heading_kwargs.get("level")
+            level = (
+                heading_args[level_position]
+                if len(heading_args) > level_position
+                else heading_kwargs.get("level")
+            )
             page_break = heading_kwargs.get("page_break", False)
             if level == 3 and page_break and first_career:
                 heading_kwargs["page_break"] = False
@@ -172,9 +180,11 @@ def install() -> None:
     report_quality._docx_methodology = _without_first_career_page_break(
         original_docx_methodology,
         "_docx_heading",
+        2,
     )
     report_quality._pdf_methodology = _without_first_career_page_break(
         original_pdf_methodology,
         "_pdf_heading",
+        3,
     )
     report_quality._quality_runtime_installed = True
