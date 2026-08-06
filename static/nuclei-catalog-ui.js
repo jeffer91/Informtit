@@ -4,7 +4,7 @@
     ['Contabilidad', ['Contabilidad financiera', 'Contabilidad de costos', 'Tributación', 'Gestión financiera']],
     ['Desarrollo de Software', ['Programación orientada a objetos', 'Implementación y gestión de base de datos', 'Desarrollo de aplicaciones móviles', 'Aplicaciones web']],
     ['Educación Inicial', ['Desarrollo integral', 'Gerencia pedagógica', 'Planificación curricular', 'Habilidades neurolingüísticas']],
-    ['Educación Básica', ['Psicología y neuroeducación en el entorno educativo', 'Fundamentos teórico-prácticos de la educación', 'Planificación y diseño curricular', 'Aprendizaje y enseñanza en Educación Básica']],
+    ['Educación Básica', ['Psicología y neuroeducación en el entorno educativo', 'Fundamentos teórico-prácticos de la educación', 'Aprendizaje y enseñanza en Educación Básica', 'Planificación y diseño curricular']],
     ['Enfermería', ['Enfermería en promoción y prevención de la salud', 'Práctica clínica en enfermería', 'Enfermería técnica y comunitaria', 'Enfermería para el cuidado integral de pacientes']],
     ['Estética Integral', ['Química cosmética y ciencias dermatocosméticas', 'Fundamentos del diagnóstico y tratamientos estéticos', 'Abordaje integral en terapias faciales y estéticas', 'Terapias corporales integrales y prácticas sostenibles']],
     ['Gestión del Talento Humano', ['Administración de la compensación y beneficios laborales', 'Atracción y gestión del talento humano', 'Salud y bienestar de talento humano', 'Evaluación organizacional']],
