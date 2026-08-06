@@ -40,9 +40,9 @@ NUCLEI_CATALOG: dict[str, dict[str, Any]] = {
         "career": "Desarrollo de Software",
         "nuclei": [
             _nucleus(1, "Programación orientada a objetos"),
-            _nucleus(2, "Implementación y gestión de bases de datos"),
-            _nucleus(3, "Aplicaciones web"),
-            _nucleus(4, "Desarrollo de aplicaciones móviles"),
+            _nucleus(2, "Implementación y gestión de base de datos"),
+            _nucleus(3, "Desarrollo de aplicaciones móviles"),
+            _nucleus(4, "Aplicaciones web"),
         ],
     },
     "educacion inicial": {
@@ -102,17 +102,17 @@ NUCLEI_CATALOG: dict[str, dict[str, Any]] = {
         "nuclei": [
             _nucleus(1, "Administración de la compensación y beneficios laborales"),
             _nucleus(2, "Atracción y gestión del talento humano"),
-            _nucleus(3, "Salud y bienestar del talento humano"),
+            _nucleus(3, "Salud y bienestar de talento humano"),
             _nucleus(4, "Evaluación organizacional"),
         ],
     },
     "marketing digital y comercio electronico": {
         "career": "Marketing Digital y Comercio Electrónico",
         "nuclei": [
-            _nucleus(1, "Bases de marketing"),
-            _nucleus(2, "Consumidor"),
+            _nucleus(1, "Bases del marketing"),
+            _nucleus(2, "El consumidor"),
             _nucleus(3, "Comunicación"),
-            _nucleus(4, "Relación con los consumidores"),
+            _nucleus(4, "Acción del marketing"),
         ],
     },
     "redes y telecomunicaciones": {
