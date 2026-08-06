@@ -3,6 +3,7 @@ from __future__ import annotations
 import app as core
 import desktop_launcher
 import layout_v3
+import optional_content
 import process_export
 import process_routes
 from db import connection
@@ -25,6 +26,7 @@ def prepare() -> None:
     layout_v3.install()
     process_routes.install()
     process_export.install()
+    optional_content.install()
 
 
 def main() -> None:
