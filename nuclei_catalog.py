@@ -59,8 +59,8 @@ NUCLEI_CATALOG: dict[str, dict[str, Any]] = {
         "nuclei": [
             _nucleus(1, "Psicología y neuroeducación en el entorno educativo"),
             _nucleus(2, "Fundamentos teórico-prácticos de la educación"),
-            _nucleus(3, "Planificación y diseño curricular"),
-            _nucleus(4, "Aprendizaje y enseñanza en Educación Básica"),
+            _nucleus(3, "Aprendizaje y enseñanza en Educación Básica"),
+            _nucleus(4, "Planificación y diseño curricular"),
         ],
     },
     "enfermeria": {
