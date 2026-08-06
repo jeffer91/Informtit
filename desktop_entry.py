@@ -6,6 +6,7 @@ import layout_v3
 import optional_content
 import process_export
 import process_routes
+import report_structure
 from db import connection
 from import_service import ensure_schema
 from institutional_defaults import apply_defaults
@@ -27,6 +28,7 @@ def prepare() -> None:
     process_routes.install()
     process_export.install()
     optional_content.install()
+    report_structure.install()
 
 
 def main() -> None:
