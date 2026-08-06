@@ -3,6 +3,7 @@ from __future__ import annotations
 import app as core
 import desktop_launcher
 import layout_v3
+import nuclei_catalog_export
 import nuclei_export
 import nuclei_fixes
 import nuclei_routes
@@ -36,6 +37,7 @@ def prepare() -> None:
     process_export.install()
     optional_content.install()
     report_structure.install()
+    nuclei_catalog_export.install()
     nuclei_export.install()
 
 
