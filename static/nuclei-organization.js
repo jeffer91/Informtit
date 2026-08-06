@@ -2,6 +2,8 @@
   const PAGE_SIZE = 15;
   let selectedCareer = '';
   let enhancementQueued = false;
+  let enhancing = false;
+  let observer = null;
   const pagesByCareer = new Map();
 
   function normalize(value = '') {
@@ -272,12 +274,20 @@
   }
 
   function enhance() {
-    enhanceCatalog();
-    enhanceEligibility();
+    if (enhancing) return;
+    enhancing = true;
+    observer?.disconnect();
+    try {
+      enhanceCatalog();
+      enhanceEligibility();
+    } finally {
+      observer?.observe(document.body, { childList: true, subtree: true });
+      enhancing = false;
+    }
   }
 
   function scheduleEnhance() {
-    if (enhancementQueued) return;
+    if (enhancementQueued || enhancing) return;
     enhancementQueued = true;
     requestAnimationFrame(() => {
       enhancementQueued = false;
@@ -289,7 +299,8 @@
   document.addEventListener('click', event => {
     if (event.target.closest('[data-tab="nuclei"]')) setTimeout(scheduleEnhance, 0);
   });
-  new MutationObserver(scheduleEnhance).observe(document.body, { childList: true, subtree: true });
+  observer = new MutationObserver(scheduleEnhance);
+  observer.observe(document.body, { childList: true, subtree: true });
   scheduleEnhance();
 
   const style = document.createElement('style');
