@@ -2,13 +2,13 @@
   const CATALOGS = [
     ['Administración', ['Gestión estratégica', 'Gestión de procesos y calidad', 'Gestión financiera', 'Gestión comercial']],
     ['Contabilidad', ['Contabilidad financiera', 'Contabilidad de costos', 'Tributación', 'Gestión financiera']],
-    ['Desarrollo de Software', ['Programación orientada a objetos', 'Implementación y gestión de bases de datos', 'Aplicaciones web', 'Desarrollo de aplicaciones móviles']],
+    ['Desarrollo de Software', ['Programación orientada a objetos', 'Implementación y gestión de base de datos', 'Desarrollo de aplicaciones móviles', 'Aplicaciones web']],
     ['Educación Inicial', ['Desarrollo integral', 'Gerencia pedagógica', 'Planificación curricular', 'Habilidades neurolingüísticas']],
     ['Educación Básica', ['Psicología y neuroeducación en el entorno educativo', 'Fundamentos teórico-prácticos de la educación', 'Planificación y diseño curricular', 'Aprendizaje y enseñanza en Educación Básica']],
     ['Enfermería', ['Enfermería en promoción y prevención de la salud', 'Práctica clínica en enfermería', 'Enfermería técnica y comunitaria', 'Enfermería para el cuidado integral de pacientes']],
     ['Estética Integral', ['Química cosmética y ciencias dermatocosméticas', 'Fundamentos del diagnóstico y tratamientos estéticos', 'Abordaje integral en terapias faciales y estéticas', 'Terapias corporales integrales y prácticas sostenibles']],
-    ['Gestión del Talento Humano', ['Administración de la compensación y beneficios laborales', 'Atracción y gestión del talento humano', 'Salud y bienestar del talento humano', 'Evaluación organizacional']],
-    ['Marketing Digital y Comercio Electrónico', ['Bases de marketing', 'Consumidor', 'Comunicación', 'Relación con los consumidores']],
+    ['Gestión del Talento Humano', ['Administración de la compensación y beneficios laborales', 'Atracción y gestión del talento humano', 'Salud y bienestar de talento humano', 'Evaluación organizacional']],
+    ['Marketing Digital y Comercio Electrónico', ['Bases del marketing', 'El consumidor', 'Comunicación', 'Acción del marketing']],
     ['Redes y Telecomunicaciones', ['Sistemas de transmisión de datos', 'Redes LAN y WAN', 'Sistemas operativos y servidores', 'Administración, seguridad y auditoría de redes']],
   ].map(([career, guides]) => ({
     career,
