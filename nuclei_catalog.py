@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -12,49 +13,121 @@ from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 from coordinator_registry import normalize
 
 
+def _nucleus(number: int, guide: str, subjects: list[str] | None = None) -> dict[str, Any]:
+    return {"number": number, "guide": guide, "subjects": subjects or []}
+
+
 NUCLEI_CATALOG: dict[str, dict[str, Any]] = {
-    "estetica integral": {
-        "career": "ESTÉTICA INTEGRAL",
+    "administracion": {
+        "career": "Administración",
         "nuclei": [
-            {
-                "number": 1,
-                "guide": "QUÍMICA COSMETICA Y CIENCIAS DERMATOCOSMÉTICAS",
-                "subjects": [
-                    "QUIMÍCA COSMETICA",
-                    "COSMIATRÍA",
-                    "DERMOCOSMETICA",
-                ],
-            },
-            {
-                "number": 2,
-                "guide": "FUNDAMENTOS DEL DIAGNOSTICO Y TRATAMIENTOS ESTÉTICO",
-                "subjects": [
-                    "CUIDADO DE LA PIEL",
-                    "VALORACIÓN ESTÉTICA",
-                    "APARATOLOGÍA EN ESTÉTICA",
-                ],
-            },
-            {
-                "number": 3,
-                "guide": "ABORDAJE INTEGRAL EN TERAPIAS FACIALES Y ESTÉTICAS",
-                "subjects": [
-                    "TERAPIAS FACIALES",
-                    "TERAPEUTICA EN ESTÉTICA",
-                    "TERAPIAS ESTÉTICAS INTEGRALES",
-                ],
-            },
-            {
-                "number": 4,
-                "guide": "TERAPIAS CORPORALES INTEGRALES Y PRACTICAS SOSTENIBLES",
-                "subjects": [
-                    "MASAJES Y TERAPIAS CORPORALES",
-                    "TERAPIAS ALTERNATIVAS",
-                    "TERAPIA Y MANEJO DE DESECHOS",
-                ],
-            },
+            _nucleus(1, "Gestión estratégica"),
+            _nucleus(2, "Gestión de procesos y calidad"),
+            _nucleus(3, "Gestión financiera"),
+            _nucleus(4, "Gestión comercial"),
         ],
-    }
+    },
+    "contabilidad": {
+        "career": "Contabilidad",
+        "nuclei": [
+            _nucleus(1, "Contabilidad financiera"),
+            _nucleus(2, "Contabilidad de costos"),
+            _nucleus(3, "Tributación"),
+            _nucleus(4, "Gestión financiera"),
+        ],
+    },
+    "desarrollo de software": {
+        "career": "Desarrollo de Software",
+        "nuclei": [
+            _nucleus(1, "Programación orientada a objetos"),
+            _nucleus(2, "Implementación y gestión de bases de datos"),
+            _nucleus(3, "Aplicaciones web"),
+            _nucleus(4, "Desarrollo de aplicaciones móviles"),
+        ],
+    },
+    "educacion inicial": {
+        "career": "Educación Inicial",
+        "nuclei": [
+            _nucleus(1, "Desarrollo integral"),
+            _nucleus(2, "Gerencia pedagógica"),
+            _nucleus(3, "Planificación curricular"),
+            _nucleus(4, "Habilidades neurolingüísticas"),
+        ],
+    },
+    "educacion basica": {
+        "career": "Educación Básica",
+        "nuclei": [
+            _nucleus(1, "Psicología y neuroeducación en el entorno educativo"),
+            _nucleus(2, "Fundamentos teórico-prácticos de la educación"),
+            _nucleus(3, "Planificación y diseño curricular"),
+            _nucleus(4, "Aprendizaje y enseñanza en Educación Básica"),
+        ],
+    },
+    "enfermeria": {
+        "career": "Enfermería",
+        "nuclei": [
+            _nucleus(1, "Enfermería en promoción y prevención de la salud"),
+            _nucleus(2, "Práctica clínica en enfermería"),
+            _nucleus(3, "Enfermería técnica y comunitaria"),
+            _nucleus(4, "Enfermería para el cuidado integral de pacientes"),
+        ],
+    },
+    "estetica integral": {
+        "career": "Estética Integral",
+        "nuclei": [
+            _nucleus(
+                1,
+                "Química cosmética y ciencias dermatocosméticas",
+                ["Química cosmética", "Cosmiatría", "Dermocosmética"],
+            ),
+            _nucleus(
+                2,
+                "Fundamentos del diagnóstico y tratamientos estéticos",
+                ["Cuidado de la piel", "Valoración estética", "Aparatología en estética"],
+            ),
+            _nucleus(
+                3,
+                "Abordaje integral en terapias faciales y estéticas",
+                ["Terapias faciales", "Terapéutica en estética", "Terapias estéticas integrales"],
+            ),
+            _nucleus(
+                4,
+                "Terapias corporales integrales y prácticas sostenibles",
+                ["Masajes y terapias corporales", "Terapias alternativas", "Terapia y manejo de desechos"],
+            ),
+        ],
+    },
+    "gestion del talento humano": {
+        "career": "Gestión del Talento Humano",
+        "nuclei": [
+            _nucleus(1, "Administración de la compensación y beneficios laborales"),
+            _nucleus(2, "Atracción y gestión del talento humano"),
+            _nucleus(3, "Salud y bienestar del talento humano"),
+            _nucleus(4, "Evaluación organizacional"),
+        ],
+    },
+    "marketing digital y comercio electronico": {
+        "career": "Marketing Digital y Comercio Electrónico",
+        "nuclei": [
+            _nucleus(1, "Bases de marketing"),
+            _nucleus(2, "Consumidor"),
+            _nucleus(3, "Comunicación"),
+            _nucleus(4, "Relación con los consumidores"),
+        ],
+    },
+    "redes y telecomunicaciones": {
+        "career": "Redes y Telecomunicaciones",
+        "nuclei": [
+            _nucleus(1, "Sistemas de transmisión de datos"),
+            _nucleus(2, "Redes LAN y WAN"),
+            _nucleus(3, "Sistemas operativos y servidores"),
+            _nucleus(4, "Administración, seguridad y auditoría de redes"),
+        ],
+    },
 }
+
+
+CATALOG_ORDER = tuple(NUCLEI_CATALOG)
 
 
 def catalog_for_career(career_name: str) -> dict[str, Any] | None:
@@ -68,17 +141,26 @@ def catalog_for_career(career_name: str) -> dict[str, Any] | None:
 
 
 def catalogs_for_report(report: dict[str, Any]) -> list[dict[str, Any]]:
+    active = {
+        normalize(str(career.get("name") or "")): career
+        for career in report.get("careers", [])
+    }
     found: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for career in report.get("careers", []):
-        item = catalog_for_career(str(career.get("name") or ""))
-        if not item:
+    for key in CATALOG_ORDER:
+        item = NUCLEI_CATALOG[key]
+        if not any(key == active_key or key in active_key or active_key in key for active_key in active):
             continue
-        key = normalize(item["career"])
-        if key not in seen:
+        normalized = normalize(item["career"])
+        if normalized not in seen:
             found.append(item)
-            seen.add(key)
+            seen.add(normalized)
     return found
+
+
+def _wrapped_label(nucleus: dict[str, Any]) -> str:
+    guide = textwrap.fill(str(nucleus["guide"]), width=25, break_long_words=False)
+    return f"Núcleo {nucleus['number']}\n{guide}"
 
 
 def create_cycle_diagram(catalog: dict[str, Any], output_path: Path) -> Path:
@@ -86,65 +168,61 @@ def create_cycle_diagram(catalog: dict[str, Any], output_path: Path) -> Path:
     if len(nuclei) != 4:
         raise ValueError("El gráfico circular requiere exactamente cuatro núcleos.")
 
-    figure, axis = plt.subplots(figsize=(9.4, 6.2))
-    axis.set_xlim(0, 10)
-    axis.set_ylim(0, 7)
+    figure, axis = plt.subplots(figsize=(10.5, 7.0))
+    axis.set_xlim(0, 12)
+    axis.set_ylim(0, 8)
     axis.axis("off")
 
-    positions = [(5, 5.75), (8.05, 3.5), (5, 1.25), (1.95, 3.5)]
-    box_width = 2.65
-    box_height = 1.3
+    positions = [(6, 6.55), (9.65, 4.0), (6, 1.45), (2.35, 4.0)]
+    box_width = 3.35
+    box_height = 1.55
 
-    for index, nucleus in enumerate(nuclei):
-        x, y = positions[index]
+    for index, (x, y) in enumerate(positions):
         next_x, next_y = positions[(index + 1) % 4]
-        arrow = FancyArrowPatch(
-            (x, y),
-            (next_x, next_y),
-            arrowstyle="-|>",
-            mutation_scale=20,
-            linewidth=2.2,
-            color="#d49a45",
-            connectionstyle="arc3,rad=0.18",
-            shrinkA=48,
-            shrinkB=48,
-            zorder=1,
+        axis.add_patch(
+            FancyArrowPatch(
+                (x, y),
+                (next_x, next_y),
+                arrowstyle="-|>",
+                mutation_scale=19,
+                linewidth=2.1,
+                color="#b87822",
+                connectionstyle="arc3,rad=0.15",
+                shrinkA=62,
+                shrinkB=62,
+                zorder=1,
+            )
         )
-        axis.add_patch(arrow)
 
     for index, nucleus in enumerate(nuclei):
         x, y = positions[index]
-        box = FancyBboxPatch(
-            (x - box_width / 2, y - box_height / 2),
-            box_width,
-            box_height,
-            boxstyle="round,pad=0.18,rounding_size=0.16",
-            linewidth=1.2,
-            edgecolor="#9a6d2f",
-            facecolor="#f4c77f",
-            zorder=2,
+        axis.add_patch(
+            FancyBboxPatch(
+                (x - box_width / 2, y - box_height / 2),
+                box_width,
+                box_height,
+                boxstyle="round,pad=0.16,rounding_size=0.15",
+                linewidth=1.25,
+                edgecolor="#9a651f",
+                facecolor="#f4c87f",
+                zorder=2,
+            )
         )
-        axis.add_patch(box)
-        label = f"Núcleo {nucleus['number']}\n{nucleus['guide']}"
+        guide_length = len(str(nucleus["guide"]))
+        font_size = 8.5 if guide_length <= 34 else 7.5 if guide_length <= 52 else 6.8
         axis.text(
             x,
             y,
-            label,
+            _wrapped_label(nucleus),
             ha="center",
             va="center",
-            fontsize=8.2,
+            fontsize=font_size,
             fontweight="bold",
-            wrap=True,
+            linespacing=1.15,
             zorder=3,
         )
 
-    axis.set_title(
-        catalog.get("career") or "Contenido de núcleos",
-        fontsize=15,
-        fontweight="bold",
-        pad=12,
-    )
-    figure.tight_layout()
-    figure.savefig(output_path, dpi=180, bbox_inches="tight")
+    figure.tight_layout(pad=0.2)
+    figure.savefig(output_path, dpi=200, bbox_inches="tight", pad_inches=0.08)
     plt.close(figure)
     return output_path
