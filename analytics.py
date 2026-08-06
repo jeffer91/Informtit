@@ -14,18 +14,26 @@ def weighted(theory: float | None, practical: float | None) -> float | None:
     return round(theory * THEORY_WEIGHT + practical * PRACTICAL_WEIGHT, 2)
 
 
-def ordinary_final(student: dict[str, Any]) -> float | None:
-    return weighted(student.get("ordinary_theory"), student.get("ordinary_practical"))
+def ordinary_components(student: dict[str, Any]) -> tuple[float | None, float | None]:
+    return student.get("ordinary_theory"), student.get("ordinary_practical")
 
 
-def final_after_supplementary(student: dict[str, Any]) -> float | None:
+def final_components(student: dict[str, Any]) -> tuple[float | None, float | None]:
     theory = student.get("supplementary_theory")
     if theory is None:
         theory = student.get("ordinary_theory")
     practical = student.get("supplementary_practical")
     if practical is None:
         practical = student.get("ordinary_practical")
-    return weighted(theory, practical)
+    return theory, practical
+
+
+def ordinary_final(student: dict[str, Any]) -> float | None:
+    return weighted(*ordinary_components(student))
+
+
+def final_after_supplementary(student: dict[str, Any]) -> float | None:
+    return weighted(*final_components(student))
 
 
 def participated_in_supplementary(student: dict[str, Any]) -> bool:
@@ -38,7 +46,14 @@ def final_grade(student: dict[str, Any]) -> float | None:
     return ordinary_final(student)
 
 
+def status_for_components(theory: float | None, practical: float | None) -> str:
+    if theory is None or practical is None:
+        return "No evaluado"
+    return "Aprobado" if theory >= PASSING_GRADE and practical >= PASSING_GRADE else "Reprobado"
+
+
 def status_for(grade: float | None) -> str:
+    """Compatibilidad para notas simples que no tienen componentes separados."""
     if grade is None:
         return "No evaluado"
     return "Aprobado" if grade >= PASSING_GRADE else "Reprobado"
@@ -55,12 +70,20 @@ def pct(value: int, total: int) -> float:
 
 def enrich_student(student: dict[str, Any]) -> dict[str, Any]:
     result = dict(student)
-    result["ordinary_final"] = ordinary_final(student)
-    result["supplementary_final"] = final_after_supplementary(student) if participated_in_supplementary(student) else None
-    result["final_grade"] = final_grade(student)
-    result["ordinary_status"] = status_for(result["ordinary_final"])
-    result["final_status"] = status_for(result["final_grade"])
+    ordinary_theory, ordinary_practical = ordinary_components(student)
+    final_theory, final_practical = final_components(student)
+    result["ordinary_final"] = weighted(ordinary_theory, ordinary_practical)
+    result["supplementary_final"] = (
+        weighted(final_theory, final_practical)
+        if participated_in_supplementary(student)
+        else None
+    )
+    result["final_grade"] = weighted(final_theory, final_practical)
+    result["ordinary_status"] = status_for_components(ordinary_theory, ordinary_practical)
+    result["final_status"] = status_for_components(final_theory, final_practical)
     result["supplementary_participant"] = participated_in_supplementary(student)
+    result["final_theory"] = final_theory
+    result["final_practical"] = final_practical
     if student.get("supplementary_theory") is not None and student.get("supplementary_practical") is not None:
         result["supplementary_component"] = "Teórico y práctico"
     elif student.get("supplementary_theory") is not None:
@@ -79,30 +102,30 @@ def enrich_student(student: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _status_lists(rows: list[dict[str, Any]], key: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    approved = [student for student in rows if student[key] == "Aprobado"]
+    failed = [student for student in rows if student[key] == "Reprobado"]
+    not_evaluated = [student for student in rows if student[key] == "No evaluado"]
+    return approved, failed, not_evaluated
+
+
 def summary(students: list[dict[str, Any]], phase: str = "consolidado") -> dict[str, Any]:
     enriched = [enrich_student(student) for student in students]
-    total = len(enriched)
 
     if phase == "ordinario":
-        grades = [student["ordinary_final"] for student in enriched]
-        approved = [student for student in enriched if student["ordinary_final"] is not None and student["ordinary_final"] >= PASSING_GRADE]
-        failed = [student for student in enriched if student["ordinary_final"] is not None and student["ordinary_final"] < PASSING_GRADE]
-        not_evaluated = [student for student in enriched if student["ordinary_final"] is None]
         rows = enriched
+        grades = [student["ordinary_final"] for student in rows]
+        approved, failed, not_evaluated = _status_lists(rows, "ordinary_status")
     elif phase == "supletorio":
         rows = [student for student in enriched if student["supplementary_participant"]]
         grades = [student["supplementary_final"] for student in rows]
-        approved = [student for student in rows if student["supplementary_final"] is not None and student["supplementary_final"] >= PASSING_GRADE]
-        failed = [student for student in rows if student["supplementary_final"] is not None and student["supplementary_final"] < PASSING_GRADE]
-        not_evaluated = [student for student in rows if student["supplementary_final"] is None]
-        total = len(rows)
+        approved, failed, not_evaluated = _status_lists(rows, "final_status")
     else:
-        grades = [student["final_grade"] for student in enriched]
-        approved = [student for student in enriched if student["final_grade"] is not None and student["final_grade"] >= PASSING_GRADE]
-        failed = [student for student in enriched if student["final_grade"] is not None and student["final_grade"] < PASSING_GRADE]
-        not_evaluated = [student for student in enriched if student["final_grade"] is None]
         rows = enriched
+        grades = [student["final_grade"] for student in rows]
+        approved, failed, not_evaluated = _status_lists(rows, "final_status")
 
+    total = len(rows)
     supplementary_count = sum(1 for student in enriched if student["supplementary_participant"])
     return {
         "phase": phase,
