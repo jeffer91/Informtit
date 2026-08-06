@@ -4,6 +4,7 @@ import app as core
 import desktop_launcher
 import layout_v3
 import nuclei_export
+import nuclei_fixes
 import nuclei_routes
 import optional_content
 import process_export
@@ -23,6 +24,7 @@ def prepare() -> None:
     ensure_schema()
     ensure_process_schema()
     ensure_nuclei_schema()
+    nuclei_fixes.install()
     with connection() as conn:
         apply_defaults(conn)
 
