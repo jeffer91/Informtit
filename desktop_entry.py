@@ -12,6 +12,7 @@ import optional_content
 import process_export
 import process_routes
 import report_completion
+import report_completion_fixes
 import report_quality
 import report_quality_runtime
 import report_structure
@@ -21,6 +22,7 @@ from import_service import ensure_schema
 from institutional_defaults import apply_defaults
 from nuclei_service import ensure_nuclei_schema
 from process_service import ensure_process_schema
+from thesis_followup import ensure_thesis_followup_schema
 
 
 def prepare() -> None:
@@ -31,6 +33,7 @@ def prepare() -> None:
     ensure_process_schema()
     ensure_nuclei_schema()
     ensure_completion_schema()
+    ensure_thesis_followup_schema()
     nuclei_fixes.install()
     with connection() as conn:
         apply_defaults(conn)
@@ -49,6 +52,7 @@ def prepare() -> None:
     report_quality_runtime.install()
     report_quality.install()
     report_completion.install()
+    report_completion_fixes.install()
 
 
 def main() -> None:
