@@ -1,29 +1,19 @@
 (() => {
-  const CATALOG = {
-    career: 'ESTÉTICA INTEGRAL',
-    nuclei: [
-      {
-        number: 1,
-        guide: 'QUÍMICA COSMETICA Y CIENCIAS DERMATOCOSMÉTICAS',
-        subjects: ['QUIMÍCA COSMETICA', 'COSMIATRÍA', 'DERMOCOSMETICA'],
-      },
-      {
-        number: 2,
-        guide: 'FUNDAMENTOS DEL DIAGNOSTICO Y TRATAMIENTOS ESTÉTICO',
-        subjects: ['CUIDADO DE LA PIEL', 'VALORACIÓN ESTÉTICA', 'APARATOLOGÍA EN ESTÉTICA'],
-      },
-      {
-        number: 3,
-        guide: 'ABORDAJE INTEGRAL EN TERAPIAS FACIALES Y ESTÉTICAS',
-        subjects: ['TERAPIAS FACIALES', 'TERAPEUTICA EN ESTÉTICA', 'TERAPIAS ESTÉTICAS INTEGRALES'],
-      },
-      {
-        number: 4,
-        guide: 'TERAPIAS CORPORALES INTEGRALES Y PRACTICAS SOSTENIBLES',
-        subjects: ['MASAJES Y TERAPIAS CORPORALES', 'TERAPIAS ALTERNATIVAS', 'TERAPIA Y MANEJO DE DESECHOS'],
-      },
-    ],
-  };
+  const CATALOGS = [
+    ['Administración', ['Gestión estratégica', 'Gestión de procesos y calidad', 'Gestión financiera', 'Gestión comercial']],
+    ['Contabilidad', ['Contabilidad financiera', 'Contabilidad de costos', 'Tributación', 'Gestión financiera']],
+    ['Desarrollo de Software', ['Programación orientada a objetos', 'Implementación y gestión de bases de datos', 'Aplicaciones web', 'Desarrollo de aplicaciones móviles']],
+    ['Educación Inicial', ['Desarrollo integral', 'Gerencia pedagógica', 'Planificación curricular', 'Habilidades neurolingüísticas']],
+    ['Educación Básica', ['Psicología y neuroeducación en el entorno educativo', 'Fundamentos teórico-prácticos de la educación', 'Planificación y diseño curricular', 'Aprendizaje y enseñanza en Educación Básica']],
+    ['Enfermería', ['Enfermería en promoción y prevención de la salud', 'Práctica clínica en enfermería', 'Enfermería técnica y comunitaria', 'Enfermería para el cuidado integral de pacientes']],
+    ['Estética Integral', ['Química cosmética y ciencias dermatocosméticas', 'Fundamentos del diagnóstico y tratamientos estéticos', 'Abordaje integral en terapias faciales y estéticas', 'Terapias corporales integrales y prácticas sostenibles']],
+    ['Gestión del Talento Humano', ['Administración de la compensación y beneficios laborales', 'Atracción y gestión del talento humano', 'Salud y bienestar del talento humano', 'Evaluación organizacional']],
+    ['Marketing Digital y Comercio Electrónico', ['Bases de marketing', 'Consumidor', 'Comunicación', 'Relación con los consumidores']],
+    ['Redes y Telecomunicaciones', ['Sistemas de transmisión de datos', 'Redes LAN y WAN', 'Sistemas operativos y servidores', 'Administración, seguridad y auditoría de redes']],
+  ].map(([career, guides]) => ({
+    career,
+    nuclei: guides.map((guide, index) => ({ number: index + 1, guide })),
+  }));
 
   function normalize(value = '') {
     return String(value)
@@ -42,71 +32,71 @@
         })[character]);
   }
 
-  function hasEstheticsCareer() {
-    return (state.activeReport?.careers || []).some(career =>
-      normalize(career.name).includes('estetica integral')
-    );
+  function activeCatalogs() {
+    const names = (state.activeReport?.careers || []).map(career => normalize(career.name));
+    return CATALOGS.filter(catalog => {
+      const key = normalize(catalog.career);
+      return names.some(name => name === key || name.includes(key) || key.includes(name));
+    });
   }
 
-  function catalogMarkup() {
-    return `
-      <section class="panel nuclei-catalog-panel" data-nuclei-catalog="estetica-integral">
-        <div class="panel-head">
-          <div>
-            <h2>Contenido académico de los núcleos</h2>
-            <p>Este contenido se incorporará al informe únicamente porque Estética Integral forma parte de la cohorte activa.</p>
-          </div>
+  function careerMarkup(catalog) {
+    return `<article class="career-card nuclei-catalog-card">
+      <div class="career-head">
+        <div>
+          <span class="badge">4 núcleos</span>
+          <h3>${escapeLocal(catalog.career)}</h3>
+          <p>Vista previa de la estructura que se incorporará al informe.</p>
         </div>
-        <article class="career-card nuclei-catalog-card">
-          <div class="career-head">
-            <div>
-              <span class="badge">4 núcleos</span>
-              <h3>${escapeLocal(CATALOG.career)}</h3>
-              <p>Cada guía agrupa tres asignaturas de la carrera.</p>
-            </div>
-          </div>
-          <div class="nuclei-cycle-preview">
-            ${CATALOG.nuclei.map(nucleus => `
-              <div class="nucleus-cycle-node">
-                <strong>Núcleo ${nucleus.number}</strong>
-                <span>${escapeLocal(nucleus.guide)}</span>
-              </div>
-            `).join('')}
-          </div>
-          <div class="nuclei-guide-grid">
-            ${CATALOG.nuclei.map(nucleus => `
-              <section class="nuclei-guide-card">
-                <span class="badge">Núcleo ${nucleus.number}</span>
-                <h4>${escapeLocal(nucleus.guide)}</h4>
-                <ul>${nucleus.subjects.map(subject => `<li>${escapeLocal(subject)}</li>`).join('')}</ul>
-              </section>
-            `).join('')}
-          </div>
-        </article>
-      </section>`;
+      </div>
+      <div class="nuclei-cycle-preview">
+        ${catalog.nuclei.map(nucleus => `<div class="nucleus-cycle-node">
+          <strong>Núcleo ${nucleus.number}</strong>
+          <span>${escapeLocal(nucleus.guide)}</span>
+        </div>`).join('')}
+      </div>
+    </article>`;
+  }
+
+  function catalogMarkup(catalogs) {
+    return `<section class="panel nuclei-catalog-panel" data-nuclei-catalog="active-careers">
+      <div class="panel-head">
+        <div>
+          <h2>Contenido académico de los núcleos</h2>
+          <p>Se muestran únicamente las carreras importadas en el informe activo. El Word y PDF generan un gráfico uniforme para cada carrera.</p>
+        </div>
+      </div>
+      <div class="nuclei-catalog-list">${catalogs.map(careerMarkup).join('')}</div>
+    </section>`;
   }
 
   function renderCatalog() {
     const tab = document.querySelector('#tab-nuclei');
     if (!tab || !state.activeReport?.id) return;
-    const existing = tab.querySelector('[data-nuclei-catalog="estetica-integral"]');
-    if (!hasEstheticsCareer()) {
+    const existing = tab.querySelector('[data-nuclei-catalog="active-careers"]');
+    const catalogs = activeCatalogs();
+    if (!catalogs.length) {
       existing?.remove();
       return;
     }
-    if (existing) return;
+    const markup = catalogMarkup(catalogs);
+    if (existing) {
+      existing.outerHTML = markup;
+      return;
+    }
     const stack = tab.querySelector('.process-stack');
-    if (stack) stack.insertAdjacentHTML('beforeend', catalogMarkup());
+    if (stack) stack.insertAdjacentHTML('beforeend', markup);
   }
 
   const style = document.createElement('style');
   style.textContent = `
     .nuclei-catalog-panel { margin-top: 18px; }
+    .nuclei-catalog-list { display: grid; gap: 16px; }
     .nuclei-cycle-preview {
       display: grid;
       grid-template-columns: repeat(2, minmax(220px, 1fr));
       gap: 14px;
-      margin: 18px 0;
+      margin-top: 18px;
       padding: 18px;
       border: 1px dashed #d8a557;
       border-radius: 18px;
@@ -118,29 +108,14 @@
       flex-direction: column;
       justify-content: center;
       gap: 7px;
-      padding: 16px;
+      padding: 16px 20px;
       text-align: center;
       border: 1px solid #c98a32;
-      border-radius: 999px;
+      border-radius: 24px;
       background: #f7d49d;
     }
-    .nucleus-cycle-node span { font-size: 13px; line-height: 1.35; }
-    .nuclei-guide-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(240px, 1fr));
-      gap: 14px;
-    }
-    .nuclei-guide-card {
-      padding: 16px;
-      border: 1px solid #dbe3ec;
-      border-radius: 14px;
-      background: #ffffff;
-    }
-    .nuclei-guide-card h4 { margin: 10px 0; line-height: 1.35; }
-    .nuclei-guide-card ul { margin: 0; padding-left: 20px; }
-    @media (max-width: 900px) {
-      .nuclei-cycle-preview, .nuclei-guide-grid { grid-template-columns: 1fr; }
-    }
+    .nucleus-cycle-node span { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+    @media (max-width: 900px) { .nuclei-cycle-preview { grid-template-columns: 1fr; } }
   `;
   document.head.appendChild(style);
 
