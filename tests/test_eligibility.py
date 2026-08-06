@@ -33,8 +33,10 @@ ROSTER = {
 
 def course(number, ana, luis, maria):
     return {
+        "id": number,
         "career_name": "Enfermería",
         "nucleus_number": number,
+        "teacher_name": "DOCENTE DE PRUEBA",
         "students": [
             {"full_name": "ANA MARIA PEREZ", "email": "ana@itsqmet.edu.ec", "final_grade": ana},
             {"full_name": "LUIS JOSE LOPEZ", "email": "luis@itsqmet.edu.ec", "final_grade": luis},
@@ -88,6 +90,10 @@ class EligibilityTests(unittest.TestCase):
         self.assertEqual(result["summary"]["habilitated"], 1)
         self.assertEqual(result["summary"]["not_habilitated"], 1)
         self.assertEqual(result["summary"]["thesis_students"], 1)
+        self.assertEqual(len(result["course_matches"]), 4)
+        self.assertTrue(all(item["read_students"] == 3 for item in result["course_matches"]))
+        self.assertTrue(all(item["matched_students"] == 3 for item in result["course_matches"]))
+        self.assertTrue(all(item["unmatched_students"] == 0 for item in result["course_matches"]))
 
     @patch("eligibility_service.get_projects", return_value={"projects": []})
     @patch("eligibility_service.get_nuclei")
@@ -103,6 +109,23 @@ class EligibilityTests(unittest.TestCase):
         result = get_eligibility(1)
         self.assertEqual(result["rows"][0]["status"], "Pendiente")
         self.assertEqual(result["rows"][0]["missing_nuclei"], 1)
+
+    @patch("eligibility_service.get_projects", return_value={"projects": []})
+    @patch("eligibility_service.get_nuclei")
+    @patch("eligibility_service.get_report_roster")
+    def test_reports_course_students_without_roster_match(
+        self,
+        roster_mock,
+        nuclei_mock,
+        _projects_mock,
+    ):
+        roster_mock.return_value = {"students": [ROSTER["students"][0]]}
+        nuclei_mock.return_value = {"courses": [NUCLEI["courses"][0]]}
+        result = get_eligibility(1)
+        self.assertEqual(result["course_matches"][0]["read_students"], 3)
+        self.assertEqual(result["course_matches"][0]["matched_students"], 1)
+        self.assertEqual(result["course_matches"][0]["unmatched_students"], 2)
+        self.assertEqual(len(result["unmatched"]), 2)
 
 
 if __name__ == "__main__":
