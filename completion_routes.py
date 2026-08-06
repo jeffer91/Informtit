@@ -12,6 +12,7 @@ from completion_service import (
     replace_schedule_extended,
 )
 from eligibility_service import get_eligibility
+from optional_content import set_presence
 from thesis_followup import ensure_thesis_followup_schema, update_project_followup
 
 
@@ -54,14 +55,14 @@ def install() -> None:
             r"/api/reports/(\d+)/schedules/(complexive|thesis)", path
         )
         if match and method == "PUT":
+            report_id = int(match.group(1))
+            schedule_type = match.group(2)
             entries = payload.get("entries")
             if not isinstance(entries, list):
                 raise ValueError("Envíe las actividades del cronograma como una lista.")
-            self._send_json(
-                replace_schedule_extended(
-                    int(match.group(1)), match.group(2), entries
-                )
-            )
+            result = replace_schedule_extended(report_id, schedule_type, entries)
+            set_presence(report_id, f"schedule_{schedule_type}", True)
+            self._send_json(result)
             return
 
         match = re.fullmatch(r"/api/reports/(\d+)/completion", path)
