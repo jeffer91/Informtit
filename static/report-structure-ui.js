@@ -43,15 +43,25 @@
     const values = active.map(([key]) => normalizeStatus(student[key]));
     if (values.some(value => value === 'NO CUMPLE')) return 'pending';
     if (values.some(value => !value)) return 'incomplete';
-    if (values.every(value => value === 'CUMPLE')) return 'complete';
-    return 'incomplete';
+    return values.every(value => value === 'CUMPLE') ? 'complete' : 'incomplete';
   }
 
   async function enhanceRosterAnalysis() {
     const tab = document.querySelector('#tab-roster');
-    if (!tab || tab.querySelector('[data-requirement-analysis]') || !state.activeReport?.id) return;
+    const reportId = Number(state.activeReport?.id || 0);
+    if (!tab || !reportId) return;
+
+    if (Number(tab.dataset.requirementReportId || 0) !== reportId) {
+      tab.querySelectorAll('[data-requirement-analysis]').forEach(node => node.remove());
+      tab.dataset.requirementReportId = String(reportId);
+      tab.dataset.requirementLoading = '0';
+    }
+    if (tab.querySelector('[data-requirement-analysis]') || tab.dataset.requirementLoading === '1') return;
+    tab.dataset.requirementLoading = '1';
+
     try {
-      const data = await api(`/api/reports/${state.activeReport.id}/roster`);
+      const data = await api(`/api/reports/${reportId}/roster`);
+      if (Number(state.activeReport?.id || 0) !== reportId) return;
       const students = data.students || [];
       if (!students.length) return;
       const active = requirements.filter(([key]) => students.some(student => String(student[key] || '').trim()));
@@ -98,6 +108,10 @@
       tab.prepend(section);
     } catch (_error) {
       // La pestaña principal conserva su funcionamiento aunque falle esta vista auxiliar.
+    } finally {
+      if (Number(tab.dataset.requirementReportId || 0) === reportId) {
+        tab.dataset.requirementLoading = '0';
+      }
     }
   }
 
