@@ -17,11 +17,12 @@ jobs:
         with:
           node-version: '22'
       - run: python -m pip install -r requirements.txt
-      - run: python -m py_compile app.py db.py parser.py import_service.py roster_service.py process_service.py process_routes.py process_export.py desktop_entry.py layout_v2.py layout_v3.py
+      - run: python -m py_compile app.py db.py parser.py import_service.py roster_service.py process_service.py process_routes.py process_export.py optional_content.py desktop_entry.py layout_v2.py layout_v3.py
       - run: node --check electron/main.cjs
       - run: node --check electron/main2.cjs
       - run: node --check static/no-sections.js
       - run: node --check static/process-ui.js
       - run: node --check static/process-ui-fixes.js
+      - run: node --check static/project-search.js
       - run: node -e "const p=require('./package.json'); if(p.main!=='electron/main.cjs') process.exit(1)"
       - run: python -m unittest discover -s tests -v
