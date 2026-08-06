@@ -4,12 +4,14 @@ import app as core
 from db import connection
 from import_service import ensure_schema
 from institutional_defaults import apply_defaults
+from process_service import ensure_process_schema
 import layout_v3
 
 
 def prepare() -> None:
     core.init_db()
     ensure_schema()
+    ensure_process_schema()
     with connection() as conn:
         apply_defaults(conn)
     layout_v3.install()
@@ -18,7 +20,9 @@ def prepare() -> None:
 def main() -> None:
     prepare()
     import desktop_launcher
+    import process_routes
 
+    process_routes.install()
     desktop_launcher.main()
 
 
