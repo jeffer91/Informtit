@@ -2,13 +2,15 @@ const { app, BrowserWindow, dialog, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
+const net = require('node:net');
 const path = require('node:path');
 
 const HOST = '127.0.0.1';
-const PORT = 8765;
-const APP_URL = `http://${HOST}:${PORT}`;
+const REQUIRED_CAPABILITY = 'schedules';
 
 let backendProcess = null;
+let backendPort = null;
+let appUrl = null;
 let mainWindow = null;
 
 function backendRoot() {
@@ -47,13 +49,44 @@ function pythonCandidates() {
   return candidates;
 }
 
-function checkBackend() {
-  return new Promise((resolve) => {
-    const request = http.get(APP_URL, (response) => {
-      response.resume();
-      resolve(response.statusCode >= 200 && response.statusCode < 500);
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, HOST, () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : null;
+      server.close(() => {
+        if (port) resolve(port);
+        else reject(new Error('No se pudo asignar un puerto local.'));
+      });
     });
-    request.setTimeout(700, () => {
+  });
+}
+
+function checkBackend(url) {
+  return new Promise((resolve) => {
+    const request = http.get(`${url}/api/health`, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { body += chunk; });
+      response.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const capabilities = Array.isArray(data.capabilities) ? data.capabilities : [];
+          resolve(
+            response.statusCode >= 200
+            && response.statusCode < 300
+            && data.ok === true
+            && capabilities.includes(REQUIRED_CAPABILITY)
+          );
+        } catch (_error) {
+          resolve(false);
+        }
+      });
+    });
+    request.setTimeout(800, () => {
       request.destroy();
       resolve(false);
     });
@@ -61,18 +94,24 @@ function checkBackend() {
   });
 }
 
-async function waitForBackend(maxAttempts = 80) {
+async function waitForBackend(url, maxAttempts = 100) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (await checkBackend()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    if (await checkBackend(url)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
   return false;
 }
 
-function spawnPython(candidate) {
+function spawnPython(candidate, port) {
   const root = backendRoot();
   const script = path.join(root, 'desktop_entry.py');
-  const args = [...candidate.prefix, script, '--host', HOST, '--port', String(PORT), '--no-browser'];
+  const args = [
+    ...candidate.prefix,
+    script,
+    '--host', HOST,
+    '--port', String(port),
+    '--no-browser',
+  ];
 
   return spawn(candidate.command, args, {
     cwd: root,
@@ -86,21 +125,32 @@ function spawnPython(candidate) {
   });
 }
 
-async function startBackend() {
-  if (await checkBackend()) return;
+async function stopProcess(processHandle) {
+  if (!processHandle || processHandle.killed) return;
+  processHandle.kill();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+}
 
+async function startBackend() {
   let lastError = null;
+
+  // No se reutiliza un servidor antiguo del puerto 8765. Cada ejecución de
+  // Electron inicia su propio backend actualizado en un puerto libre.
   for (const candidate of pythonCandidates()) {
+    const port = await findFreePort();
+    const url = `http://${HOST}:${port}`;
+
     try {
       console.log(`[Informtit] Probando Python: ${candidate.command} ${candidate.prefix.join(' ')}`);
-      const processHandle = spawnPython(candidate);
+      console.log(`[Informtit] Backend local: ${url}`);
+      const processHandle = spawnPython(candidate, port);
       backendProcess = processHandle;
 
       processHandle.stdout.on('data', (chunk) => console.log(`[Informtit] ${chunk}`));
       processHandle.stderr.on('data', (chunk) => console.error(`[Informtit] ${chunk}`));
 
       const started = await Promise.race([
-        waitForBackend(),
+        waitForBackend(url),
         new Promise((resolve) => {
           processHandle.once('error', (error) => {
             lastError = error;
@@ -115,10 +165,18 @@ async function startBackend() {
         }),
       ]);
 
-      if (started) return;
-      if (!processHandle.killed) processHandle.kill();
+      if (started) {
+        backendPort = port;
+        appUrl = url;
+        return;
+      }
+
+      await stopProcess(processHandle);
+      backendProcess = null;
     } catch (error) {
       lastError = error;
+      await stopProcess(backendProcess);
+      backendProcess = null;
     }
   }
 
@@ -126,6 +184,8 @@ async function startBackend() {
 }
 
 function createWindow() {
+  if (!appUrl) throw new Error('El backend local no está disponible.');
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -143,7 +203,7 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.loadURL(APP_URL);
+  mainWindow.loadURL(appUrl);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -181,4 +241,6 @@ app.on('before-quit', () => {
     backendProcess.kill();
     backendProcess = null;
   }
+  backendPort = null;
+  appUrl = null;
 });
