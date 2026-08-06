@@ -53,12 +53,12 @@
     const panel = document.querySelector('[data-eligibility-panel]');
     if (!reportId || !panel) return;
 
+    const headingText = 'Consolidado acumulado de los cuatro núcleos';
+    const descriptionText = 'La matriz reúne todos los cursos de núcleos guardados. Una nota en Núcleo 2 proviene de un curso de Núcleo 2 cargado anteriormente; no se genera a partir del texto de Núcleo 1.';
     const heading = panel.querySelector('.panel-head h2');
     const description = panel.querySelector('.panel-head p');
-    if (heading) heading.textContent = 'Consolidado acumulado de los cuatro núcleos';
-    if (description) {
-      description.textContent = 'La matriz reúne todos los cursos de núcleos guardados. Una nota en Núcleo 2 proviene de un curso de Núcleo 2 cargado anteriormente; no se genera a partir del texto de Núcleo 1.';
-    }
+    if (heading && heading.textContent !== headingText) heading.textContent = headingText;
+    if (description && description.textContent !== descriptionText) description.textContent = descriptionText;
 
     const details = panel.querySelector('.eligibility-details');
     if (details && !panel.querySelector('[data-cumulative-note]')) {
