@@ -11,6 +11,7 @@ import optional_content
 import process_export
 import process_routes
 import report_quality
+import report_quality_runtime
 import report_structure
 from db import connection
 from import_service import ensure_schema
@@ -40,6 +41,7 @@ def prepare() -> None:
     report_structure.install()
     nuclei_catalog_export.install()
     nuclei_export.install()
+    report_quality_runtime.install()
     report_quality.install()
 
 
