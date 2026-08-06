@@ -58,8 +58,12 @@
     </article>`;
   }
 
-  function catalogMarkup(catalogs) {
-    return `<section class="panel nuclei-catalog-panel" data-nuclei-catalog="active-careers">
+  function signatureFor(catalogs) {
+    return catalogs.map(catalog => normalize(catalog.career)).join('|');
+  }
+
+  function catalogMarkup(catalogs, signature) {
+    return `<section class="panel nuclei-catalog-panel" data-nuclei-catalog="active-careers" data-catalog-signature="${escapeLocal(signature)}">
       <div class="panel-head">
         <div>
           <h2>Contenido académico de los núcleos</h2>
@@ -79,7 +83,9 @@
       existing?.remove();
       return;
     }
-    const markup = catalogMarkup(catalogs);
+    const signature = signatureFor(catalogs);
+    if (existing?.dataset.catalogSignature === signature) return;
+    const markup = catalogMarkup(catalogs, signature);
     if (existing) {
       existing.outerHTML = markup;
       return;
