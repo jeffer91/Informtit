@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Informtit</title>
-  <link rel="stylesheet" href="/styles.css?v=1.6">
-  <link rel="stylesheet" href="/assets-ui.css?v=1.6">
-  <link rel="stylesheet" href="/process-ui.css?v=1.6">
+  <link rel="stylesheet" href="/styles.css?v=1.8">
+  <link rel="stylesheet" href="/assets-ui.css?v=1.8">
+  <link rel="stylesheet" href="/process-ui.css?v=1.8">
 </head>
 <body>
   <div id="toast" class="toast" hidden></div>
@@ -106,7 +106,7 @@
 
   <dialog id="career-dialog">
     <form method="dialog" id="career-form" class="dialog-form">
-      <div class="dialog-head"><div><h2>Agregar carrera</h2><p>La carrera quedará vinculada al informe activo.</p></div><button class="icon-button" value="cancel">×</button></div>
+      <div class="dialog-head"><div><h2>Agregar carrera</h2><p>La carrera quedará vinculada al informe activo.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
       <label>Nombre de la carrera<input name="name" required placeholder="Mecánica Automotriz"></label>
       <div class="dialog-actions"><button class="button secondary" value="cancel">Cancelar</button><button class="button primary" value="default">Agregar</button></div>
     </form>
@@ -114,7 +114,7 @@
 
   <dialog id="notes-dialog" class="wide-dialog">
     <form method="dialog" id="notes-form" class="dialog-form">
-      <div class="dialog-head"><div><h2 id="notes-title">Cargar notas</h2><p>Pegue directamente el contenido copiado desde Moodle.</p></div><button class="icon-button" value="cancel">×</button></div>
+      <div class="dialog-head"><div><h2 id="notes-title">Cargar notas</h2><p>Pegue directamente el contenido copiado desde Moodle.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
       <input type="hidden" name="career_id">
       <label>Contenido de notas<textarea name="text" rows="18" required placeholder="Nombre / Apellido(s)&#10;Dirección de correo&#10;..."></textarea></label>
       <label class="check"><input type="checkbox" name="replace" checked> Reemplazar los registros existentes de esta carrera</label>
@@ -124,7 +124,7 @@
 
   <dialog id="image-dialog">
     <form method="dialog" id="image-form" class="dialog-form">
-      <div class="dialog-head"><div><h2>Subir imagen del informe</h2><p>La imagen se ubicará automáticamente según el espacio seleccionado.</p></div><button class="icon-button" value="cancel">×</button></div>
+      <div class="dialog-head"><div><h2>Subir imagen del informe</h2><p>La imagen se ubicará automáticamente según el espacio seleccionado.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
       <label>Archivo<input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/gif" required></label>
       <label>Título<input name="title" placeholder="Nombre de la imagen"></label>
       <label>Descripción<textarea name="description" rows="3"></textarea></label>
@@ -137,7 +137,7 @@
 
   <dialog id="analysis-dialog" class="wide-dialog">
     <form method="dialog" id="analysis-form" class="dialog-form">
-      <div class="dialog-head"><div><h2 id="analysis-title">Análisis de tabla</h2><p>Genere el texto antes y después de la tabla.</p></div><button class="icon-button" value="cancel">×</button></div>
+      <div class="dialog-head"><div><h2 id="analysis-title">Análisis de tabla</h2><p>Genere el texto antes y después de la tabla.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
       <input type="hidden" name="career_id"><input type="hidden" name="phase">
       <div class="form-grid"><label>Modo<select name="mode"><option value="single">Una IA disponible</option><option value="cascade">Revisión con hasta 3 IA</option></select></label><label>Estado<select name="status"><option value="borrador">Borrador</option><option value="aprobado">Aprobado</option></select></label></div>
       <div class="analysis-actions"><button type="button" class="button secondary" id="generate-ai-btn">Generar con IA</button><span id="ai-progress"></span></div>
@@ -147,17 +147,17 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=1.6"></script>
-  <script src="/forms-hotfix.js?v=1.6"></script>
-  <script src="/no-sections.js?v=1.6"></script>
-  <script src="/assets-ui.js?v=1.6"></script>
-  <script src="/process-ui.js?v=1.6"></script>
-  <script src="/process-ui-fixes.js?v=1.6"></script>
-  <script src="/project-search.js?v=1.6"></script>
-  <script src="/report-structure-ui.js?v=1.6"></script>
-  <script src="/nuclei-ui.js?v=1.6"></script>
-  <script src="/nuclei-catalog-ui.js?v=1.6"></script>
-  <script src="/completion-ui.js?v=1.6"></script>
-  <script src="/thesis-followup-ui.js?v=1.6"></script>
+  <script src="/app.js?v=1.8"></script>
+  <script src="/forms-hotfix.js?v=1.8"></script>
+  <script src="/no-sections.js?v=1.8"></script>
+  <script src="/assets-ui.js?v=1.8"></script>
+  <script src="/process-ui.js?v=1.8"></script>
+  <script src="/process-ui-fixes.js?v=1.8"></script>
+  <script src="/project-search.js?v=1.8"></script>
+  <script src="/report-structure-ui.js?v=1.8"></script>
+  <script src="/nuclei-ui.js?v=1.8"></script>
+  <script src="/nuclei-catalog-ui.js?v=1.8"></script>
+  <script src="/completion-ui.js?v=1.8"></script>
+  <script src="/thesis-followup-ui.js?v=1.8"></script>
 </body>
 </html>
