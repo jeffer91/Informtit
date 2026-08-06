@@ -8,7 +8,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch
 
 from coordinator_registry import normalize
 
@@ -158,71 +158,138 @@ def catalogs_for_report(report: dict[str, Any]) -> list[dict[str, Any]]:
     return found
 
 
-def _wrapped_label(nucleus: dict[str, Any]) -> str:
-    guide = textwrap.fill(str(nucleus["guide"]), width=25, break_long_words=False)
-    return f"Núcleo {nucleus['number']}\n{guide}"
+def _wrapped_guide(guide: str) -> str:
+    length = len(guide)
+    width = 23 if length <= 40 else 21 if length <= 60 else 19
+    return textwrap.fill(guide, width=width, break_long_words=False, break_on_hyphens=False)
+
+
+def _font_size(guide: str) -> float:
+    length = len(guide)
+    if length <= 28:
+        return 10.4
+    if length <= 45:
+        return 9.4
+    if length <= 65:
+        return 8.4
+    return 7.6
 
 
 def create_cycle_diagram(catalog: dict[str, Any], output_path: Path) -> Path:
+    """Crea un diagrama limpio y uniforme para Word y PDF."""
+
     nuclei = catalog.get("nuclei", [])
     if len(nuclei) != 4:
         raise ValueError("El gráfico circular requiere exactamente cuatro núcleos.")
 
-    figure, axis = plt.subplots(figsize=(10.5, 7.0))
+    figure, axis = plt.subplots(figsize=(10.8, 6.7), facecolor="white")
     axis.set_xlim(0, 12)
-    axis.set_ylim(0, 8)
+    axis.set_ylim(0, 7.6)
+    axis.set_aspect("equal")
     axis.axis("off")
 
-    positions = [(6, 6.55), (9.65, 4.0), (6, 1.45), (2.35, 4.0)]
-    box_width = 3.35
-    box_height = 1.55
+    positions = [(6.0, 6.15), (9.55, 3.8), (6.0, 1.45), (2.45, 3.8)]
+    card_width = 3.15
+    card_height = 1.45
+    card_colors = ("#E6F0F8", "#E4F3ED", "#FFF0DA", "#EEE8F7")
+    border_colors = ("#2D638B", "#32745E", "#B8751B", "#6D5594")
+    badge_colors = ("#24557A", "#276451", "#A86410", "#5B457F")
 
-    for index, (x, y) in enumerate(positions):
-        next_x, next_y = positions[(index + 1) % 4]
+    arrow_pairs = (
+        ((7.35, 5.55), (8.45, 4.75), 0.08),
+        ((8.45, 2.85), (7.35, 2.05), 0.08),
+        ((4.65, 2.05), (3.55, 2.85), 0.08),
+        ((3.55, 4.75), (4.65, 5.55), 0.08),
+    )
+    for start, end, curve in arrow_pairs:
         axis.add_patch(
             FancyArrowPatch(
-                (x, y),
-                (next_x, next_y),
+                start,
+                end,
                 arrowstyle="-|>",
-                mutation_scale=19,
-                linewidth=2.1,
-                color="#b87822",
-                connectionstyle="arc3,rad=0.15",
-                shrinkA=62,
-                shrinkB=62,
+                mutation_scale=17,
+                linewidth=1.8,
+                color="#74879A",
+                connectionstyle=f"arc3,rad={curve}",
                 zorder=1,
             )
         )
 
+    center_shadow = Circle((6.08, 3.72), 1.02, facecolor="#D8DEE5", edgecolor="none", alpha=0.55, zorder=1)
+    center = Circle((6.0, 3.8), 1.02, facecolor="#244A73", edgecolor="#17354F", linewidth=1.2, zorder=2)
+    axis.add_patch(center_shadow)
+    axis.add_patch(center)
+    axis.text(6.0, 4.02, "4 NÚCLEOS", ha="center", va="center", fontsize=12.2, fontweight="bold", color="white", zorder=3)
+    axis.text(6.0, 3.62, "ESTRUCTURANTES", ha="center", va="center", fontsize=8.6, fontweight="bold", color="#DDEAF5", zorder=3)
+    axis.text(6.0, 3.28, "Integración curricular", ha="center", va="center", fontsize=7.5, color="#DDEAF5", zorder=3)
+
     for index, nucleus in enumerate(nuclei):
         x, y = positions[index]
-        axis.add_patch(
-            FancyBboxPatch(
-                (x - box_width / 2, y - box_height / 2),
-                box_width,
-                box_height,
-                boxstyle="round,pad=0.16,rounding_size=0.15",
-                linewidth=1.25,
-                edgecolor="#9a651f",
-                facecolor="#f4c87f",
-                zorder=2,
-            )
+
+        shadow = FancyBboxPatch(
+            (x - card_width / 2 + 0.08, y - card_height / 2 - 0.09),
+            card_width,
+            card_height,
+            boxstyle="round,pad=0.17,rounding_size=0.18",
+            linewidth=0,
+            facecolor="#BFC8D1",
+            alpha=0.45,
+            zorder=2,
         )
-        guide_length = len(str(nucleus["guide"]))
-        font_size = 8.5 if guide_length <= 34 else 7.5 if guide_length <= 52 else 6.8
-        axis.text(
-            x,
-            y,
-            _wrapped_label(nucleus),
-            ha="center",
-            va="center",
-            fontsize=font_size,
-            fontweight="bold",
-            linespacing=1.15,
+        card = FancyBboxPatch(
+            (x - card_width / 2, y - card_height / 2),
+            card_width,
+            card_height,
+            boxstyle="round,pad=0.17,rounding_size=0.18",
+            linewidth=1.25,
+            edgecolor=border_colors[index],
+            facecolor=card_colors[index],
             zorder=3,
         )
+        axis.add_patch(shadow)
+        axis.add_patch(card)
 
-    figure.tight_layout(pad=0.2)
-    figure.savefig(output_path, dpi=200, bbox_inches="tight", pad_inches=0.08)
+        badge_x = x - card_width / 2 + 0.36
+        badge_y = y + card_height / 2 - 0.30
+        badge = Circle((badge_x, badge_y), 0.30, facecolor=badge_colors[index], edgecolor="white", linewidth=1.2, zorder=4)
+        axis.add_patch(badge)
+        axis.text(
+            badge_x,
+            badge_y,
+            f"{int(nucleus['number']):02d}",
+            ha="center",
+            va="center",
+            fontsize=8.6,
+            fontweight="bold",
+            color="white",
+            zorder=5,
+        )
+
+        guide = str(nucleus["guide"])
+        axis.text(
+            x + 0.12,
+            y,
+            _wrapped_guide(guide),
+            ha="center",
+            va="center",
+            fontsize=_font_size(guide),
+            fontweight="semibold",
+            color="#243746",
+            linespacing=1.18,
+            zorder=5,
+        )
+
+    axis.text(
+        6.0,
+        0.15,
+        "Los cuatro núcleos articulan los conocimientos y competencias de la carrera.",
+        ha="center",
+        va="center",
+        fontsize=8.4,
+        color="#526575",
+    )
+
+    figure.subplots_adjust(left=0.02, right=0.98, top=0.98, bottom=0.04)
+    figure.savefig(output_path, dpi=220, bbox_inches="tight", pad_inches=0.06, facecolor="white")
     plt.close(figure)
     return output_path
