@@ -14,20 +14,101 @@ class SectionTemplate:
     help_text: str
 
 
+MARCO_LEGAL_Y_NORMATIVO = """El proceso de titulación del Instituto Superior Tecnológico Quito Metropolitano se fundamenta en las disposiciones constitucionales, legales, reglamentarias e institucionales que regulan el Sistema de Educación Superior del Ecuador. Este marco establece los principios, derechos, requisitos, responsabilidades, modalidades de titulación, mecanismos de evaluación y procedimientos que deben observarse durante la planificación, ejecución, seguimiento y finalización del proceso.
+
+Constitución de la República del Ecuador
+
+El artículo 26 reconoce a la educación como un derecho de las personas a lo largo de su vida y como un deber ineludible e inexcusable del Estado. Asimismo, la considera un área prioritaria de la política pública, una garantía para la igualdad e inclusión social y una condición indispensable para el buen vivir. Este principio sustenta la responsabilidad institucional de garantizar procesos educativos organizados, accesibles, equitativos y respetuosos de los derechos de los estudiantes.
+
+El artículo 350 determina que el Sistema de Educación Superior tiene como finalidades la formación académica y profesional con visión científica y humanista; la investigación científica y tecnológica; la innovación; la promoción, desarrollo y difusión de los saberes y las culturas; y la construcción de soluciones para los problemas del país. En este contexto, el proceso de titulación permite demostrar la integración y aplicación de los conocimientos, habilidades y competencias adquiridos durante la formación académica.
+
+El artículo 351 establece que el Sistema de Educación Superior se regirá, entre otros, por los principios de igualdad de oportunidades, calidad, pertinencia, integralidad y autodeterminación para la producción del pensamiento y el conocimiento. Estos principios orientan la planificación, ejecución, evaluación y mejora continua del proceso institucional de titulación.
+
+El artículo 352 reconoce a los institutos superiores técnicos y tecnológicos como instituciones integrantes del Sistema de Educación Superior. En consecuencia, los procesos académicos y de titulación desarrollados por el Instituto deben sujetarse a las normas, políticas y mecanismos de aseguramiento de la calidad aplicables a dicho sistema.
+
+Ley Orgánica de Educación Superior
+
+El artículo 4 establece que el derecho a la educación superior consiste en el ejercicio efectivo de la igualdad de oportunidades, en función de los méritos respectivos, para acceder a una formación académica y profesional con producción de conocimiento pertinente y de excelencia. Este principio fundamenta la aplicación de criterios académicos objetivos y verificables en las diferentes etapas del proceso de titulación.
+
+El artículo 5, literal a) reconoce como derecho de las y los estudiantes acceder, movilizarse, permanecer, egresar y titularse sin discriminación, conforme a sus méritos académicos. Por tanto, los requisitos, evaluaciones y decisiones relacionados con la titulación deben aplicarse de manera transparente, equitativa y respetando los derechos de los estudiantes.
+
+El artículo 71 desarrolla el principio de igualdad de oportunidades y determina que los actores del Sistema de Educación Superior deben contar con las mismas posibilidades de acceso, permanencia, movilidad y egreso, sin discriminación. Este principio debe observarse en la inscripción, habilitación, evaluación, aprobación y finalización del proceso de titulación.
+
+El artículo 123 dispone que el Consejo de Educación Superior aprobará el Reglamento de Régimen Académico encargado de regular los títulos, grados académicos, duración, créditos y demás aspectos relacionados con la formación y titulación dentro del Sistema de Educación Superior. Esta disposición constituye el fundamento legal para la aplicación del Reglamento de Régimen Académico.
+
+Reglamento de Régimen Académico
+
+El Reglamento de Régimen Académico, expedido mediante Resolución RPC-SE-08-No.023-2022, es aplicable a las instituciones de educación superior públicas y particulares, incluidos los institutos y conservatorios superiores. Su objeto es regular y orientar las funciones sustantivas y la gestión académica de las instituciones que integran el Sistema de Educación Superior.
+
+El artículo 3 establece como objetivos garantizar una formación de calidad, excelencia y pertinencia; fortalecer la articulación entre docencia, investigación y vinculación con la sociedad; y promover la innovación, la sostenibilidad y el mejoramiento continuo de los procesos académicos.
+
+El artículo 12 reconoce los títulos de tercer nivel técnico-tecnológico que pueden otorgar los institutos superiores una vez cumplidos los requisitos establecidos en la normativa aplicable, entre ellos Técnico Superior, Tecnólogo Superior y Tecnólogo Superior Universitario, según corresponda.
+
+El artículo 26 determina que cada institución de educación superior establecerá en su normativa interna los requisitos para acceder a la titulación y las opciones para su aprobación. También dispone que el título podrá emitirse únicamente cuando el estudiante haya aprobado todos los requisitos académicos y administrativos establecidos por la institución, lo cual deberá constar en el acta consolidada de finalización de estudios.
+
+El artículo 38 establece que las instituciones de educación superior deben expedir políticas de ética y honestidad académica. Considera como conductas de fraude o deshonestidad académica la vulneración de los derechos de autor, la utilización de recursos no autorizados durante una evaluación, la reproducción de creaciones intelectuales sin el reconocimiento correspondiente, la suplantación de identidad y el acceso no autorizado a reactivos o respuestas. Estas disposiciones son aplicables al Examen Complexivo, al Proyecto de Titulación y al Artículo Científico.
+
+El artículo 85 dispone que, una vez aprobados todos los créditos del plan de estudios y cumplidos los requisitos académicos y administrativos establecidos para la graduación, la institución emitirá el acta consolidada de finalización de estudios y el título correspondiente. El acta deberá contener los datos de identificación del estudiante, el registro de calificaciones y la información académica requerida por la normativa.
+
+Reglamento de la Unidad de Titulación y Eficiencia Terminal
+
+En el ámbito institucional, el proceso se regula mediante el Reglamento de la Unidad de Titulación y Eficiencia Terminal, identificado con el código UTET-REG-25, versión 2.0. Este documento constituye el instrumento interno que establece las condiciones específicas para la organización, ejecución, evaluación y finalización del proceso de titulación del Instituto.
+
+El Reglamento tiene por objeto normar el proceso de titulación de las carreras de tercer nivel técnico, tecnológico superior y tecnológico universitario ofertadas por el Instituto. Su finalidad es establecer los lineamientos, requisitos, modalidades, procedimientos, responsabilidades y criterios de evaluación aplicables a todas las fases del proceso, garantizando su pertinencia, transparencia, equidad y correspondencia con el perfil de egreso de cada carrera.
+
+Sus disposiciones son de cumplimiento obligatorio para los estudiantes, docentes, tutores, tribunales evaluadores, coordinadores de carrera, autoridades institucionales y personal académico-administrativo que participe en el proceso de titulación. El Reglamento es aplicable a las diferentes modalidades académicas, jornadas, sedes y carreras de tercer nivel técnico y tecnológico del Instituto.
+
+La normativa institucional regula los requisitos académicos, administrativos y financieros que debe cumplir el estudiante para acceder al proceso. Entre los requisitos académicos se encuentran la aprobación de la totalidad de las asignaturas de la malla curricular, el registro completo de las calificaciones en el sistema académico institucional y la inexistencia de inconsistencias que afecten el historial académico del estudiante. La verificación de estos requisitos corresponde a las unidades académicas y administrativas responsables.
+
+El Reglamento reconoce como modalidades institucionales el Proyecto de Titulación, el Examen Complexivo y el Artículo Científico. Cada modalidad cuenta con requisitos, procedimientos, responsables, instrumentos de evaluación, oportunidades ordinarias y mecanismos supletorios específicos.
+
+Para el Examen Complexivo, la normativa institucional establece un componente teórico y un componente práctico. El componente teórico corresponde al 40 % y el componente práctico al 60 %. Cada componente debe alcanzar una calificación mínima de 7/10 y no se permite compensar una calificación inferior mediante el promedio entre las partes.
+
+Para el Proyecto de Titulación se establece una ponderación del 60 % para el documento escrito y del 40 % para la defensa oral. Para los proyectos y artículos se contempla, además, la aplicación de instrumentos institucionales de evaluación y la revisión mediante software antiplagio, de acuerdo con los criterios definidos por la unidad responsable.
+
+La normativa interna también regula la planificación y publicación de los cronogramas, las convocatorias oficiales, la inscripción de estudiantes, la designación de responsables, la asignación de tutores y tribunales, el registro de calificaciones, la emisión de actas, los procesos de apelación, las oportunidades supletorias y la finalización institucional del proceso de titulación.
+
+Manual de Procesos de la Unidad de Titulación y Eficiencia Terminal
+
+El Manual de Procesos de la Unidad de Titulación y Eficiencia Terminal, versión 2, constituye el instrumento institucional mediante el cual se organizan de manera sistemática los procesos, actividades, responsables, documentos e indicadores relacionados con la gestión de la titulación y la eficiencia terminal.
+
+El Manual tiene como objetivo establecer de forma clara y ordenada los procesos, procedimientos, responsabilidades e indicadores que rigen el funcionamiento de la Unidad de Titulación y Eficiencia Terminal. Asimismo, busca garantizar una gestión académica y administrativa eficiente, transparente y oportuna, facilitar la planificación, ejecución, seguimiento y evaluación de las modalidades de titulación y contribuir al mejoramiento continuo de los procesos académicos institucionales.
+
+Para el desarrollo y evaluación del proceso de titulación, el Manual contempla los siguientes procesos institucionales:
+
+UTET-PRO-94: Regulación de la normativa de la Unidad de Titulación y Eficiencia Terminal.
+UTET-PRO-56: Planificación semestral del proceso de titulación.
+UTET-PRO-95: Evaluación semestral del proceso de titulación.
+UTET-PRO-58: Seguimiento de requisitos.
+UTET-PRO-59: Gestión de guías de integración curricular.
+UTET-PRO-88: Ejecución de seminarios complexivos.
+UTET-PRO-93: Ejecución del Examen Complexivo.
+UTET-PRO-96: Ingreso al Trabajo de Titulación.
+UTET-PRO-164: Ejecución del Trabajo de Titulación.
+UTET-PRO-57: Gestión del Artículo Académico.
+UTET-PRO-97: Inducción al proceso de titulación.
+
+Estos procesos establecen las actividades que deben ejecutarse durante la regulación, planificación, inducción, verificación de requisitos, preparación académica, evaluación, registro de resultados y cierre del proceso de titulación.
+
+De manera particular, el proceso UTET-PRO-95, Evaluación Semestral del Proceso de Titulación, establece la revisión de las actividades planificadas, la consolidación de los resultados, la identificación de observaciones, la recopilación de evidencias y la elaboración del Informe Final del Proceso de Titulación. También contempla la revisión, aprobación, respaldo y archivo de la documentación generada.
+
+Aplicación del marco legal y normativo
+
+El presente Informe Final del Proceso de Titulación se elabora en observancia de las disposiciones constitucionales, legales, reglamentarias e institucionales anteriormente señaladas. Su contenido permite documentar la planificación y ejecución de las actividades, verificar el cumplimiento de los requisitos académicos y administrativos, consolidar los resultados por carrera y modalidad de titulación, diferenciar las evaluaciones ordinarias y supletorias, determinar el estado final de los estudiantes y generar información para el seguimiento institucional.
+
+Las condiciones específicas relacionadas con los requisitos de habilitación, las modalidades de titulación, las ponderaciones, la calificación mínima de aprobación, las oportunidades supletorias, la actuación de tutores y evaluadores, el registro de calificaciones y la emisión de actas se aplican conforme al Reglamento de la Unidad de Titulación y Eficiencia Terminal y a los procedimientos establecidos en el Manual de Procesos de la UTET.
+
+Este marco legal y normativo garantiza que el proceso de titulación se desarrolle bajo criterios de legalidad, igualdad de oportunidades, transparencia, calidad académica, honestidad, trazabilidad y mejora continua."""
+
+
 SECTION_TEMPLATES: tuple[SectionTemplate, ...] = (
     SectionTemplate(
         key="marco_legal",
-        title="Marco legal",
+        title="Marco legal y normativo",
         mode="fixed",
         order=10,
-        help_text="Plantilla institucional estable. Solo debe modificarse cuando cambie la normativa aplicable.",
-        content="""El presente marco legal fundamenta el proceso de titulación desarrollado por el Instituto Tecnológico Superior Quito Metropolitano durante el período {{periodo}}, en concordancia con la Constitución de la República del Ecuador, la Ley Orgánica de Educación Superior, el Reglamento de Régimen Académico, la normativa emitida por los organismos de educación superior y la reglamentación institucional vigente.
-
-Estas disposiciones orientan la planificación, ejecución, evaluación y registro de las opciones de titulación, garantizando igualdad de oportunidades, transparencia, calidad académica y correspondencia con el perfil de egreso de cada carrera.
-
-En este marco, el examen complexivo se concibe como una evaluación integral de los conocimientos, habilidades y desempeños desarrollados durante la formación. El proceso contempla la verificación previa de requisitos académicos, administrativos y financieros; la aplicación de los componentes teórico y práctico; el registro de resultados; y, cuando corresponda, la evaluación supletoria.
-
-La institución mantiene el compromiso de revisar periódicamente la normativa aplicable y de ajustar sus procedimientos cuando se produzcan reformas legales, reglamentarias o institucionales que incidan en el proceso de titulación.""",
+        help_text="Plantilla institucional estable. Debe confirmarse la vigencia del Reglamento UTET-REG-25, versión 2.0, y del Manual de Procesos, versión 2, para el período analizado.",
+        content=MARCO_LEGAL_Y_NORMATIVO,
     ),
     SectionTemplate(
         key="reglamento",
@@ -116,10 +197,7 @@ LEGACY_PLACEHOLDERS = {
 
 
 def template_by_key(section_key: str) -> SectionTemplate | None:
-    return next(
-        (template for template in SECTION_TEMPLATES if template.key == section_key),
-        None,
-    )
+    return next((template for template in SECTION_TEMPLATES if template.key == section_key), None)
 
 
 def readable_modality(value: str) -> str:
