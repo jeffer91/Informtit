@@ -26,6 +26,12 @@ def _student_name_key(value: Any) -> str:
     return canonical_name_key(clean_moodle_name(str(value or "")))
 
 
+def _display_name_key(value: Any) -> str:
+    """Orden alfabético visible, sin reordenar nombres y apellidos."""
+
+    return normalize(clean_moodle_name(str(value or "")))
+
+
 def _project_student_keys(report_id: int) -> tuple[set[int], set[str], set[str], set[tuple[str, str]]]:
     projects = get_projects(report_id).get("projects", [])
     student_ids: set[int] = set()
@@ -116,16 +122,23 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
     grades_by_student: dict[int, dict[int, float | None]] = defaultdict(dict)
     match_methods: dict[int, dict[int, str]] = defaultdict(dict)
     unmatched: list[dict[str, Any]] = []
+    course_matches: list[dict[str, Any]] = []
 
     for course in courses:
         nucleus_number = int(course.get("nucleus_number") or 0)
         if nucleus_number not in REQUIRED_NUCLEI:
             continue
+        read_count = 0
+        matched_count = 0
+        unmatched_count = 0
         for nucleus_student in course.get("students", []):
+            read_count += 1
             matched, method = _match_nucleus_student(nucleus_student, course, by_email, by_name)
             if not matched:
+                unmatched_count += 1
                 unmatched.append(
                     {
+                        "course_id": course.get("id"),
                         "career_name": course.get("career_name") or "",
                         "nucleus_number": nucleus_number,
                         "full_name": clean_moodle_name(str(nucleus_student.get("full_name") or "")),
@@ -134,9 +147,21 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
                     }
                 )
                 continue
+            matched_count += 1
             student_id = int(matched["id"])
             grades_by_student[student_id][nucleus_number] = nucleus_student.get("final_grade")
             match_methods[student_id][nucleus_number] = method
+        course_matches.append(
+            {
+                "course_id": course.get("id"),
+                "career_name": course.get("career_name") or "Sin carrera",
+                "nucleus_number": nucleus_number,
+                "teacher_name": course.get("teacher_name") or "",
+                "read_students": read_count,
+                "matched_students": matched_count,
+                "unmatched_students": unmatched_count,
+            }
+        )
 
     rows: list[dict[str, Any]] = []
     for student in students:
@@ -168,7 +193,7 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
         }
         rows.append(row)
 
-    rows.sort(key=lambda row: (_career_key(row["career_name"]), _student_name_key(row["full_name"])))
+    rows.sort(key=lambda row: (_career_key(row["career_name"]), _display_name_key(row["full_name"])))
     candidates = [row for row in rows if row["option"] == "Examen Complexivo"]
     thesis_rows = [row for row in rows if row["option"] == "Trabajo de Titulación"]
 
@@ -200,6 +225,7 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
     return {
         "rows": rows,
         "careers": careers,
+        "course_matches": course_matches,
         "unmatched": unmatched,
         "summary": {
             "registered": len(rows),
