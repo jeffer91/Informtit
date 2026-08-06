@@ -12,10 +12,12 @@ from completion_service import (
     replace_schedule_extended,
 )
 from eligibility_service import get_eligibility
+from thesis_followup import ensure_thesis_followup_schema, update_project_followup
 
 
 def install() -> None:
     ensure_completion_schema()
+    ensure_thesis_followup_schema()
     original_get = core.InformtitHandler._handle_api_get
     original_write = core.InformtitHandler._handle_api_write
 
@@ -70,6 +72,15 @@ def install() -> None:
                 raise ValueError("Las incidencias y acciones deben enviarse como listas.")
             self._send_json(
                 replace_completion_data(int(match.group(1)), incidents, actions)
+            )
+            return
+
+        match = re.fullmatch(r"/api/reports/(\d+)/projects/(\d+)/followup", path)
+        if match and method == "PUT":
+            self._send_json(
+                update_project_followup(
+                    int(match.group(1)), int(match.group(2)), payload
+                )
             )
             return
 
