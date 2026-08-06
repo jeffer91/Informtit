@@ -126,6 +126,38 @@ def _phase_after(data):
     return sentence
 
 
+def _is_generated_summary(value: str, position: str) -> bool:
+    text = " ".join(str(value or "").split()).casefold()
+    if not text:
+        return False
+    if position == "before":
+        return text.startswith("a continuación, se presentan los resultados")
+    return bool(
+        re.match(r"^de (los )?\d+ registros? analizados?[, ]", text)
+        or "alcanzaron la aprobación" in text
+        or "promedio registrado fue" in text
+    )
+
+
+def _refresh_generated_analyses(original_loader):
+    """Descarta resúmenes automáticos viejos para recalcularlos con las reglas actuales."""
+
+    def load(report_id: int):
+        report = original_loader(report_id)
+        for career in report.get("careers", []):
+            analyses = career.get("analyses") or {}
+            for analysis in analyses.values():
+                before = str(analysis.get("text_before") or "")
+                after = str(analysis.get("text_after") or "")
+                if _is_generated_summary(before, "before"):
+                    analysis["text_before"] = ""
+                if _is_generated_summary(after, "after"):
+                    analysis["text_after"] = ""
+        return report
+
+    return load
+
+
 def _without_first_career_page_break(
     original_function,
     heading_name: str,
@@ -166,6 +198,7 @@ def install() -> None:
     original_configure_docx = report_quality._configure_docx
     original_docx_methodology = report_quality._docx_methodology
     original_pdf_methodology = report_quality._pdf_methodology
+    original_report_data = report_quality._report_data
 
     def configure_docx(document):
         original_configure_docx(document)
@@ -177,6 +210,7 @@ def install() -> None:
     report_quality._pdf_styles = _pdf_styles
     report_quality._sanitize_analysis = _sanitize_analysis
     report_quality._phase_after = _phase_after
+    report_quality._report_data = _refresh_generated_analyses(original_report_data)
     report_quality._docx_methodology = _without_first_career_page_break(
         original_docx_methodology,
         "_docx_heading",
