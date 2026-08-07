@@ -9,24 +9,20 @@ from process_service import (
     ensure_process_schema,
     get_projects,
     get_schedules,
-    parse_project_text,
     parse_schedule_text,
     parse_schedule_upload,
     replace_schedule,
     reset_schedule,
 )
+from thesis_independent import parse_project_text
 
 
-BACKEND_VERSION = "1.1"
-CAPABILITIES = ["roster", "complexive", "schedules", "thesis_projects"]
+BACKEND_VERSION = "1.2"
+CAPABILITIES = ["roster", "complexive", "schedules", "thesis_projects", "independent_modules"]
 
 
 def install() -> None:
-    """Instala las rutas adicionales sobre el manejador ya configurado.
-
-    Debe ejecutarse después de importar ``desktop_launcher`` para envolver el
-    manejador definitivo utilizado por Electron.
-    """
+    """Instala rutas de cronogramas y Trabajo de Titulación independiente."""
 
     ensure_process_schema()
     original_get = core.InformtitHandler._handle_api_get
