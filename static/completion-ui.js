@@ -5,8 +5,10 @@
     document.querySelectorAll('[data-eligibility-panel], [data-complexive-eligibility-warning]').forEach(node => node.remove());
   }
 
+  enforceIndependentModules();
+
   const completion = document.createElement('script');
-  completion.src = '/completion-ui-v2.js?v=3.0';
+  completion.src = '/completion-ui-v2.js?v=3.1';
   completion.defer = true;
   completion.onload = () => {
     enforceIndependentModules();
