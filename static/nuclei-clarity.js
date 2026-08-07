@@ -95,10 +95,19 @@
     }, 120);
   }
 
+  function mutationContainsPanel(record) {
+    return [...record.addedNodes].some(node => {
+      if (!(node instanceof Element)) return false;
+      return node.matches?.('[data-eligibility-panel]') || Boolean(node.querySelector?.('[data-eligibility-panel]'));
+    });
+  }
+
   document.addEventListener('click', event => {
     if (event.target.closest('[data-tab="nuclei"]')) schedule();
   });
-  new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(records => {
+    if (records.some(mutationContainsPanel)) schedule();
+  }).observe(document.body, { childList: true, subtree: true });
   schedule();
 
   const style = document.createElement('style');
