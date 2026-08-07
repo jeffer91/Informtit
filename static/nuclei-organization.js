@@ -1,6 +1,6 @@
 (() => {
   const PAGE_SIZE = 15;
-  const CONTROLLER_VERSION = '2.3';
+  const CONTROLLER_VERSION = '2.4';
   let selectedCareer = '';
   let enhancementQueued = false;
   const pagesByCareer = new Map();
@@ -45,6 +45,14 @@
     return careers
       .map(career => `<option value="${esc(career)}" ${normalize(career) === normalize(selected) ? 'selected' : ''}>${esc(career)}</option>`)
       .join('');
+  }
+
+  function choicesMarkup(careers, selected) {
+    const selectedKey = normalize(selected);
+    return careers.map((career, index) => {
+      const active = normalize(career) === selectedKey;
+      return `<button type="button" role="option" aria-selected="${active ? 'true' : 'false'}" class="career-picker-option${active ? ' active' : ''}" data-eligibility-career-choice="${index}">${esc(career)}</button>`;
+    }).join('');
   }
 
   function announceCareer(career, source = '') {
@@ -146,8 +154,6 @@
     if (!careers.length) return;
 
     if (panel.dataset.matrixControllerVersion === CONTROLLER_VERSION && panel._applyEligibilityCareer) {
-      const current = resolveCareer(careers, selectedCareer);
-      panel._applyEligibilityCareer(current, false);
       return;
     }
 
@@ -156,32 +162,42 @@
 
     const tableWrap = table.closest('.student-table-wrap');
     let toolbar = details.querySelector('[data-eligibility-career-toolbar]');
-    if (!toolbar) {
-      toolbar = document.createElement('div');
-      toolbar.className = 'eligibility-career-browser';
-      toolbar.dataset.eligibilityCareerToolbar = '1';
-      const initialCareer = resolveCareer(careers);
-      toolbar.innerHTML = `
-        <div class="career-page-toolbar">
-          <button class="button secondary small" type="button" data-eligibility-career-prev>← Carrera</button>
-          <label>Carrera
-            <select data-eligibility-career-select>${optionsMarkup(careers, initialCareer)}</select>
-          </label>
-          <button class="button secondary small" type="button" data-eligibility-career-next>Carrera →</button>
-          <span class="career-page-counter" data-eligibility-career-counter></span>
-        </div>
-        <div class="student-page-toolbar">
-          <label>Buscar en la carrera
-            <input type="search" data-eligibility-career-search placeholder="Cédula o nombre del estudiante" autocomplete="off">
-          </label>
-          <button class="button secondary small" type="button" data-eligibility-page-prev>← Página</button>
-          <span class="student-page-counter" data-eligibility-page-counter></span>
-          <button class="button secondary small" type="button" data-eligibility-page-next>Página →</button>
-        </div>`;
-      tableWrap.before(toolbar);
-    }
+    if (toolbar) toolbar.remove();
 
-    const select = toolbar.querySelector('[data-eligibility-career-select]');
+    const initialCareer = resolveCareer(careers);
+    toolbar = document.createElement('div');
+    toolbar.className = 'eligibility-career-browser';
+    toolbar.dataset.eligibilityCareerToolbar = '1';
+    toolbar.innerHTML = `
+      <div class="career-page-toolbar">
+        <button class="button secondary small" type="button" data-eligibility-career-prev aria-label="Carrera anterior">← Carrera</button>
+        <div class="career-picker" data-eligibility-career-picker>
+          <span class="career-picker-label">Carrera</span>
+          <button class="career-picker-toggle" type="button" data-eligibility-career-toggle aria-haspopup="listbox" aria-expanded="false">
+            <span data-eligibility-current-career>${esc(initialCareer)}</span>
+            <span class="career-picker-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div class="career-picker-menu" data-eligibility-career-menu role="listbox" hidden>
+            ${choicesMarkup(careers, initialCareer)}
+          </div>
+        </div>
+        <button class="button secondary small" type="button" data-eligibility-career-next aria-label="Carrera siguiente">Carrera →</button>
+        <span class="career-page-counter" data-eligibility-career-counter></span>
+      </div>
+      <div class="student-page-toolbar">
+        <label>Buscar en la carrera
+          <input type="search" data-eligibility-career-search placeholder="Cédula o nombre del estudiante" autocomplete="off">
+        </label>
+        <button class="button secondary small" type="button" data-eligibility-page-prev aria-label="Página anterior">← Página</button>
+        <span class="student-page-counter" data-eligibility-page-counter></span>
+        <button class="button secondary small" type="button" data-eligibility-page-next aria-label="Página siguiente">Página →</button>
+      </div>`;
+    tableWrap.before(toolbar);
+
+    const picker = toolbar.querySelector('[data-eligibility-career-picker]');
+    const toggle = toolbar.querySelector('[data-eligibility-career-toggle]');
+    const menu = toolbar.querySelector('[data-eligibility-career-menu]');
+    const currentCareerLabel = toolbar.querySelector('[data-eligibility-current-career]');
     const careerPrevious = toolbar.querySelector('[data-eligibility-career-prev]');
     const careerNext = toolbar.querySelector('[data-eligibility-career-next]');
     const careerCounter = toolbar.querySelector('[data-eligibility-career-counter]');
@@ -190,12 +206,30 @@
     const pageNext = toolbar.querySelector('[data-eligibility-page-next]');
     const pageCounter = toolbar.querySelector('[data-eligibility-page-counter]');
     const detailsSummary = details.querySelector('summary');
+    let currentCareer = initialCareer;
 
     function pageKey(career) {
       return normalize(career);
     }
 
-    function apply(nextCareer, requestedPage = null, notify = false) {
+    function setMenuOpen(open) {
+      menu.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      picker.classList.toggle('open', open);
+    }
+
+    function updatePickerSelection(career) {
+      currentCareerLabel.textContent = career;
+      const key = normalize(career);
+      menu.querySelectorAll('[data-eligibility-career-choice]').forEach(option => {
+        const index = Number(option.dataset.eligibilityCareerChoice);
+        const active = normalize(careers[index]) === key;
+        option.classList.toggle('active', active);
+        option.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+    }
+
+    function apply(nextCareer, requestedPage = null) {
       const resolved = resolveCareer(careers, nextCareer);
       if (!resolved) return;
       const key = normalize(resolved);
@@ -217,8 +251,9 @@
       });
 
       const careerIndex = careers.findIndex(item => normalize(item) === key);
+      currentCareer = resolved;
       selectedCareer = resolved;
-      select.value = resolved;
+      updatePickerSelection(resolved);
       careerPrevious.disabled = careerIndex <= 0;
       careerNext.disabled = careerIndex >= careers.length - 1;
       pagePrevious.disabled = page <= 1 || matching.length === 0;
@@ -229,39 +264,66 @@
         : 'Sin estudiantes que coincidan';
       detailsSummary.textContent = `Matriz individual — ${resolved} (${matching.length} estudiantes)`;
       table.classList.add('career-paged-table');
-
-      if (notify) announceCareer(resolved, 'eligibility');
     }
 
-    select.addEventListener('change', () => {
-      search.value = '';
-      apply(select.value, 1, true);
+    toggle.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      setMenuOpen(menu.hidden);
     });
 
-    careerPrevious.addEventListener('click', () => {
-      const index = careers.findIndex(item => normalize(item) === normalize(select.value));
+    menu.addEventListener('click', event => {
+      const option = event.target.closest('[data-eligibility-career-choice]');
+      if (!option) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const index = Number(option.dataset.eligibilityCareerChoice);
+      const career = careers[index];
+      if (!career) return;
+      search.value = '';
+      setMenuOpen(false);
+      apply(career, 1);
+    });
+
+    careerPrevious.addEventListener('click', event => {
+      event.preventDefault();
+      const index = careers.findIndex(item => normalize(item) === normalize(currentCareer));
       if (index > 0) {
         search.value = '';
-        apply(careers[index - 1], 1, true);
+        setMenuOpen(false);
+        apply(careers[index - 1], 1);
       }
     });
 
-    careerNext.addEventListener('click', () => {
-      const index = careers.findIndex(item => normalize(item) === normalize(select.value));
+    careerNext.addEventListener('click', event => {
+      event.preventDefault();
+      const index = careers.findIndex(item => normalize(item) === normalize(currentCareer));
       if (index >= 0 && index < careers.length - 1) {
         search.value = '';
-        apply(careers[index + 1], 1, true);
+        setMenuOpen(false);
+        apply(careers[index + 1], 1);
       }
     });
 
-    search.addEventListener('input', () => apply(select.value, 1, false));
-    pagePrevious.addEventListener('click', () => {
-      const current = pagesByCareer.get(pageKey(select.value)) || 1;
-      apply(select.value, current - 1, false);
+    search.addEventListener('input', () => apply(currentCareer, 1));
+
+    pagePrevious.addEventListener('click', event => {
+      event.preventDefault();
+      const current = pagesByCareer.get(pageKey(currentCareer)) || 1;
+      apply(currentCareer, current - 1);
     });
-    pageNext.addEventListener('click', () => {
-      const current = pagesByCareer.get(pageKey(select.value)) || 1;
-      apply(select.value, current + 1, false);
+
+    pageNext.addEventListener('click', event => {
+      event.preventDefault();
+      const current = pagesByCareer.get(pageKey(currentCareer)) || 1;
+      apply(currentCareer, current + 1);
+    });
+
+    toolbar.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !menu.hidden) {
+        setMenuOpen(false);
+        toggle.focus();
+      }
     });
 
     panel.querySelectorAll('h3 + .student-table-wrap table tbody tr').forEach(summaryRow => {
@@ -273,18 +335,21 @@
       summaryRow.addEventListener('click', () => {
         details.open = true;
         search.value = '';
-        apply(summaryCareer, 1, true);
+        setMenuOpen(false);
+        apply(summaryCareer, 1);
         details.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
 
-    panel._applyEligibilityCareer = (career, notify = false) => {
+    panel._applyEligibilityCareer = career => {
+      if (!menu.hidden) return;
       if (careers.some(item => normalize(item) === normalize(career))) {
-        apply(career, null, notify);
+        apply(career, null);
       }
     };
+    panel._closeEligibilityCareerMenu = () => setMenuOpen(false);
     panel.dataset.matrixControllerVersion = CONTROLLER_VERSION;
-    apply(resolveCareer(careers), 1, false);
+    apply(initialCareer, 1);
   }
 
   function synchronizeCareer(event) {
@@ -295,7 +360,7 @@
     const catalog = document.querySelector('[data-nuclei-catalog="active-careers"]');
     const eligibility = document.querySelector('[data-eligibility-panel]');
     catalog?._applyCatalogCareer?.(career);
-    eligibility?._applyEligibilityCareer?.(career, false);
+    eligibility?._applyEligibilityCareer?.(career);
 
     const savedSelect = document.querySelector('[data-saved-career-select]');
     if (savedSelect && normalize(savedSelect.value) !== normalize(career)) {
@@ -330,6 +395,15 @@
   }
 
   window.addEventListener('informtit:nuclei-career-change', synchronizeCareer);
+
+  document.addEventListener('pointerdown', event => {
+    const panel = document.querySelector('[data-eligibility-panel]');
+    const picker = panel?.querySelector('[data-eligibility-career-picker]');
+    if (picker && !picker.contains(event.target)) {
+      panel._closeEligibilityCareerMenu?.();
+    }
+  });
+
   document.addEventListener('click', event => {
     if (event.target.closest('[data-tab="nuclei"]')) setTimeout(scheduleEnhance, 0);
   });
@@ -351,6 +425,7 @@
       border: 1px solid #dbe4ee;
       border-radius: 14px;
       background: #f8fafc;
+      overflow: visible;
     }
     .career-page-toolbar label, .student-page-toolbar label { margin: 0; }
     .career-page-toolbar select, .student-page-toolbar input { min-height: 42px; }
@@ -363,7 +438,59 @@
       white-space: nowrap;
     }
     .catalog-career-toolbar { margin: 16px 0; }
-    .eligibility-career-browser { display: grid; gap: 10px; margin: 14px 0; }
+    .eligibility-career-browser { display: grid; gap: 10px; margin: 14px 0; overflow: visible; position: relative; z-index: 8; }
+    .career-picker { position: relative; min-width: 0; }
+    .career-picker-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 700; color: #263b4d; }
+    .career-picker-toggle {
+      width: 100%;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 12px;
+      border: 1px solid #b9c9d7;
+      border-radius: 9px;
+      background: white;
+      color: #172b3a;
+      font: inherit;
+      font-weight: 700;
+      text-align: left;
+      cursor: pointer;
+    }
+    .career-picker-toggle:hover, .career-picker.open .career-picker-toggle { border-color: #4d7ea0; box-shadow: 0 0 0 2px rgba(77,126,160,.12); }
+    .career-picker-chevron { flex: 0 0 auto; font-size: 17px; transition: transform .15s ease; }
+    .career-picker.open .career-picker-chevron { transform: rotate(180deg); }
+    .career-picker-menu {
+      position: absolute;
+      z-index: 1000;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      max-height: 320px;
+      overflow-y: auto;
+      padding: 6px;
+      border: 1px solid #c6d4df;
+      border-radius: 11px;
+      background: white;
+      box-shadow: 0 14px 32px rgba(23,43,58,.18);
+    }
+    .career-picker-menu[hidden] { display: none !important; }
+    .career-picker-option {
+      width: 100%;
+      min-height: 38px;
+      display: block;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #263b4d;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .career-picker-option:hover { background: #eef5fa; }
+    .career-picker-option.active { background: #e5f0f7; color: #174f75; font-weight: 800; }
     .student-page-toolbar {
       display: grid;
       grid-template-columns: minmax(260px, 1fr) auto auto auto;
@@ -378,11 +505,10 @@
     .career-summary-shortcut { cursor: pointer; transition: background .15s ease; }
     .career-summary-shortcut:hover { background: #eef6fb; }
     .eligibility-details > summary { padding: 10px 0; background: white; }
-    .eligibility-career-browser select { position: relative; z-index: 3; }
     .eligibility-career-browser button:disabled { opacity: .45; cursor: not-allowed; }
     @media (max-width: 920px) {
       .career-page-toolbar, .student-page-toolbar { grid-template-columns: 1fr 1fr; }
-      .career-page-toolbar label, .career-page-counter, .student-page-toolbar label, .student-page-counter { grid-column: 1 / -1; }
+      .career-picker, .career-page-counter, .student-page-toolbar label, .student-page-counter { grid-column: 1 / -1; }
       .career-page-counter, .student-page-counter { white-space: normal; }
     }
   `;
