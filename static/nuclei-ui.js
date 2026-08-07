@@ -6,6 +6,7 @@
   let importOpen = false;
   let selectedCourseCareer = '';
   let selectedCourseCampus = '';
+  let activeNucleiReportId = 0;
 
   function esc(value = '') {
     return typeof escapeHtml === 'function'
@@ -62,6 +63,16 @@
     const reportId = Number(state.activeReport?.id || 0);
     if (!tab || !reportId) return;
 
+    if (activeNucleiReportId !== reportId) {
+      activeNucleiReportId = reportId;
+      importOpen = false;
+      currentAnalysis = null;
+      selectedCourseCareer = '';
+      selectedCourseCampus = '';
+    }
+
+    tab.dataset.nucleiReportId = String(reportId);
+    bindDelegatedEvents(tab);
     tab.innerHTML = '<div class="panel"><div class="empty-mini">Cargando Núcleos...</div></div>';
     currentAnalysis = null;
 
@@ -71,7 +82,8 @@
       const courses = nuclei?.courses || [];
       normalizeSelections(courses);
       tab.innerHTML = minimalMarkup(courses);
-      bindEvents(tab, reportId);
+      tab.dataset.nucleiReportId = String(reportId);
+      bindImportForm(tab);
       refreshCourseFilters(tab);
     } catch (error) {
       tab.innerHTML = `<div class="panel"><div class="empty-mini">${esc(error.message)}</div></div>`;
@@ -96,7 +108,7 @@
               <h2>Núcleos</h2>
               <p>Módulo independiente. Registra únicamente la información cargada desde Moodle; no se compara ni se condiciona por Requisitos, Examen Complexivo o Trabajo de Titulación.</p>
             </div>
-            <button class="button primary" type="button" data-toggle-nucleus-import>${importOpen ? 'Cerrar carga' : '+ Cargar núcleo'}</button>
+            <button class="button primary" type="button" data-toggle-nucleus-import aria-expanded="${importOpen ? 'true' : 'false'}">${importOpen ? 'Cerrar carga' : '+ Cargar núcleo'}</button>
           </div>
           ${courses.length ? `<div class="minimal-module-summary"><span>${courses.length} curso${courses.length === 1 ? '' : 's'} cargado${courses.length === 1 ? '' : 's'}</span><span>${totalStudents} registro${totalStudents === 1 ? '' : 's'} de estudiante en total</span></div>` : ''}
         </section>
@@ -239,103 +251,150 @@
     </div>`;
   }
 
-  function bindEvents(tab, reportId) {
-    tab.addEventListener('click', async event => {
-      const toggleImport = event.target.closest('[data-toggle-nucleus-import]');
-      if (toggleImport) {
-        importOpen = !importOpen;
-        const panel = tab.querySelector('[data-nucleus-import-panel]');
-        if (panel) panel.hidden = !importOpen;
-        toggleImport.textContent = importOpen ? 'Cerrar carga' : '+ Cargar núcleo';
-        if (importOpen) panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        return;
-      }
+  function reportIdForTab(tab) {
+    return Number(tab?.dataset.nucleiReportId || state.activeReport?.id || 0);
+  }
 
-      if (event.target.closest('[data-cancel-nucleus-import]')) {
+  function setImportState(tab, open) {
+    importOpen = Boolean(open);
+    if (!importOpen) currentAnalysis = null;
+    const panel = tab.querySelector('[data-nucleus-import-panel]');
+    const toggle = tab.querySelector('[data-toggle-nucleus-import]');
+    if (panel) {
+      panel.hidden = !importOpen;
+      if (importOpen) panel.removeAttribute('hidden');
+      else panel.setAttribute('hidden', '');
+    }
+    if (toggle) {
+      toggle.textContent = importOpen ? 'Cerrar carga' : '+ Cargar núcleo';
+      toggle.setAttribute('aria-expanded', importOpen ? 'true' : 'false');
+    }
+    if (importOpen && panel) {
+      requestAnimationFrame(() => {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        panel.querySelector('textarea[name="grades_text"]')?.focus({ preventScroll: true });
+      });
+    }
+  }
+
+  function bindDelegatedEvents(tab) {
+    if (tab.dataset.nucleiDelegatedBound === '1') return;
+    tab.dataset.nucleiDelegatedBound = '1';
+    tab.addEventListener('click', handleTabClick);
+    tab.addEventListener('change', handleTabChange);
+  }
+
+  async function handleTabClick(event) {
+    const tab = event.currentTarget;
+    const reportId = reportIdForTab(tab);
+    if (!reportId) return;
+
+    const toggleImport = event.target.closest('[data-toggle-nucleus-import]');
+    if (toggleImport) {
+      event.preventDefault();
+      setImportState(tab, !importOpen);
+      return;
+    }
+
+    if (event.target.closest('[data-cancel-nucleus-import]')) {
+      event.preventDefault();
+      setImportState(tab, false);
+      return;
+    }
+
+    const toggleCourse = event.target.closest('[data-toggle-course]');
+    if (toggleCourse) {
+      const detail = tab.querySelector(`#${CSS.escape(toggleCourse.dataset.toggleCourse)}`);
+      if (detail) {
+        detail.hidden = !detail.hidden;
+        toggleCourse.textContent = detail.hidden ? 'Ver' : 'Ocultar';
+      }
+      return;
+    }
+
+    const remove = event.target.closest('[data-delete-nucleus]');
+    if (remove) {
+      if (remove.disabled || !confirm('¿Eliminar este curso de Núcleos y todas sus notas?')) return;
+      remove.disabled = true;
+      try {
+        await api(`/api/reports/${reportId}/nuclei/${remove.dataset.deleteNucleus}`, { method: 'DELETE', body: '{}' });
+        toast('Curso de Núcleos eliminado.');
+        await renderNucleiModule();
+      } catch (error) {
+        toast(error.message, true);
+        if (document.contains(remove)) remove.disabled = false;
+      }
+      return;
+    }
+
+    const save = event.target.closest('[data-save-nucleus]');
+    if (save) {
+      if (save.disabled || !currentAnalysis) return;
+      save.disabled = true;
+      const teacher = tab.querySelector('[name="nucleus_teacher"]')?.value || currentAnalysis.teacher_name || '';
+      try {
+        const result = await api(`/api/reports/${reportId}/nuclei`, {
+          method: 'POST',
+          body: JSON.stringify({
+            grades_text: currentAnalysis.grades_text,
+            participants_text: currentAnalysis.participants_text,
+            career_name: currentAnalysis.career_name,
+            nucleus_number: currentAnalysis.nucleus_number,
+            teacher_name: teacher,
+          }),
+        });
+        selectedCourseCareer = result.analysis.career_name || selectedCourseCareer;
+        selectedCourseCampus = result.analysis.campus || selectedCourseCampus;
         importOpen = false;
         currentAnalysis = null;
-        tab.querySelector('[data-nucleus-import-panel]')?.setAttribute('hidden', '');
-        const toggle = tab.querySelector('[data-toggle-nucleus-import]');
-        if (toggle) toggle.textContent = '+ Cargar núcleo';
-        return;
+        toast(`Núcleo ${result.analysis.nucleus_number} guardado con ${result.analysis.students?.length || 0} estudiantes.`);
+        await renderNucleiModule();
+      } catch (error) {
+        toast(error.message, true);
+        if (document.contains(save)) save.disabled = false;
       }
+    }
+  }
 
-      const toggleCourse = event.target.closest('[data-toggle-course]');
-      if (toggleCourse) {
-        const detail = document.getElementById(toggleCourse.dataset.toggleCourse);
-        if (detail) {
-          detail.hidden = !detail.hidden;
-          toggleCourse.textContent = detail.hidden ? 'Ver' : 'Ocultar';
-        }
-        return;
-      }
+  function handleTabChange(event) {
+    const tab = event.currentTarget;
+    if (event.target.matches('[data-course-career-filter]')) {
+      selectedCourseCareer = event.target.value;
+      selectedCourseCampus = '';
+      rebuildCampusOptions(tab);
+      refreshCourseFilters(tab);
+    } else if (event.target.matches('[data-course-campus-filter]')) {
+      selectedCourseCampus = event.target.value;
+      refreshCourseFilters(tab);
+    }
+  }
 
-      const remove = event.target.closest('[data-delete-nucleus]');
-      if (remove) {
-        if (!confirm('¿Eliminar este curso de Núcleos y todas sus notas?')) return;
-        try {
-          await api(`/api/reports/${reportId}/nuclei/${remove.dataset.deleteNucleus}`, { method: 'DELETE', body: '{}' });
-          toast('Curso de Núcleos eliminado.');
-          await renderNucleiModule();
-        } catch (error) {
-          toast(error.message, true);
-        }
-        return;
-      }
-
-      const save = event.target.closest('[data-save-nucleus]');
-      if (save && currentAnalysis) {
-        const teacher = tab.querySelector('[name="nucleus_teacher"]')?.value || currentAnalysis.teacher_name || '';
-        try {
-          const result = await api(`/api/reports/${reportId}/nuclei`, {
-            method: 'POST',
-            body: JSON.stringify({
-              grades_text: currentAnalysis.grades_text,
-              participants_text: currentAnalysis.participants_text,
-              career_name: currentAnalysis.career_name,
-              nucleus_number: currentAnalysis.nucleus_number,
-              teacher_name: teacher,
-            }),
-          });
-          selectedCourseCareer = result.analysis.career_name || selectedCourseCareer;
-          selectedCourseCampus = result.analysis.campus || selectedCourseCampus;
-          importOpen = false;
-          currentAnalysis = null;
-          toast(`Núcleo ${result.analysis.nucleus_number} guardado con ${result.analysis.students?.length || 0} estudiantes.`);
-          await renderNucleiModule();
-        } catch (error) {
-          toast(error.message, true);
-        }
-      }
-    });
-
+  function bindImportForm(tab) {
     const form = tab.querySelector('#nucleus-import-form');
-    form?.addEventListener('submit', async event => {
+    if (!form || form.dataset.nucleiSubmitBound === '1') return;
+    form.dataset.nucleiSubmitBound = '1';
+    form.addEventListener('submit', async event => {
       event.preventDefault();
+      const reportId = reportIdForTab(tab);
+      if (!reportId) return;
+      const submit = form.querySelector('button[type="submit"]');
+      if (submit?.disabled) return;
+      if (submit) submit.disabled = true;
       const payload = {
-        grades_text: form.grades_text.value,
-        participants_text: form.participants_text.value,
-        career_name: form.career_name.value.trim(),
-        nucleus_number: form.nucleus_number.value ? Number(form.nucleus_number.value) : null,
+        grades_text: form.elements.grades_text.value,
+        participants_text: form.elements.participants_text.value,
+        career_name: form.elements.career_name.value.trim(),
+        nucleus_number: form.elements.nucleus_number.value ? Number(form.elements.nucleus_number.value) : null,
       };
       try {
         const result = await api(`/api/reports/${reportId}/nuclei/analyze`, { method: 'POST', body: JSON.stringify(payload) });
+        if (reportIdForTab(tab) !== reportId) return;
         currentAnalysis = { ...payload, ...result.analysis };
         renderPreview(result.analysis, tab);
       } catch (error) {
         toast(error.message, true);
-      }
-    });
-
-    tab.addEventListener('change', event => {
-      if (event.target.matches('[data-course-career-filter]')) {
-        selectedCourseCareer = event.target.value;
-        selectedCourseCampus = '';
-        rebuildCampusOptions(tab);
-        refreshCourseFilters(tab);
-      } else if (event.target.matches('[data-course-campus-filter]')) {
-        selectedCourseCampus = event.target.value;
-        refreshCourseFilters(tab);
+      } finally {
+        if (submit && document.contains(submit)) submit.disabled = false;
       }
     });
   }
