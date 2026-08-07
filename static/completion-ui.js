@@ -1,19 +1,25 @@
 (() => {
   const script = document.createElement('script');
-  script.src = '/completion-ui-v2.js?v=1.9';
+  script.src = '/completion-ui-v2.js?v=2.0';
   script.defer = true;
   script.onload = () => {
     const organization = document.createElement('script');
-    organization.src = '/nuclei-organization.js?v=1.9';
+    organization.src = '/nuclei-organization.js?v=2.0';
     organization.defer = true;
     organization.onload = () => {
       const clarity = document.createElement('script');
-      clarity.src = '/nuclei-clarity.js?v=1.9';
+      clarity.src = '/nuclei-clarity.js?v=2.0';
       clarity.defer = true;
       clarity.onload = () => {
         const workflow = document.createElement('script');
-        workflow.src = '/workflow-ui.js?v=1.9';
+        workflow.src = '/workflow-ui.js?v=2.0';
         workflow.defer = true;
+        workflow.onload = () => {
+          const fixes = document.createElement('script');
+          fixes.src = '/workflow-ui-fixes.js?v=2.0';
+          fixes.defer = true;
+          document.head.appendChild(fixes);
+        };
         document.head.appendChild(workflow);
       };
       document.head.appendChild(clarity);
