@@ -102,8 +102,9 @@ class EligibilityTests(unittest.TestCase):
         self.assertEqual(result["summary"]["thesis_students"], 1)
         self.assertEqual(len(result["course_matches"]), 4)
         self.assertTrue(all(item["read_students"] == 3 for item in result["course_matches"]))
-        self.assertTrue(all(item["matched_students"] == 3 for item in result["course_matches"]))
-        self.assertTrue(all(item["unmatched_students"] == 0 for item in result["course_matches"]))
+        # El estudiante de Trabajo de Titulación no recibe notas de Núcleos.
+        self.assertTrue(all(item["matched_students"] == 2 for item in result["course_matches"]))
+        self.assertTrue(all(item["unmatched_students"] == 1 for item in result["course_matches"]))
 
     @patch("eligibility_service.get_projects", return_value={"projects": []})
     @patch("eligibility_service.get_nuclei")
