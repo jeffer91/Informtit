@@ -3,6 +3,7 @@ from __future__ import annotations
 import app as core
 import completion_routes
 import desktop_launcher
+import eligibility_runtime_fixes
 import layout_v3
 import nuclei_catalog_export
 import nuclei_export
@@ -70,9 +71,9 @@ def prepare() -> None:
     report_completion_runtime.install()
     workflow_report_runtime.install()
     workflow_report_fixes.install()
-    # Debe instalarse al final: agrega la sede a la matriz de habilitación
-    # sin ser reemplazado por las capas generales del informe.
     nuclei_multicampus_workflow.install()
+    # Última capa: unifica la función de habilitación utilizada por API e informes.
+    eligibility_runtime_fixes.install()
 
 
 def main() -> None:
