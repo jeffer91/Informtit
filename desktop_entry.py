@@ -7,6 +7,7 @@ import layout_v3
 import nuclei_catalog_export
 import nuclei_export
 import nuclei_fixes
+import nuclei_matching_report
 import nuclei_matching_routes
 import nuclei_multicampus
 import nuclei_multicampus_report
@@ -62,6 +63,7 @@ def prepare() -> None:
     report_quality_runtime.install()
     report_quality.install()
     nuclei_multicampus_report.install()
+    nuclei_matching_report.install()
     report_completion_constants.install()
     report_completion.install()
     report_completion_fixes.install()
