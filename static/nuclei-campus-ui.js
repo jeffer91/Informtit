@@ -137,7 +137,8 @@
       const counter = browser.querySelector('[data-saved-career-counter]');
       if (counter) {
         const campusText = campusSelect.value ? ` · ${campusSelect.value}` : ' · todas las sedes';
-        counter.textContent = `${visible} curso${visible === 1 ? '' : 's'} cargado${visible === 1 ? '' : 's'}${campusText}`;
+        const value = `${visible} curso${visible === 1 ? '' : 's'} cargado${visible === 1 ? '' : 's'}${campusText}`;
+        if (counter.textContent !== value) counter.textContent = value;
       }
     }
 
@@ -187,7 +188,8 @@
       </article>`).join('');
     if (grid.innerHTML !== markup) grid.innerHTML = markup;
     const description = panel.querySelector('.teacher-load-head p');
-    if (description) description.textContent = 'Un docente puede impartir varios núcleos y una misma carrera puede tener docentes distintos por sede, módulo o paralelo.';
+    const text = 'Un docente puede impartir varios núcleos y una misma carrera puede tener docentes distintos por sede, módulo o paralelo.';
+    if (description && description.textContent !== text) description.textContent = text;
   }
 
   function renderGradeConflicts(data) {
@@ -258,12 +260,22 @@
     });
   }
 
-  observer = new MutationObserver(schedule);
+  function mutationContainsRelevantUi(record) {
+    return [...record.addedNodes].some(node => {
+      if (!(node instanceof Element)) return false;
+      return node.matches?.('#tab-nuclei .process-stack, #nucleus-preview .nucleus-preview-card, [data-saved-career-browser], [data-eligibility-panel], .teacher-load-panel')
+        || Boolean(node.querySelector?.('#nucleus-preview .nucleus-preview-card, [data-saved-career-browser], [data-eligibility-panel], .teacher-load-panel'));
+    });
+  }
+
+  observer = new MutationObserver(records => {
+    if (records.some(mutationContainsRelevantUi)) schedule();
+  });
   observer.observe(document.body, { childList: true, subtree: true });
+
   document.addEventListener('click', event => {
     if (event.target.closest('[data-tab="nuclei"]')) {
       setTimeout(enhance, 100);
-      setTimeout(enhance, 500);
     }
   });
   schedule();
