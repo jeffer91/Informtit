@@ -28,15 +28,12 @@
   const requirements = [
     ['academic_status', 'Académico'],
     ['documentation_status', 'Documentación'],
-    ['financial_status', 'Financiero'],
-    ['titulation_status', 'Titulación'],
-    ['practices_linkage_status', 'Prácticas y vinculación'],
-    ['linkage_status', 'Vinculación'],
-    ['graduate_followup_status', 'Seguimiento a graduados'],
     ['english_status', 'Inglés'],
+    ['financial_status', 'Financiero'],
     ['data_update_status', 'Actualización de datos'],
-    ['titulation_approval', 'Aprobación de titulación'],
-    ['complexive_approval', 'Aprobación complexivo/proyecto'],
+    ['graduate_followup_status', 'Seguimiento a graduados'],
+    ['practices_linkage_status', 'Prácticas'],
+    ['linkage_status', 'Vinculación'],
   ];
 
   function classifyStudent(student, active) {
@@ -88,7 +85,7 @@
         <div class="panel-head">
           <div>
             <h2>Análisis del cumplimiento de requisitos</h2>
-            <p>Vista previa del apartado que se incorporará automáticamente al Word y PDF.</p>
+            <p>Módulo independiente. Este análisis no habilita ni excluye registros de Núcleos, Examen Complexivo o Trabajo de Titulación.</p>
           </div>
         </div>
         <div class="summary-grid">
