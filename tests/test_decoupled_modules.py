@@ -67,6 +67,15 @@ class DecoupledModulesTests(unittest.TestCase):
         self.assertIn("student_id=NULL", backend)
         self.assertNotIn("FROM students", backend)
 
+    def test_independent_ui_updates_are_idempotent_and_batched(self):
+        source = (ROOT / "static" / "independent-modules-ui.js").read_text(encoding="utf-8")
+        self.assertIn("requestAnimationFrame", source)
+        self.assertIn("if (node && node.textContent !== value)", source)
+        self.assertIn("if (scanQueued) return", source)
+        self.assertIn("if (scanning) return", source)
+        self.assertNotIn("if (heading) heading.textContent", source)
+        self.assertNotIn("description.innerHTML =", source)
+
     def test_desktop_entry_does_not_install_cross_module_workflow(self):
         source = (ROOT / "desktop_entry.py").read_text(encoding="utf-8")
         self.assertIn("report_decoupled.install()", source)
