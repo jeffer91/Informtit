@@ -23,6 +23,15 @@ def _campus_key(value: Any) -> str:
     return normalize(value)
 
 
+def _campus_family(value: Any) -> str:
+    key = _campus_key(value)
+    aliases = {
+        "sur": "quito",
+        "quito sur": "quito",
+    }
+    return aliases.get(key, key)
+
+
 def _email_key(value: Any) -> str:
     return str(value or "").strip().casefold()
 
@@ -87,32 +96,18 @@ def _build_roster_indexes(students: list[dict[str, Any]]) -> tuple[dict[str, lis
     return by_email, by_name
 
 
-def _choose_candidate(candidates: list[dict[str, Any]], course: dict[str, Any]) -> tuple[dict[str, Any] | None, bool]:
-    """Vincula por identidad y usa la sede únicamente para desempatar duplicados.
-
-    La sede del curso Moodle describe dónde se impartió esa instancia. No debe
-    bloquear a un estudiante con correo/nombre inequívoco porque la base puede
-    registrar Quito mientras el curso usa etiquetas como Sur, Norte o Manta.
-    """
-
-    if len(candidates) == 1:
-        return candidates[0], False
-    if len(candidates) < 2:
-        return None, False
-
-    course_campus = _campus_key(course.get("campus"))
+def _campus_candidates(candidates: list[dict[str, Any]], course: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    course_campus = _campus_family(course.get("campus"))
     if not course_campus:
-        return None, False
-
-    exact = [student for student in candidates if _campus_key(student.get("campus")) == course_campus]
-    if len(exact) == 1:
-        return exact[0], True
-
-    unspecified = [student for student in candidates if not _campus_key(student.get("campus"))]
-    if len(unspecified) == 1:
-        return unspecified[0], True
-
-    return None, False
+        return candidates, False
+    compatible = [
+        student
+        for student in candidates
+        if not _campus_family(student.get("campus"))
+        or _campus_family(student.get("campus")) == course_campus
+    ]
+    mismatch = bool(candidates) and not compatible
+    return compatible, mismatch
 
 
 def _match_nucleus_student(
@@ -123,16 +118,20 @@ def _match_nucleus_student(
 ) -> tuple[dict[str, Any] | None, str]:
     email = _email_key(nucleus_student.get("email"))
     if email:
-        matched, used_campus = _choose_candidate(by_email.get(email, []), course)
-        if matched:
-            return matched, "correo y sede" if used_campus else "correo"
+        candidates, mismatch = _campus_candidates(by_email.get(email, []), course)
+        if len(candidates) == 1:
+            return candidates[0], "correo y sede" if _campus_family(course.get("campus")) else "correo"
+        if mismatch:
+            return None, "sede no coincide"
 
     name = _student_name_key(nucleus_student.get("full_name"))
     career = _career_key(course.get("career_name"))
     candidates = by_name.get((career, name), []) if name else []
-    matched, used_campus = _choose_candidate(candidates, course)
-    if matched:
-        return matched, "nombre, carrera y sede" if used_campus else "nombre y carrera"
+    candidates, mismatch = _campus_candidates(candidates, course)
+    if len(candidates) == 1:
+        return candidates[0], "nombre, carrera y sede" if _campus_family(course.get("campus")) else "nombre y carrera"
+    if mismatch:
+        return None, "sede no coincide"
 
     return None, "sin coincidencia"
 
