@@ -25,6 +25,55 @@
     return Number(value).toFixed(2).replace('.', ',');
   }
 
+  function metadataFromTitle(title = '') {
+    const text = String(title || '').replace(/\s+/g, ' ').trim();
+    const moduleMatch = text.match(/\bMod\s*(\d+)\b/i);
+    const periodMatch = text.match(/\bMod\s*\d+\s*,\s*([^,\]\s]+)/i);
+    const groupMatch = text.match(/\bEsp\.\s*([A-Za-z0-9_-]+)/i);
+    const scheduleMatch = text.match(/(\d{1,2}h\d{2}\s*-\s*\d{1,2}h\d{2})/i);
+    const campusMatch = text.match(/\d{1,2}h\d{2}\s*-\s*\d{1,2}h\d{2}\s*-\s*([^\]\n]+)\]/i);
+    return {
+      campus: campusMatch?.[1]?.trim() || '',
+      moduleCode: moduleMatch?.[1] || '',
+      periodLabel: periodMatch?.[1]?.trim() || '',
+      groupCode: groupMatch?.[1]?.trim() || '',
+      schedule: scheduleMatch?.[1]?.replace(/\s+/g, '') || '',
+    };
+  }
+
+  function decorateImportGuidance() {
+    const note = document.querySelector('#tab-nuclei .nuclei-rule-note');
+    if (note && note.dataset.multicampusCopy !== '1') {
+      note.dataset.multicampusCopy = '1';
+      note.innerHTML = '<strong>Asignación docente y sedes:</strong> un mismo profesor puede impartir uno o varios núcleos. Una misma carrera puede tener el mismo núcleo en Quito, Manta u otras sedes con docentes diferentes. Informtit guarda cada curso Moodle de forma independiente por carrera, núcleo y datos del curso.';
+    }
+  }
+
+  function decoratePreview() {
+    const preview = document.querySelector('#nucleus-preview .nucleus-preview-card');
+    if (!preview) return;
+    const title = preview.querySelector('.panel-head p')?.textContent || '';
+    const metadata = metadataFromTitle(title);
+    const signature = [metadata.campus, metadata.moduleCode, metadata.periodLabel, metadata.groupCode, metadata.schedule].join('|');
+    let block = preview.querySelector('[data-preview-course-meta]');
+    if (!block) {
+      block = document.createElement('div');
+      block.className = 'preview-course-meta';
+      block.dataset.previewCourseMeta = '1';
+      preview.querySelector('.panel-head')?.insertAdjacentElement('afterend', block);
+    }
+    if (block.dataset.signature === signature) return;
+    block.dataset.signature = signature;
+    const items = [
+      ['Sede', metadata.campus || 'No detectada'],
+      ['Módulo', metadata.moduleCode || '—'],
+      ['Período', metadata.periodLabel || '—'],
+      ['Grupo', metadata.groupCode || '—'],
+      ['Horario', metadata.schedule || '—'],
+    ];
+    block.innerHTML = items.map(([label, value]) => `<span><small>${esc(label)}</small><strong>${esc(value)}</strong></span>`).join('');
+  }
+
   function courseByCard(courses, card) {
     const button = card.querySelector('[data-delete-nucleus]');
     const id = Number(button?.dataset.deleteNucleus || 0);
@@ -185,6 +234,8 @@
       if (request !== requestSequence || Number(state.activeReport?.id || 0) !== reportId) return;
       observer?.disconnect();
       try {
+        decorateImportGuidance();
+        decoratePreview();
         const courses = nuclei.courses || [];
         decorateSavedCourses(courses);
         rebuildTeacherLoad(courses);
@@ -223,9 +274,14 @@
     .career-browser-toolbar { grid-template-columns: auto minmax(220px, 1fr) minmax(180px, .8fr) auto auto !important; }
     .campus-grade-conflicts { margin-top: 16px; border-color: #f0c36a; background: #fffaf0; }
     .campus-grade-conflicts > p { margin: 10px 0; color: #6b5428; }
+    .preview-course-meta { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); gap: 8px; margin: 12px 0 4px; }
+    .preview-course-meta span { padding: 9px 10px; border: 1px solid #d7e3ec; border-radius: 10px; background: white; }
+    .preview-course-meta small { display: block; margin-bottom: 3px; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    .preview-course-meta strong { color: #263b4d; font-size: 13px; }
     @media (max-width: 1050px) {
       .career-browser-toolbar { grid-template-columns: 1fr 1fr !important; }
       .career-browser-toolbar label, .career-browser-counter { grid-column: auto !important; }
+      .preview-course-meta { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
     }
   `;
   document.head.appendChild(style);
