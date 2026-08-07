@@ -11,7 +11,6 @@ from completion_service import (
     replace_completion_data,
     replace_schedule_extended,
 )
-from eligibility_service import get_eligibility
 from optional_content import set_presence
 from thesis_followup import ensure_thesis_followup_schema, update_project_followup
 
@@ -31,11 +30,6 @@ def install() -> None:
                     "schedules": get_schedules_extended(int(match.group(1))),
                 }
             )
-            return
-
-        match = re.fullmatch(r"/api/reports/(\d+)/nuclei/eligibility", path)
-        if match:
-            self._send_json({"ok": True, **get_eligibility(int(match.group(1)))})
             return
 
         match = re.fullmatch(r"/api/reports/(\d+)/completion", path)
