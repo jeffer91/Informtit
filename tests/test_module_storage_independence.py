@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 import db
+import import_service
 from import_service import ensure_schema
 from process_service import ensure_process_schema
 from requirements_store import commit_preview_to_report, ensure_requirements_schema
@@ -14,9 +15,11 @@ class ModuleStorageIndependenceTests(unittest.TestCase):
     def setUp(self):
         self.original_data_dir = db.DATA_DIR
         self.original_db_path = db.DB_PATH
+        self.original_import_data_dir = import_service.DATA_DIR
         self.temporary = tempfile.TemporaryDirectory()
         db.DATA_DIR = Path(self.temporary.name)
         db.DB_PATH = db.DATA_DIR / "informtit.db"
+        import_service.DATA_DIR = db.DATA_DIR
         db.init_db()
         ensure_schema()
         ensure_process_schema()
@@ -58,11 +61,12 @@ class ModuleStorageIndependenceTests(unittest.TestCase):
     def tearDown(self):
         db.DATA_DIR = self.original_data_dir
         db.DB_PATH = self.original_db_path
+        import_service.DATA_DIR = self.original_import_data_dir
         self.temporary.cleanup()
 
     def _preview_token(self, name: str, identification: str) -> str:
         token = "token_independiente_12345"
-        imports = db.DATA_DIR / "imports"
+        imports = import_service.DATA_DIR / "imports"
         imports.mkdir(parents=True, exist_ok=True)
         parsed = {
             "preview": {
