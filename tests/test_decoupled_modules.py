@@ -39,10 +39,28 @@ class DecoupledModulesTests(unittest.TestCase):
         self.assertNotIn("Habilitación para Complexivo", source)
         self.assertIn("Módulo independiente", source)
 
-    def test_complexive_ui_no_longer_loads_workflow_filter(self):
+    def test_requirements_use_their_own_table(self):
+        source = (ROOT / "requirements_store.py").read_text(encoding="utf-8")
+        roster = (ROOT / "roster_service.py").read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS requirements_students", source)
+        self.assertIn("DELETE FROM requirements_students WHERE report_id=?", source)
+        self.assertNotIn("DELETE FROM careers", source)
+        self.assertNotIn("DELETE FROM students", source)
+        self.assertIn("requirements_store", roster)
+
+    def test_complexive_ui_does_not_load_workflow_filter(self):
         source = (ROOT / "static" / "completion-ui.js").read_text(encoding="utf-8")
+        routes = (ROOT / "completion_routes.py").read_text(encoding="utf-8")
         self.assertNotIn("workflow-ui.js", source)
-        self.assertIn("data-complexive-eligibility-warning", source)
+        self.assertNotIn("/nuclei/eligibility", routes)
+
+    def test_thesis_ui_does_not_query_roster(self):
+        source = (ROOT / "static" / "process-independent-ui.js").read_text(encoding="utf-8")
+        backend = (ROOT / "thesis_independent.py").read_text(encoding="utf-8")
+        self.assertNotIn("/roster", source)
+        self.assertNotIn("student_id", source)
+        self.assertIn("student_id=NULL", backend)
+        self.assertNotIn("FROM students", backend)
 
     def test_desktop_entry_does_not_install_cross_module_workflow(self):
         source = (ROOT / "desktop_entry.py").read_text(encoding="utf-8")
