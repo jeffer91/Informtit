@@ -5,21 +5,13 @@ from typing import Any
 
 from db import connection, rows_to_dicts, utcnow
 from import_service import _load_preview, clean_cell, ensure_schema
+from workflow_rules import PRE_NUCLEUS_REQUIREMENTS, downstream_state, prerequisite_state
 
 
-REQUIREMENTS: tuple[tuple[str, str], ...] = (
-    ("academic_status", "Académico"),
-    ("documentation_status", "Documentación"),
-    ("financial_status", "Financiero"),
-    ("titulation_status", "Titulación"),
-    ("practices_linkage_status", "Prácticas y vinculación"),
-    ("linkage_status", "Vinculación"),
-    ("graduate_followup_status", "Seguimiento a graduados"),
-    ("english_status", "Inglés"),
-    ("data_update_status", "Actualización de datos"),
-    ("titulation_approval", "Aprobación de titulación"),
-    ("complexive_approval", "Aprobación complexivo/proyecto"),
-)
+# REQUIREMENTS se conserva como nombre público porque los módulos de informe
+# ya lo utilizan. Desde ahora representa únicamente los ocho requisitos que
+# habilitan el ingreso a Núcleos.
+REQUIREMENTS: tuple[tuple[str, str], ...] = PRE_NUCLEUS_REQUIREMENTS
 
 
 def _status(value: Any) -> str:
@@ -66,14 +58,18 @@ def get_report_roster(report_id: int) -> dict[str, Any]:
     complete = 0
     pending = 0
     notes_loaded = 0
+    titulation_marked = 0
+    complexive_project_approved = 0
+    titles_uploaded = 0
     for row in rows:
-        pending_keys = [
-            key for key, _label in REQUIREMENTS if _status(row.get(key)) == "NO CUMPLE"
-        ]
-        blank_keys = [key for key, _label in REQUIREMENTS if not _status(row.get(key))]
-        row["pending_requirements"] = pending_keys
-        row["blank_requirements"] = blank_keys
-        row["requirements_complete"] = not pending_keys and not blank_keys
+        requirement_state = prerequisite_state(row)
+        downstream = downstream_state(row)
+        row["pending_requirements"] = requirement_state["pending"]
+        row["blank_requirements"] = requirement_state["blank"]
+        row["requirements_complete"] = requirement_state["complete"]
+        row["eligible_for_nuclei"] = requirement_state["complete"]
+        row["missing_requirement_labels"] = requirement_state["missing"]
+        row.update(downstream)
         row["notes_loaded"] = bool(
             row.get("notes_matched")
             or row.get("ordinary_theory") is not None
@@ -83,6 +79,9 @@ def get_report_roster(report_id: int) -> dict[str, Any]:
         complete += int(row["requirements_complete"])
         pending += int(not row["requirements_complete"])
         notes_loaded += int(row["notes_loaded"])
+        titulation_marked += int(downstream["titulation_marked"])
+        complexive_project_approved += int(downstream["complexive_project_approved"])
+        titles_uploaded += int(downstream["titles_uploaded"])
 
     career_counter = Counter(row["career_name"] for row in rows)
     campus_counter = Counter(row.get("campus") or "Sin sede" for row in rows)
@@ -96,6 +95,11 @@ def get_report_roster(report_id: int) -> dict[str, Any]:
             "careers": len(career_counter),
             "requirements_complete": complete,
             "requirements_pending": pending,
+            "eligible_for_nuclei": complete,
+            "blocked_before_nuclei": pending,
+            "titulation_marked": titulation_marked,
+            "complexive_project_approved": complexive_project_approved,
+            "titles_uploaded": titles_uploaded,
             "notes_loaded": notes_loaded,
             "notes_pending": max(0, len(rows) - notes_loaded),
             "is_imported": bool(report["source_import_id"])
