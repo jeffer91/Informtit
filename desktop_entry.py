@@ -5,6 +5,7 @@ import completion_routes
 import desktop_launcher
 import layout_v3
 import nuclei_catalog_export
+import nuclei_course_edit
 import nuclei_export
 import nuclei_fixes
 import nuclei_multicampus
@@ -48,6 +49,7 @@ def prepare() -> None:
     layout_v3.install()
     process_routes.install()
     nuclei_routes.install()
+    nuclei_course_edit.install()
     completion_routes.install()
     process_export.install()
     optional_content.install()
