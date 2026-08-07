@@ -39,6 +39,17 @@ class DecoupledModulesTests(unittest.TestCase):
         self.assertNotIn("Habilitación para Complexivo", source)
         self.assertIn("Módulo independiente", source)
 
+    def test_nuclei_ui_binds_delegated_events_only_once(self):
+        source = (ROOT / "static" / "nuclei-ui.js").read_text(encoding="utf-8")
+        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("if (tab.dataset.nucleiDelegatedBound === '1') return", source)
+        self.assertIn("tab.addEventListener('click', handleTabClick)", source)
+        self.assertIn("tab.addEventListener('change', handleTabChange)", source)
+        self.assertIn("form.dataset.nucleiSubmitBound", source)
+        self.assertIn("if (save.disabled || !currentAnalysis) return", source)
+        self.assertIn("if (remove.disabled", source)
+        self.assertNotIn("nuclei-controls-hotfix.js", index)
+
     def test_requirements_use_their_own_table(self):
         source = (ROOT / "requirements_store.py").read_text(encoding="utf-8")
         roster = (ROOT / "roster_service.py").read_text(encoding="utf-8")
