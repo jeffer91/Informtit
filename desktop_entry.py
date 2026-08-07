@@ -9,6 +9,7 @@ import nuclei_export
 import nuclei_fixes
 import nuclei_multicampus
 import nuclei_multicampus_report
+import nuclei_multicampus_workflow
 import nuclei_routes
 import optional_content
 import process_export
@@ -65,6 +66,9 @@ def prepare() -> None:
     report_completion_runtime.install()
     workflow_report_runtime.install()
     workflow_report_fixes.install()
+    # Debe instalarse al final: agrega la sede a la matriz de habilitación
+    # sin ser reemplazado por las capas generales del informe.
+    nuclei_multicampus_workflow.install()
 
 
 def main() -> None:
