@@ -5,7 +5,7 @@ import nuclei_multicampus_report as report_filter
 
 
 class NucleiReportFilterTests(unittest.TestCase):
-    def test_report_only_keeps_students_enabled_for_nuclei(self):
+    def test_report_keeps_every_student_loaded_in_each_nucleus_course(self):
         raw = {
             "courses": [
                 {
@@ -23,15 +23,15 @@ class NucleiReportFilterTests(unittest.TestCase):
                     ],
                     "students": [
                         {
-                            "full_name": "ESTUDIANTE HABILITADA",
-                            "email": "habilitada@itsqmet.edu.ec",
+                            "full_name": "ESTUDIANTE UNO",
+                            "email": "uno@itsqmet.edu.ec",
                             "final_grade": 9.0,
                             "final_status": "Aprobado",
                             "scores": [{"grade": 8.0}, {"grade": 10.0}],
                         },
                         {
-                            "full_name": "ESTUDIANTE BLOQUEADA",
-                            "email": "bloqueada@itsqmet.edu.ec",
+                            "full_name": "ESTUDIANTE DOS",
+                            "email": "dos@itsqmet.edu.ec",
                             "final_grade": 5.0,
                             "final_status": "Reprobado",
                             "scores": [{"grade": 4.0}, {"grade": 6.0}],
@@ -41,14 +41,14 @@ class NucleiReportFilterTests(unittest.TestCase):
                 {
                     "id": 11,
                     "career_name": "Enfermería",
-                    "campus": "Manta",
+                    "campus": "Sur",
                     "nucleus_number": 2,
                     "assessments": [{"name": "Evaluación 1"}],
                     "activity_averages": [{"name": "Evaluación 1", "calculated_average": 6.0}],
                     "students": [
                         {
-                            "full_name": "OTRA BLOQUEADA",
-                            "email": "otra@itsqmet.edu.ec",
+                            "full_name": "ESTUDIANTE TRES",
+                            "email": "tres@itsqmet.edu.ec",
                             "final_grade": 6.0,
                             "final_status": "Reprobado",
                             "scores": [{"grade": 6.0}],
@@ -57,54 +57,26 @@ class NucleiReportFilterTests(unittest.TestCase):
                 },
             ]
         }
-        eligibility = {
-            "rows": [
-                {
-                    "student_id": 1,
-                    "full_name": "ESTUDIANTE HABILITADA",
-                    "email": "habilitada@itsqmet.edu.ec",
-                    "career_name": "Enfermería",
-                    "option": "Examen Complexivo",
-                    "eligible_for_nuclei": True,
-                    "nucleus_sources": {1: [{"course_id": 10, "grade": 9.0}]},
-                },
-                {
-                    "student_id": 2,
-                    "full_name": "ESTUDIANTE BLOQUEADA",
-                    "email": "bloqueada@itsqmet.edu.ec",
-                    "career_name": "Enfermería",
-                    "option": "No habilitado para Núcleos",
-                    "eligible_for_nuclei": False,
-                    "nucleus_sources": {1: [{"course_id": 10, "grade": 5.0}]},
-                },
-                {
-                    "student_id": 3,
-                    "full_name": "OTRA BLOQUEADA",
-                    "email": "otra@itsqmet.edu.ec",
-                    "career_name": "Enfermería",
-                    "option": "No habilitado para Núcleos",
-                    "eligible_for_nuclei": False,
-                    "nucleus_sources": {2: [{"course_id": 11, "grade": 6.0}]},
-                },
-            ]
-        }
 
-        with patch.object(report_filter, "get_raw_nuclei", return_value=raw), patch.object(
-            report_filter, "get_eligibility", return_value=eligibility
-        ):
+        with patch.object(report_filter, "get_raw_nuclei", return_value=raw):
             result = report_filter.get_report_nuclei(99)
 
-        self.assertEqual(len(result["courses"]), 1)
-        course = result["courses"][0]
-        self.assertEqual(course["id"], 10)
-        self.assertEqual([student["full_name"] for student in course["students"]], ["ESTUDIANTE HABILITADA"])
-        self.assertEqual(course["graded_students"], 1)
-        self.assertEqual(course["approved_count"], 1)
-        self.assertEqual(course["failed_count"], 0)
-        self.assertEqual(course["excluded_by_requirements"], 1)
-        self.assertEqual(course["course_average"], 9.0)
-        self.assertEqual(course["activity_averages"][0]["calculated_average"], 8.0)
-        self.assertEqual(course["activity_averages"][1]["calculated_average"], 10.0)
+        self.assertEqual(len(result["courses"]), 2)
+        first = result["courses"][0]
+        self.assertEqual(
+            [student["full_name"] for student in first["students"]],
+            ["ESTUDIANTE UNO", "ESTUDIANTE DOS"],
+        )
+        self.assertEqual(first["graded_students"], 2)
+        self.assertEqual(first["approved_count"], 1)
+        self.assertEqual(first["failed_count"], 1)
+        self.assertEqual(first["course_average"], 7.0)
+        self.assertEqual(first["activity_averages"][0]["calculated_average"], 6.0)
+        self.assertEqual(first["activity_averages"][1]["calculated_average"], 8.0)
+
+        second = result["courses"][1]
+        self.assertEqual(len(second["students"]), 1)
+        self.assertEqual(second["failed_count"], 1)
 
 
 if __name__ == "__main__":
