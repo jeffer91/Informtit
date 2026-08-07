@@ -7,6 +7,7 @@ import layout_v3
 import nuclei_catalog_export
 import nuclei_export
 import nuclei_fixes
+import nuclei_multicampus
 import nuclei_routes
 import optional_content
 import process_export
@@ -39,6 +40,7 @@ def prepare() -> None:
     ensure_completion_schema()
     ensure_thesis_followup_schema()
     nuclei_fixes.install()
+    nuclei_multicampus.install()
     with connection() as conn:
         apply_defaults(conn)
 
