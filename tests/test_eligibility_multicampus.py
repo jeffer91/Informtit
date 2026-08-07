@@ -48,37 +48,42 @@ def course(course_id, nucleus, campus, grade, teacher):
 
 
 class EligibilityMulticampusTests(unittest.TestCase):
+    @patch("eligibility_service._load_grade_resolutions", return_value={})
+    @patch("eligibility_service._load_manual_matches", return_value={})
     @patch("eligibility_service.get_projects", return_value={"projects": []})
     @patch("eligibility_service.get_nuclei")
     @patch("eligibility_service.get_report_roster")
-    def test_course_from_other_campus_does_not_replace_students_real_campus(
-        self, roster_mock, nuclei_mock, _projects_mock
+    def test_course_campus_never_blocks_unique_student(
+        self, roster_mock, nuclei_mock, _projects_mock, _manual_mock, _resolution_mock
     ):
         roster_mock.return_value = {"students": [student("Manta")]}
         nuclei_mock.return_value = {
             "courses": [
-                course(1, 1, "Manta", 8.5, "DOCENTE MANTA"),
-                course(2, 1, "Quito", 5.0, "DOCENTE QUITO"),
-                course(3, 2, "Manta", 8.0, "DOCENTE MANTA"),
-                course(4, 3, "Manta", 9.0, "DOCENTE MANTA"),
-                course(5, 4, "Manta", 7.5, "DOCENTE MANTA"),
+                course(1, 1, "Quito", 8.5, "DOCENTE QUITO"),
+                course(2, 2, "Sur", 8.0, "DOCENTE SUR"),
+                course(3, 3, "Manta", 9.0, "DOCENTE MANTA"),
+                course(4, 4, "Quito Sur", 7.5, "DOCENTE QUITO"),
             ]
         }
 
         result = get_eligibility(1)
         row = result["rows"][0]
         self.assertEqual(row["nucleus_1"], 8.5)
+        self.assertEqual(row["nucleus_2"], 8.0)
+        self.assertEqual(row["nucleus_3"], 9.0)
+        self.assertEqual(row["nucleus_4"], 7.5)
         self.assertTrue(row["eligible_for_complexive"])
         self.assertEqual(row["stage_status"], "Habilitado para Complexivo")
-        self.assertEqual(len(result["unmatched"]), 1)
-        self.assertEqual(result["unmatched"][0]["campus"], "Quito")
-        self.assertEqual(result["unmatched"][0]["reason"], "sede no coincide")
+        self.assertEqual(result["unmatched"], [])
+        self.assertTrue(all(item["matched_students"] == 1 for item in result["course_matches"]))
 
+    @patch("eligibility_service._load_grade_resolutions", return_value={})
+    @patch("eligibility_service._load_manual_matches", return_value={})
     @patch("eligibility_service.get_projects", return_value={"projects": []})
     @patch("eligibility_service.get_nuclei")
     @patch("eligibility_service.get_report_roster")
     def test_different_grades_for_same_nucleus_create_conflict_instead_of_overwrite(
-        self, roster_mock, nuclei_mock, _projects_mock
+        self, roster_mock, nuclei_mock, _projects_mock, _manual_mock, _resolution_mock
     ):
         roster_mock.return_value = {"students": [student("")]}
         nuclei_mock.return_value = {
