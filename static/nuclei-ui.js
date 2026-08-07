@@ -31,6 +31,12 @@
       .trim();
   }
 
+  function campusFamily(value = '') {
+    const key = normalize(value);
+    if (key === 'sur' || key === 'quito sur') return 'quito';
+    return key;
+  }
+
   function canonicalName(value = '') {
     return normalize(value).split(' ').filter(Boolean).sort().join(' ');
   }
@@ -68,10 +74,10 @@
     return { rows, byEmail, byNameCareer };
   }
 
-  function campusCompatible(_row, _course) {
-    // La sede organiza el curso, pero no bloquea una identidad inequívoca.
-    // Ej.: la base puede registrar Quito y Moodle identificar el curso como Sur.
-    return true;
+  function campusCompatible(row, course) {
+    const studentCampus = campusFamily(row?.campus);
+    const courseCampus = campusFamily(course?.campus);
+    return !studentCampus || !courseCampus || studentCampus === courseCampus;
   }
 
   function eligibleRowForStudent(student, course, index) {
