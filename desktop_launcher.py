@@ -16,7 +16,6 @@ from db import (
     utcnow,
 )
 from import_service import (
-    commit_preview,
     create_preview,
     ensure_schema,
     get_settings,
@@ -24,6 +23,7 @@ from import_service import (
     settings_for_report,
     update_settings,
 )
+from requirements_store import commit_preview, ensure_requirements_schema
 from roster_service import commit_preview_to_report, get_report_roster
 
 
@@ -55,7 +55,7 @@ def _serve_file_no_cache(
     self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
     self.send_header("Pragma", "no-cache")
     self.send_header("Expires", "0")
-    self.send_header("X-Informtit-Frontend", "0.8")
+    self.send_header("X-Informtit-Frontend", "3.1")
     if download_name:
         self.send_header(
             "Content-Disposition", f'attachment; filename="{download_name}"'
@@ -202,6 +202,7 @@ core.InformtitHandler._handle_api_write = _handle_api_write
 def main() -> None:
     core.init_db()
     ensure_schema()
+    ensure_requirements_schema()
     with connection() as conn:
         report_ids = [
             int(row["id"])
