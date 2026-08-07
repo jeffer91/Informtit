@@ -49,15 +49,20 @@ class DecoupledModulesTests(unittest.TestCase):
         self.assertIn("requirements_store", roster)
 
     def test_complexive_ui_does_not_load_workflow_filter(self):
-        source = (ROOT / "static" / "completion-ui.js").read_text(encoding="utf-8")
+        loader = (ROOT / "static" / "completion-ui.js").read_text(encoding="utf-8")
+        completion = (ROOT / "static" / "completion-ui-v2.js").read_text(encoding="utf-8")
         routes = (ROOT / "completion_routes.py").read_text(encoding="utf-8")
-        self.assertNotIn("workflow-ui.js", source)
+        self.assertNotIn("workflow-ui.js", loader)
+        self.assertNotIn("/nuclei/eligibility", completion)
+        self.assertNotIn("Habilitación para el Examen Complexivo", completion)
         self.assertNotIn("/nuclei/eligibility", routes)
 
     def test_thesis_ui_does_not_query_roster(self):
         source = (ROOT / "static" / "process-independent-ui.js").read_text(encoding="utf-8")
+        search = (ROOT / "static" / "project-search.js").read_text(encoding="utf-8")
         backend = (ROOT / "thesis_independent.py").read_text(encoding="utf-8")
         self.assertNotIn("/roster", source)
+        self.assertNotIn("/roster", search)
         self.assertNotIn("student_id", source)
         self.assertIn("student_id=NULL", backend)
         self.assertNotIn("FROM students", backend)
