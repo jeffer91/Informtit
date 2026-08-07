@@ -68,10 +68,10 @@
     return { rows, byEmail, byNameCareer };
   }
 
-  function campusCompatible(row, course) {
-    const studentCampus = normalize(row?.campus);
-    const courseCampus = normalize(course?.campus);
-    return !studentCampus || !courseCampus || studentCampus === courseCampus;
+  function campusCompatible(_row, _course) {
+    // La sede organiza el curso, pero no bloquea una identidad inequívoca.
+    // Ej.: la base puede registrar Quito y Moodle identificar el curso como Sur.
+    return true;
   }
 
   function eligibleRowForStudent(student, course, index) {
