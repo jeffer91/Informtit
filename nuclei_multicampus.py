@@ -10,6 +10,7 @@ from db import connection, rows_to_dicts, utcnow
 
 
 _ORIGINAL_ANALYZE = legacy.analyze_nucleus
+_ORIGINAL_ENSURE = legacy.ensure_nuclei_schema
 
 
 def _line(value: Any) -> str:
@@ -87,7 +88,7 @@ def _table_exists(conn: Any, name: str) -> bool:
 
 def ensure_multicampus_schema() -> None:
     # Se conserva el esquema anterior para poder migrar instalaciones existentes.
-    legacy.ensure_nuclei_schema()
+    _ORIGINAL_ENSURE()
     with connection() as conn:
         conn.executescript(
             """
@@ -179,7 +180,7 @@ def ensure_multicampus_schema() -> None:
                 metadata = _metadata_from_title(old_course.get("course_title") or "")
                 course_data = {**old_course, **metadata}
                 course_data["course_key"] = _course_key(course_data)
-                cursor = conn.execute(
+                conn.execute(
                     """
                     INSERT OR IGNORE INTO nucleus_course_instances
                     (report_id, career_name, nucleus_number, campus, module_code, period_label,
