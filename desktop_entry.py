@@ -7,6 +7,7 @@ import layout_v3
 import nuclei_catalog_export
 import nuclei_export
 import nuclei_fixes
+import nuclei_matching_routes
 import nuclei_multicampus
 import nuclei_multicampus_report
 import nuclei_multicampus_workflow
@@ -52,6 +53,7 @@ def prepare() -> None:
     process_routes.install()
     nuclei_routes.install()
     completion_routes.install()
+    nuclei_matching_routes.install()
     process_export.install()
     optional_content.install()
     report_structure.install()
