@@ -19,6 +19,10 @@ def _career_key(value: Any) -> str:
     return normalize(value)
 
 
+def _campus_key(value: Any) -> str:
+    return normalize(value)
+
+
 def _email_key(value: Any) -> str:
     return str(value or "").strip().casefold()
 
@@ -83,6 +87,20 @@ def _build_roster_indexes(students: list[dict[str, Any]]) -> tuple[dict[str, lis
     return by_email, by_name
 
 
+def _campus_candidates(candidates: list[dict[str, Any]], course: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    course_campus = _campus_key(course.get("campus"))
+    if not course_campus:
+        return candidates, False
+    compatible = [
+        student
+        for student in candidates
+        if not _campus_key(student.get("campus"))
+        or _campus_key(student.get("campus")) == course_campus
+    ]
+    mismatch = bool(candidates) and not compatible
+    return compatible, mismatch
+
+
 def _match_nucleus_student(
     nucleus_student: dict[str, Any],
     course: dict[str, Any],
@@ -90,19 +108,28 @@ def _match_nucleus_student(
     by_name: dict[tuple[str, str], list[dict[str, Any]]],
 ) -> tuple[dict[str, Any] | None, str]:
     email = _email_key(nucleus_student.get("email"))
-    if email and len(by_email.get(email, [])) == 1:
-        return by_email[email][0], "correo"
+    if email:
+        candidates, mismatch = _campus_candidates(by_email.get(email, []), course)
+        if len(candidates) == 1:
+            return candidates[0], "correo y sede" if _campus_key(course.get("campus")) else "correo"
+        if mismatch:
+            return None, "sede no coincide"
 
     name = _student_name_key(nucleus_student.get("full_name"))
     career = _career_key(course.get("career_name"))
     candidates = by_name.get((career, name), []) if name else []
+    candidates, mismatch = _campus_candidates(candidates, course)
     if len(candidates) == 1:
-        return candidates[0], "nombre y carrera"
+        return candidates[0], "nombre, carrera y sede" if _campus_key(course.get("campus")) else "nombre y carrera"
+    if mismatch:
+        return None, "sede no coincide"
 
     return None, "sin coincidencia"
 
 
-def _nuclei_status(grades: dict[int, float | None]) -> str:
+def _nuclei_status(grades: dict[int, float | None], has_conflict: bool = False) -> str:
+    if has_conflict:
+        return "Conflicto"
     values = [grades.get(number) for number in REQUIRED_NUCLEI]
     if any(value is not None and float(value) < PASSING_NUCLEUS_GRADE for value in values):
         return "No habilitado"
@@ -120,6 +147,8 @@ def _stage_status(thesis: bool, prerequisites_complete: bool, nuclei_status: str
         return "Habilitado para Complexivo"
     if nuclei_status == "No habilitado":
         return "Núcleos reprobados"
+    if nuclei_status == "Conflicto":
+        return "Conflicto de notas de Núcleos"
     return "En Núcleos / pendiente"
 
 
@@ -130,8 +159,8 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
     project_keys = _project_student_keys(report_id)
     by_email, by_name = _build_roster_indexes(students)
 
-    grades_by_student: dict[int, dict[int, float | None]] = defaultdict(dict)
-    match_methods: dict[int, dict[int, str]] = defaultdict(dict)
+    observations: dict[int, dict[int, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+    match_methods: dict[int, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
     unmatched: list[dict[str, Any]] = []
     course_matches: list[dict[str, Any]] = []
 
@@ -151,28 +180,68 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
                     {
                         "course_id": course.get("id"),
                         "career_name": course.get("career_name") or "",
+                        "campus": course.get("campus") or "",
                         "nucleus_number": nucleus_number,
+                        "module_code": course.get("module_code") or "",
                         "full_name": clean_moodle_name(str(nucleus_student.get("full_name") or "")),
                         "email": nucleus_student.get("email") or "",
                         "grade": nucleus_student.get("final_grade"),
+                        "reason": method,
                     }
                 )
                 continue
             matched_count += 1
             student_id = int(matched["id"])
-            grades_by_student[student_id][nucleus_number] = nucleus_student.get("final_grade")
-            match_methods[student_id][nucleus_number] = method
+            observations[student_id][nucleus_number].append(
+                {
+                    "grade": nucleus_student.get("final_grade"),
+                    "course_id": course.get("id"),
+                    "campus": course.get("campus") or "",
+                    "module_code": course.get("module_code") or "",
+                    "group_code": course.get("group_code") or "",
+                    "teacher_name": course.get("teacher_name") or "",
+                }
+            )
+            match_methods[student_id][nucleus_number].append(method)
         course_matches.append(
             {
                 "course_id": course.get("id"),
                 "career_name": course.get("career_name") or "Sin carrera",
+                "campus": course.get("campus") or "",
                 "nucleus_number": nucleus_number,
+                "module_code": course.get("module_code") or "",
+                "group_code": course.get("group_code") or "",
                 "teacher_name": course.get("teacher_name") or "",
                 "read_students": read_count,
                 "matched_students": matched_count,
                 "unmatched_students": unmatched_count,
             }
         )
+
+    grades_by_student: dict[int, dict[int, float | None]] = defaultdict(dict)
+    sources_by_student: dict[int, dict[int, list[dict[str, Any]]]] = defaultdict(dict)
+    conflicts_by_student: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    grade_conflicts: list[dict[str, Any]] = []
+
+    for student_id, nuclei in observations.items():
+        for nucleus_number, source_rows in nuclei.items():
+            sources_by_student[student_id][nucleus_number] = source_rows
+            numeric = [float(item["grade"]) for item in source_rows if item.get("grade") is not None]
+            distinct = sorted({round(value, 4) for value in numeric})
+            if len(distinct) > 1:
+                conflict = {
+                    "student_id": student_id,
+                    "nucleus_number": nucleus_number,
+                    "grades": distinct,
+                    "sources": source_rows,
+                }
+                conflicts_by_student[student_id].append(conflict)
+                grade_conflicts.append(conflict)
+                grades_by_student[student_id][nucleus_number] = None
+            elif distinct:
+                grades_by_student[student_id][nucleus_number] = distinct[0]
+            else:
+                grades_by_student[student_id][nucleus_number] = None
 
     rows: list[dict[str, Any]] = []
     prerequisite_conflicts: list[dict[str, Any]] = []
@@ -182,8 +251,13 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
         requirements = prerequisite_state(student)
         downstream = downstream_state(student)
         grades = grades_by_student.get(student_id, {})
-        nuclei_status = _nuclei_status(grades)
-        has_nucleus_grade = any(grades.get(number) is not None for number in REQUIRED_NUCLEI)
+        student_conflicts = conflicts_by_student.get(student_id, [])
+        nuclei_status = _nuclei_status(grades, bool(student_conflicts))
+        has_nucleus_grade = any(
+            source.get("grade") is not None
+            for source_rows in observations.get(student_id, {}).values()
+            for source in source_rows
+        )
         eligible_nuclei = requirements["complete"]
         eligible_complexive = bool(
             not thesis
@@ -203,6 +277,7 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
             "full_name": clean_moodle_name(str(student.get("full_name") or "")),
             "email": student.get("email") or "",
             "career_name": student.get("career_name") or "Sin carrera",
+            "campus": student.get("campus") or "",
             "option": option,
             "eligible_for_nuclei": eligible_nuclei,
             "eligible_for_complexive": eligible_complexive,
@@ -222,7 +297,13 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
             "missing_nuclei": sum(grades.get(number) is None for number in REQUIRED_NUCLEI),
             "status": "Trabajo de Titulación" if thesis else (nuclei_status if eligible_nuclei else "No habilitado"),
             "stage_status": _stage_status(thesis, eligible_nuclei, nuclei_status),
-            "match_methods": match_methods.get(student_id, {}),
+            "match_methods": {
+                number: sorted(set(methods))
+                for number, methods in match_methods.get(student_id, {}).items()
+            },
+            "nucleus_sources": sources_by_student.get(student_id, {}),
+            "grade_conflicts": student_conflicts,
+            "has_grade_conflict": bool(student_conflicts),
             **downstream,
         }
         rows.append(row)
@@ -234,11 +315,12 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
                     "identification": row["identification"],
                     "full_name": row["full_name"],
                     "career_name": row["career_name"],
+                    "campus": row["campus"],
                     "missing_requirements": requirements["missing"],
                 }
             )
 
-    rows.sort(key=lambda row: (_career_key(row["career_name"]), _display_name_key(row["full_name"])))
+    rows.sort(key=lambda row: (_career_key(row["career_name"]), _campus_key(row["campus"]), _display_name_key(row["full_name"])))
     nuclei_students = [row for row in rows if row["option"] == "Examen Complexivo"]
     complexive_rows = [row for row in nuclei_students if row["eligible_for_complexive"]]
     blocked_before_nuclei = [row for row in rows if row["option"] == "No habilitado para Núcleos"]
@@ -252,7 +334,8 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
         total = len(career_rows)
         habilitated = sum(row["eligible_for_complexive"] for row in career_rows)
         failed = sum(row["status"] == "No habilitado" for row in career_rows)
-        pending = sum(row["status"] == "Pendiente" for row in career_rows)
+        conflicts = sum(row["status"] == "Conflicto" for row in career_rows)
+        pending = sum(row["status"] in {"Pendiente", "Conflicto"} for row in career_rows)
         careers.append(
             {
                 "career_name": career_name,
@@ -260,6 +343,7 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
                 "habilitated": habilitated,
                 "not_habilitated": failed,
                 "pending": pending,
+                "grade_conflicts": conflicts,
                 "habilitation_percentage": round(habilitated / total * 100, 2) if total else 0.0,
             }
         )
@@ -267,7 +351,7 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
     total_nuclei_students = len(nuclei_students)
     habilitated = len(complexive_rows)
     not_habilitated = sum(row["status"] == "No habilitado" for row in nuclei_students)
-    pending = sum(row["status"] == "Pendiente" for row in nuclei_students)
+    pending = sum(row["status"] in {"Pendiente", "Conflicto"} for row in nuclei_students)
 
     non_thesis_rows = [row for row in rows if row["option"] != "Trabajo de Titulación"]
     return {
@@ -276,20 +360,19 @@ def get_eligibility(report_id: int) -> dict[str, Any]:
         "careers": careers,
         "course_matches": course_matches,
         "unmatched": unmatched,
+        "grade_conflicts": grade_conflicts,
         "prerequisite_conflicts": prerequisite_conflicts,
         "summary": {
             "registered": len(rows),
             "eligible_for_nuclei": total_nuclei_students,
             "blocked_before_nuclei": len(blocked_before_nuclei),
-            # Se conserva por compatibilidad con la interfaz existente. Este
-            # valor representa a quienes ingresaron a Núcleos, no la lista
-            # final de estudiantes que pueden rendir el Complexivo.
             "complexive_candidates": total_nuclei_students,
             "eligible_for_complexive": habilitated,
             "thesis_students": len(thesis_rows),
             "habilitated": habilitated,
             "not_habilitated": not_habilitated,
             "pending": pending,
+            "grade_conflicts": len(grade_conflicts),
             "habilitation_percentage": round(habilitated / total_nuclei_students * 100, 2) if total_nuclei_students else 0.0,
             "nucleus_without_prerequisites": len(prerequisite_conflicts),
             "titulation_marked": sum(row["titulation_marked"] for row in non_thesis_rows),
