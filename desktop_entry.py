@@ -8,6 +8,7 @@ import nuclei_catalog_export
 import nuclei_export
 import nuclei_fixes
 import nuclei_multicampus
+import nuclei_multicampus_report
 import nuclei_routes
 import optional_content
 import process_export
@@ -57,6 +58,7 @@ def prepare() -> None:
     nuclei_export.install()
     report_quality_runtime.install()
     report_quality.install()
+    nuclei_multicampus_report.install()
     report_completion_constants.install()
     report_completion.install()
     report_completion_fixes.install()
