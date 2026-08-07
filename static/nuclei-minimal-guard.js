@@ -62,9 +62,9 @@
 
     const valid = [...campusSelect.options].some(option => normalize(option.value) === normalize(previousValue));
     campusSelect.value = valid ? previousValue : '';
-    if (!valid && previousValue) {
-      campusSelect.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+    // Sincroniza también el estado privado de nuclei-ui. Esto evita que una
+    // sede seleccionada en una carrera anterior siga ocultando todos los cursos.
+    campusSelect.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   function enforceMinimalView() {
@@ -84,14 +84,7 @@
 
   document.addEventListener('change', event => {
     if (event.target.matches('[data-course-career-filter]')) {
-      setTimeout(() => {
-        rebuildCampusFilter();
-        const campus = document.querySelector('#tab-nuclei [data-course-campus-filter]');
-        if (campus && campus.value) {
-          campus.value = '';
-          campus.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }, 0);
+      setTimeout(rebuildCampusFilter, 0);
     }
   });
 
