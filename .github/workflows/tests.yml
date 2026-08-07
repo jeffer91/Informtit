@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: '22'
       - run: python -m pip install -r requirements.txt
-      - run: python -m py_compile app.py db.py parser.py analytics.py import_service.py roster_service.py workflow_rules.py workflow_report_runtime.py workflow_report_fixes.py process_service.py process_routes.py process_export.py optional_content.py report_structure.py report_quality.py report_quality_runtime.py report_completion.py report_completion_constants.py report_completion_fixes.py report_completion_runtime.py completion_service.py completion_routes.py eligibility_service.py thesis_followup.py coordinator_registry.py nuclei_service.py nuclei_routes.py nuclei_export.py nuclei_fixes.py nuclei_catalog.py nuclei_catalog_export.py desktop_entry.py layout_v2.py layout_v3.py
+      - run: python -m py_compile app.py db.py parser.py analytics.py import_service.py roster_service.py workflow_rules.py workflow_report_runtime.py workflow_report_fixes.py process_service.py process_routes.py process_export.py optional_content.py report_structure.py report_quality.py report_quality_runtime.py report_completion.py report_completion_constants.py report_completion_fixes.py report_completion_runtime.py completion_service.py completion_routes.py eligibility_service.py thesis_followup.py coordinator_registry.py nuclei_service.py nuclei_multicampus.py nuclei_multicampus_report.py nuclei_routes.py nuclei_export.py nuclei_fixes.py nuclei_catalog.py nuclei_catalog_export.py desktop_entry.py layout_v2.py layout_v3.py
       - run: node --check electron/main.cjs
       - run: node --check electron/main2.cjs
       - run: node --check static/no-sections.js
@@ -29,6 +29,7 @@ jobs:
       - run: node --check static/nuclei-catalog-ui.js
       - run: node --check static/nuclei-organization.js
       - run: node --check static/nuclei-clarity.js
+      - run: node --check static/nuclei-campus-ui.js
       - run: node --check static/workflow-ui.js
       - run: node --check static/workflow-ui-fixes.js
       - run: node --check static/completion-ui.js
