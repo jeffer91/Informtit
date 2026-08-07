@@ -18,6 +18,7 @@ import report_completion_runtime
 import report_quality
 import report_quality_runtime
 import report_structure
+import workflow_report_fixes
 import workflow_report_runtime
 from completion_service import ensure_completion_schema
 from db import connection
@@ -59,6 +60,7 @@ def prepare() -> None:
     report_completion_fixes.install()
     report_completion_runtime.install()
     workflow_report_runtime.install()
+    workflow_report_fixes.install()
 
 
 def main() -> None:
