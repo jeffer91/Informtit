@@ -1,6 +1,7 @@
 (() => {
   let requestSequence = 0;
   let scheduled = false;
+  let observer = null;
 
   function esc(value = '') {
     return typeof escapeHtml === 'function'
@@ -99,7 +100,8 @@
       const current = campusSelect.value;
       const markup = `<option value="">Todas las sedes</option>${campuses.map(campus => `<option value="${esc(campus)}">${esc(campus)}</option>`).join('')}`;
       if (campusSelect.innerHTML !== markup) campusSelect.innerHTML = markup;
-      if (campuses.some(campus => normalize(campus) === normalize(current))) campusSelect.value = current;
+      const matchingCampus = campuses.find(campus => normalize(campus) === normalize(current));
+      if (matchingCampus) campusSelect.value = matchingCampus;
       applyCampusFilter();
     }
 
@@ -143,20 +145,13 @@
     const panel = document.querySelector('[data-eligibility-panel]');
     if (!panel) return;
     const conflicts = data.grade_conflicts || [];
-    const signature = JSON.stringify(conflicts.map(item => [item.student_id, item.nucleus_number, item.grades, item.sources]));
     const existing = panel.querySelector('[data-campus-grade-conflicts]');
     if (!conflicts.length) {
       existing?.remove();
       return;
     }
-    if (existing?.dataset.conflictSignature === signature) return;
-    existing?.remove();
     const students = new Map((data.rows || []).map(row => [Number(row.student_id), row]));
-    const details = document.createElement('details');
-    details.className = 'eligibility-details campus-grade-conflicts';
-    details.dataset.campusGradeConflicts = '1';
-    details.dataset.conflictSignature = signature;
-    details.innerHTML = `
+    const markup = `
       <summary>${conflicts.length} conflicto${conflicts.length === 1 ? '' : 's'} de notas del mismo núcleo</summary>
       <p>Informtit no usa una nota al azar. Cuando un estudiante aparece con valores diferentes para el mismo núcleo, queda pendiente hasta revisar la sede o el curso correcto.</p>
       <div class="student-table-wrap"><table class="student-table compact-table">
@@ -167,13 +162,20 @@
           return `<tr><td>${esc(student.full_name || '—')}</td><td>${esc(student.career_name || '—')}</td><td>${conflict.nucleus_number}</td><td>${esc(sources)}</td></tr>`;
         }).join('')}</tbody>
       </table></div>`;
-    panel.appendChild(details);
+    let details = existing;
+    if (!details) {
+      details = document.createElement('details');
+      details.className = 'eligibility-details campus-grade-conflicts';
+      details.dataset.campusGradeConflicts = '1';
+      panel.appendChild(details);
+    }
+    if (details.innerHTML !== markup) details.innerHTML = markup;
   }
 
   async function enhance() {
     const reportId = Number(state.activeReport?.id || 0);
     const tab = document.querySelector('#tab-nuclei');
-    if (!reportId || !tab) return;
+    if (!reportId || !tab?.classList.contains('active')) return;
     const request = ++requestSequence;
     try {
       const [nuclei, eligibility] = await Promise.all([
@@ -181,20 +183,17 @@
         api(`/api/reports/${reportId}/nuclei/eligibility`),
       ]);
       if (request !== requestSequence || Number(state.activeReport?.id || 0) !== reportId) return;
-      const courses = nuclei.courses || [];
-      const signature = JSON.stringify({
-        courses: courses.map(course => [course.id, course.career_name, course.nucleus_number, course.campus, course.module_code, course.group_code, course.schedule, course.teacher_name]),
-        conflicts: (eligibility.grade_conflicts || []).map(item => [item.student_id, item.nucleus_number, item.grades]),
-      });
-      const alreadyApplied = tab.dataset.campusUiSignature === signature
-        && Boolean(tab.querySelector('[data-campus-filter]'))
-        && (!(eligibility.grade_conflicts || []).length || Boolean(tab.querySelector('[data-campus-grade-conflicts]')));
-      if (alreadyApplied) return;
-      decorateSavedCourses(courses);
-      rebuildTeacherLoad(courses);
-      renderGradeConflicts(eligibility);
-      tab.dataset.campusUiSignature = signature;
+      observer?.disconnect();
+      try {
+        const courses = nuclei.courses || [];
+        decorateSavedCourses(courses);
+        rebuildTeacherLoad(courses);
+        renderGradeConflicts(eligibility);
+      } finally {
+        observer?.observe(document.body, { childList: true, subtree: true });
+      }
     } catch (_error) {
+      observer?.observe(document.body, { childList: true, subtree: true });
       // Se conserva la interfaz base si el módulo todavía no terminó de renderizar.
     }
   }
@@ -208,7 +207,8 @@
     });
   }
 
-  new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+  observer = new MutationObserver(schedule);
+  observer.observe(document.body, { childList: true, subtree: true });
   document.addEventListener('click', event => {
     if (event.target.closest('[data-tab="nuclei"]')) {
       setTimeout(enhance, 100);
