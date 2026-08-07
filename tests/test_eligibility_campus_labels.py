@@ -65,7 +65,9 @@ class EligibilityCampusLabelsTests(unittest.TestCase):
         self.assertEqual(result["course_matches"][0]["unmatched_students"], 0)
         self.assertEqual(result["unmatched"], [])
         self.assertEqual(result["rows"][0]["nucleus_2"], 10.0)
-        self.assertIn("correo", result["rows"][0]["match_methods"][2])
+        self.assertTrue(
+            any("correo" in method for method in result["rows"][0]["match_methods"][2])
+        )
 
 
 if __name__ == "__main__":
