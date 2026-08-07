@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import html
 from typing import Any
 
@@ -151,6 +150,85 @@ def _add_pdf_funnel(story: list[Any], context: Any, styles: Any, report_id: int)
     ]
 
 
+def _add_docx_eligibility(document: Any, context: Any, report_id: int) -> None:
+    eligibility = get_eligibility(report_id)
+    if not eligibility.get("careers") and not eligibility.get("unmatched"):
+        return
+    summary = eligibility["summary"]
+    report_quality._docx_heading(document, context, 2, "Habilitación para el Examen Complexivo")
+    report_quality._docx_body(
+        document,
+        f"De {summary['eligible_for_nuclei']} estudiantes que cumplieron los ocho requisitos previos e ingresaron a Núcleos, {summary['eligible_for_complexive']} aprobaron los cuatro núcleos y quedaron habilitados para rendir el Examen Complexivo, {summary['not_habilitated']} registraron uno o más núcleos reprobados y {summary['pending']} mantuvieron uno o más núcleos pendientes. El porcentaje de habilitación desde la etapa de Núcleos fue {report_quality._pct(summary['habilitation_percentage'])}.",
+    )
+    report_quality._docx_caption(document, context.table_caption("Habilitación para el Examen Complexivo por carrera"))
+    report_quality._docx_table(
+        document,
+        ["Carrera", "Ingresaron a Núcleos", "Habilitados Complexivo", "Núcleos reprobados", "Pendientes", "% habilitación"],
+        [[row["career_name"], row["total"], row["habilitated"], row["not_habilitated"], row["pending"], report_quality._pct(row["habilitation_percentage"])] for row in eligibility["careers"]],
+        [2.25, 0.9, 0.95, 0.95, 0.75, 0.9],
+    )
+    for career in eligibility["careers"]:
+        rows = [
+            row for row in eligibility["rows"]
+            if row["career_name"] == career["career_name"] and row["option"] == "Examen Complexivo"
+        ]
+        if not rows:
+            continue
+        report_quality._docx_heading(document, context, 3, career["career_name"])
+        report_quality._docx_table(
+            document,
+            ["Estudiante", "Núcleo 1", "Núcleo 2", "Núcleo 3", "Núcleo 4", "Estado"],
+            [[row["full_name"], report_quality._fmt(row["nucleus_1"]), report_quality._fmt(row["nucleus_2"]), report_quality._fmt(row["nucleus_3"]), report_quality._fmt(row["nucleus_4"]), row["stage_status"]] for row in rows],
+            [2.65, 0.65, 0.65, 0.65, 0.65, 1.2],
+        )
+
+
+def _add_pdf_eligibility(story: list[Any], context: Any, styles: Any, report_id: int) -> None:
+    eligibility = get_eligibility(report_id)
+    if not eligibility.get("careers") and not eligibility.get("unmatched"):
+        return
+    summary = eligibility["summary"]
+    report_quality._pdf_heading(story, context, styles, 2, "Habilitación para el Examen Complexivo")
+    report_quality._pdf_body(
+        story,
+        styles,
+        f"De {summary['eligible_for_nuclei']} estudiantes que cumplieron los ocho requisitos previos e ingresaron a Núcleos, {summary['eligible_for_complexive']} aprobaron los cuatro núcleos y quedaron habilitados para rendir el Examen Complexivo, {summary['not_habilitated']} registraron uno o más núcleos reprobados y {summary['pending']} mantuvieron uno o más núcleos pendientes. El porcentaje de habilitación desde la etapa de Núcleos fue {report_quality._pct(summary['habilitation_percentage'])}.",
+    )
+    report_quality._pdf_caption(story, styles, context.table_caption("Habilitación para el Examen Complexivo por carrera"))
+    career_rows = [
+        [Paragraph(html.escape(row["career_name"]), styles["TableCell"]), row["total"], row["habilitated"], row["not_habilitated"], row["pending"], report_quality._pct(row["habilitation_percentage"])]
+        for row in eligibility["careers"]
+    ]
+    story += [
+        report_quality._pdf_table(
+            ["Carrera", "Núcleos", "Habilitados", "Reprobados", "Pendientes", "% habilitación"],
+            career_rows,
+            [5.4 * cm, 2.0 * cm, 2.1 * cm, 2.1 * cm, 2.0 * cm, 2.4 * cm],
+        ),
+        Spacer(1, 0.2 * cm),
+    ]
+    for career in eligibility["careers"]:
+        rows = [
+            row for row in eligibility["rows"]
+            if row["career_name"] == career["career_name"] and row["option"] == "Examen Complexivo"
+        ]
+        if not rows:
+            continue
+        report_quality._pdf_heading(story, context, styles, 3, career["career_name"])
+        values = [
+            [Paragraph(html.escape(row["full_name"]), styles["TableCell"]), report_quality._fmt(row["nucleus_1"]), report_quality._fmt(row["nucleus_2"]), report_quality._fmt(row["nucleus_3"]), report_quality._fmt(row["nucleus_4"]), Paragraph(html.escape(row["stage_status"]), styles["TableCell"])]
+            for row in rows
+        ]
+        story += [
+            report_quality._pdf_table(
+                ["Estudiante", "Núcleo 1", "Núcleo 2", "Núcleo 3", "Núcleo 4", "Estado"],
+                values,
+                [6.7 * cm, 1.65 * cm, 1.65 * cm, 1.65 * cm, 1.65 * cm, 3.6 * cm],
+            ),
+            Spacer(1, 0.2 * cm),
+        ]
+
+
 def install() -> None:
     if getattr(report_quality, "_workflow_report_runtime_installed", False):
         return
@@ -168,6 +246,10 @@ def install() -> None:
     original_pdf_definitions = report_completion._add_pdf_requirement_definitions
     current_docx_complexive = report_quality._docx_complexive
     current_pdf_complexive = report_quality._pdf_complexive
+    current_docx_heading = report_quality._docx_heading
+    current_pdf_heading = report_quality._pdf_heading
+    current_docx_caption = report_quality._docx_caption
+    current_pdf_caption = report_quality._pdf_caption
     original_content_flags = report_structure._content_flags
 
     def methodology(report_id: int, report: dict[str, Any]) -> list[str]:
@@ -230,6 +312,24 @@ def install() -> None:
         filtered, _blocked = _filtered_report(report)
         current_pdf_complexive(story, context, styles, filtered, temp_paths)
 
+    def docx_heading(document: Any, context: Any, level: int, title: str, page_break: bool = False):
+        if title == "Análisis del cumplimiento de requisitos de titulación":
+            title = "Análisis de requisitos previos para ingreso a Núcleos"
+        return current_docx_heading(document, context, level, title, page_break)
+
+    def pdf_heading(story: list[Any], context: Any, styles: Any, level: int, title: str, page_break: bool = False):
+        if title == "Análisis del cumplimiento de requisitos de titulación":
+            title = "Análisis de requisitos previos para ingreso a Núcleos"
+        return current_pdf_heading(story, context, styles, level, title, page_break)
+
+    def docx_caption(document: Any, text: str) -> None:
+        text = text.replace("Cumplimiento de los requisitos de titulación", "Cumplimiento de los requisitos previos para Núcleos")
+        current_docx_caption(document, text)
+
+    def pdf_caption(story: list[Any], styles: Any, text: str) -> None:
+        text = text.replace("Cumplimiento de los requisitos de titulación", "Cumplimiento de los requisitos previos para Núcleos")
+        current_pdf_caption(story, styles, text)
+
     def content_flags(report: dict[str, Any], report_id: int) -> dict[str, bool]:
         flags = original_content_flags(report, report_id)
         flags["complexive"] = bool(complexive_data(report)["totals"]["registered"])
@@ -254,8 +354,14 @@ def install() -> None:
     report_completion._automatic_incidents = incidents
     report_completion._add_docx_requirement_definitions = docx_definitions
     report_completion._add_pdf_requirement_definitions = pdf_definitions
+    report_completion._add_docx_eligibility = _add_docx_eligibility
+    report_completion._add_pdf_eligibility = _add_pdf_eligibility
     report_completion._executive_data = executive
     report_quality._docx_complexive = docx_complexive
     report_quality._pdf_complexive = pdf_complexive
+    report_quality._docx_heading = docx_heading
+    report_quality._pdf_heading = pdf_heading
+    report_quality._docx_caption = docx_caption
+    report_quality._pdf_caption = pdf_caption
     report_structure._content_flags = content_flags
     report_quality._workflow_report_runtime_installed = True
