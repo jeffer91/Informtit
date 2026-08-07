@@ -3,16 +3,12 @@ from __future__ import annotations
 import app as core
 import completion_routes
 import desktop_launcher
-import eligibility_runtime_fixes
 import layout_v3
 import nuclei_catalog_export
 import nuclei_export
 import nuclei_fixes
-import nuclei_matching_report
-import nuclei_matching_routes
 import nuclei_multicampus
 import nuclei_multicampus_report
-import nuclei_multicampus_workflow
 import nuclei_routes
 import optional_content
 import process_export
@@ -20,12 +16,10 @@ import process_routes
 import report_completion
 import report_completion_constants
 import report_completion_fixes
-import report_completion_runtime
+import report_decoupled
 import report_quality
 import report_quality_runtime
 import report_structure
-import workflow_report_fixes
-import workflow_report_runtime
 from completion_service import ensure_completion_schema
 from db import connection
 from import_service import ensure_schema
@@ -49,13 +43,12 @@ def prepare() -> None:
     with connection() as conn:
         apply_defaults(conn)
 
-    # desktop_launcher ya instaló sus rutas al importarse. Las extensiones
-    # siguientes deben quedar como la última capa utilizada por Electron.
+    # Las cuatro áreas del informe se conservan dentro del mismo proyecto,
+    # pero no se utilizan como filtros o puertas de acceso entre sí.
     layout_v3.install()
     process_routes.install()
     nuclei_routes.install()
     completion_routes.install()
-    nuclei_matching_routes.install()
     process_export.install()
     optional_content.install()
     report_structure.install()
@@ -64,16 +57,13 @@ def prepare() -> None:
     report_quality_runtime.install()
     report_quality.install()
     nuclei_multicampus_report.install()
-    nuclei_matching_report.install()
     report_completion_constants.install()
+
+    # Debe instalarse antes de report_completion para que sus envoltorios usen
+    # narrativas y cálculos independientes por módulo.
+    report_decoupled.install()
     report_completion.install()
     report_completion_fixes.install()
-    report_completion_runtime.install()
-    workflow_report_runtime.install()
-    workflow_report_fixes.install()
-    nuclei_multicampus_workflow.install()
-    # Última capa: unifica la función de habilitación utilizada por API e informes.
-    eligibility_runtime_fixes.install()
 
 
 def main() -> None:
