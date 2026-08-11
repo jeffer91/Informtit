@@ -14,6 +14,7 @@ import nuclei_routes
 import optional_content
 import process_export
 import process_routes
+import report_catalog_independent
 import report_completion
 import report_completion_constants
 import report_completion_fixes
@@ -72,6 +73,7 @@ def prepare() -> None:
     # Se instala al final para que las mejoras de redacción, tablas, gráficos,
     # cronogramas y referencias prevalezcan sobre las capas de compatibilidad.
     report_enhancements.install()
+    report_catalog_independent.install()
     report_table_style.install()
 
 
