@@ -18,8 +18,8 @@ class DecoupledModulesTests(unittest.TestCase):
                     "nucleus_number": 2,
                     "campus": "Sur",
                     "students": [
-                        {"full_name": "ESTUDIANTE UNO", "email": "uno@itsqmet.edu.ec", "final_grade": 9.5, "scores": []},
-                        {"full_name": "ESTUDIANTE DOS", "email": "dos@itsqmet.edu.ec", "final_grade": 8.0, "scores": []},
+                        {"full_name": "ESTUDIANTE UNO", "email": "uno@itsqmet.edu.ec", "final_grade": 9.5, "final_status": "Aprobado", "scores": []},
+                        {"full_name": "ESTUDIANTE DOS", "email": "dos@itsqmet.edu.ec", "final_grade": 8.0, "final_status": "Aprobado", "scores": []},
                     ],
                     "assessments": [],
                     "activity_averages": [],
@@ -37,17 +37,22 @@ class DecoupledModulesTests(unittest.TestCase):
         source = (ROOT / "static" / "nuclei-ui.js").read_text(encoding="utf-8")
         self.assertNotIn("/nuclei/eligibility", source)
         self.assertNotIn("Habilitación para Complexivo", source)
-        self.assertIn("Módulo independiente", source)
+        self.assertIn("/nuclei/import-excel", source)
+        self.assertIn("nombre_carrera", source)
+        self.assertIn("trabajoTitulacion", source)
 
-    def test_nuclei_ui_binds_delegated_events_only_once(self):
+    def test_nuclei_ui_uses_only_excel_upload(self):
         source = (ROOT / "static" / "nuclei-ui.js").read_text(encoding="utf-8")
         index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
         self.assertIn("if (tab.dataset.nucleiDelegatedBound === '1') return", source)
         self.assertIn("tab.addEventListener('click', handleTabClick)", source)
         self.assertIn("tab.addEventListener('change', handleTabChange)", source)
-        self.assertIn("form.dataset.nucleiSubmitBound", source)
-        self.assertIn("if (save.disabled || !currentAnalysis) return", source)
-        self.assertIn("if (remove.disabled", source)
+        self.assertIn("tab.addEventListener('submit', handleTabSubmit)", source)
+        self.assertIn("#nuclei-excel-form", source)
+        self.assertIn("readAsDataURL", source)
+        self.assertNotIn("grades_text", source)
+        self.assertNotIn("participants_text", source)
+        self.assertNotIn("nuclei-course-editor.js", index)
         self.assertNotIn("nuclei-controls-hotfix.js", index)
 
     def test_requirements_use_their_own_table(self):
