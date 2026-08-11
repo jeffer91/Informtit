@@ -28,7 +28,7 @@ jobs:
       - run: node --check static/report-structure-ui.js
       - run: node --check static/independent-modules-ui.js
       - run: node --check static/nuclei-ui.js
-      - run: node --check static/nuclei-controls-hotfix.js
+      - run: node --check static/nuclei-course-editor.js
       - run: node --check static/nuclei-matching-ui.js
       - run: node --check static/nuclei-minimal-guard.js
       - run: node --check static/nuclei-catalog-ui.js
