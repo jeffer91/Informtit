@@ -22,6 +22,7 @@ import report_enhancements
 import report_quality
 import report_quality_runtime
 import report_structure
+import report_table_style
 from completion_service import ensure_completion_schema
 from db import connection
 from import_service import ensure_schema
@@ -71,6 +72,7 @@ def prepare() -> None:
     # Se instala al final para que las mejoras de redacción, tablas, gráficos,
     # cronogramas y referencias prevalezcan sobre las capas de compatibilidad.
     report_enhancements.install()
+    report_table_style.install()
 
 
 def main() -> None:
