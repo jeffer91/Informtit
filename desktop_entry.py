@@ -18,6 +18,7 @@ import report_completion
 import report_completion_constants
 import report_completion_fixes
 import report_decoupled
+import report_enhancements
 import report_quality
 import report_quality_runtime
 import report_structure
@@ -66,6 +67,10 @@ def prepare() -> None:
     report_decoupled.install()
     report_completion.install()
     report_completion_fixes.install()
+
+    # Se instala al final para que las mejoras de redacción, tablas, gráficos,
+    # cronogramas y referencias prevalezcan sobre las capas de compatibilidad.
+    report_enhancements.install()
 
 
 def main() -> None:
