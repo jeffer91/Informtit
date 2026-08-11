@@ -213,7 +213,7 @@ def _subject_number_map(records: list[dict[str, str]]) -> dict[tuple[str, str], 
             by_career[career].append(subject)
 
     mapping: dict[tuple[str, str], int] = {}
-    stopwords = {"t", "nucleo", "nucleo", "de", "del", "la", "el", "y", "en", "para"}
+    stopwords = {"t", "nucleo", "de", "del", "la", "el", "y", "en", "para"}
     for career, subjects in by_career.items():
         catalog = catalog_for_career(career)
         used_by_subject: dict[str, int] = {}
@@ -338,11 +338,15 @@ def import_nuclei_excel(report_id: int, payload: dict[str, Any]) -> dict[str, An
                     "status": status,
                 }
             students = list(by_student.values())
-            numeric = [student["grade"] for student in students if student["grade"] is not None]
             approved = sum(student["status"] == "Aprobado" for student in students)
             failed = sum(student["status"] == "Reprobado" for student in students)
             unevaluated = sum(student["status"] == "No evaluado" for student in students)
-            average = round(mean(numeric), 2) if numeric else None
+            evaluated_numeric = [
+                student["grade"]
+                for student in students
+                if student["status"] in {"Aprobado", "Reprobado"} and student["grade"] is not None
+            ]
+            average = round(mean(evaluated_numeric), 2) if evaluated_numeric else None
 
             cursor = conn.execute(
                 """
@@ -366,7 +370,7 @@ def import_nuclei_excel(report_id: int, payload: dict[str, Any]) -> dict[str, An
                     coordinator.get("program", ""),
                     coordinator.get("telegram", ""),
                     len(students),
-                    len(numeric),
+                    approved + failed,
                     len(students),
                     average,
                     approved,
