@@ -2,11 +2,9 @@
   window.INFORMTIT_MINIMAL_NUCLEI = true;
 
   const previousRenderReport = renderReport;
-  let currentAnalysis = null;
-  let importOpen = false;
-  let selectedCourseCareer = '';
-  let selectedCourseCampus = '';
   let activeNucleiReportId = 0;
+  let selectedCareer = '';
+  let searchText = '';
 
   function esc(value = '') {
     return typeof escapeHtml === 'function'
@@ -39,21 +37,20 @@
     return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].sort(compareText);
   }
 
-  function assessmentName(value) {
-    if (typeof value === 'string') return value;
-    return value?.name || value?.assessment_name || 'Actividad';
+  function courseAverage(course) {
+    const value = Number(course?.course_average);
+    return Number.isFinite(value) ? value : null;
   }
 
-  function courseAverage(students) {
-    const values = (students || [])
-      .map(student => student.final_grade)
-      .filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)))
-      .map(Number);
-    if (!values.length) return null;
-    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  function statusCounts(course) {
+    const students = course?.students || [];
+    const approved = students.filter(student => normalize(student.final_status) === 'aprobado').length;
+    const failed = students.filter(student => normalize(student.final_status) === 'reprobado').length;
+    const pending = students.length - approved - failed;
+    return { approved, failed, pending };
   }
 
-  renderReport = function renderReportWithIndependentNuclei() {
+  renderReport = function renderReportWithExcelNuclei() {
     previousRenderReport();
     if (state.activeReport?.id) renderNucleiModule();
   };
@@ -65,216 +62,154 @@
 
     if (activeNucleiReportId !== reportId) {
       activeNucleiReportId = reportId;
-      importOpen = false;
-      currentAnalysis = null;
-      selectedCourseCareer = '';
-      selectedCourseCampus = '';
+      selectedCareer = '';
+      searchText = '';
     }
 
     tab.dataset.nucleiReportId = String(reportId);
     bindDelegatedEvents(tab);
     tab.innerHTML = '<div class="panel"><div class="empty-mini">Cargando Núcleos...</div></div>';
-    currentAnalysis = null;
 
     try {
-      const nuclei = await api(`/api/reports/${reportId}/nuclei`);
+      const data = await api(`/api/reports/${reportId}/nuclei`);
       if (Number(state.activeReport?.id || 0) !== reportId) return;
-      const courses = nuclei?.courses || [];
-      normalizeSelections(courses);
-      tab.innerHTML = minimalMarkup(courses);
+      const courses = data?.courses || [];
+      normalizeSelection(courses);
+      tab.innerHTML = markup(courses, data?.excel_import || null);
       tab.dataset.nucleiReportId = String(reportId);
-      bindImportForm(tab);
-      refreshCourseFilters(tab);
+      applyFilters(tab);
     } catch (error) {
       tab.innerHTML = `<div class="panel"><div class="empty-mini">${esc(error.message)}</div></div>`;
     }
   }
 
-  function normalizeSelections(courses) {
-    const careers = unique(courses.map(course => course.career_name || 'Sin carrera'));
-    if (!careers.some(career => normalize(career) === normalize(selectedCourseCareer))) {
-      selectedCourseCareer = careers[0] || '';
-      selectedCourseCampus = '';
+  function normalizeSelection(courses) {
+    const careers = unique(courses.map(course => course.career_name));
+    if (selectedCareer && !careers.some(career => normalize(career) === normalize(selectedCareer))) {
+      selectedCareer = '';
     }
   }
 
-  function minimalMarkup(courses) {
-    const totalStudents = courses.reduce((sum, course) => sum + Number((course.students || []).length), 0);
+  function markup(courses, excelImport) {
     return `
-      <div class="process-stack minimal-nuclei" data-minimal-nuclei>
-        <section class="panel minimal-nuclei-header">
-          <div class="panel-head minimal-main-head">
+      <div class="process-stack excel-nuclei" data-minimal-nuclei>
+        <section class="panel excel-nuclei-upload">
+          <div class="panel-head">
             <div>
               <h2>Núcleos</h2>
-              <p>Módulo independiente. Registra únicamente la información cargada desde Moodle; no se compara ni se condiciona por Requisitos, Examen Complexivo o Trabajo de Titulación.</p>
+              <p>Suba el Excel consolidado de Núcleos. Cada nueva carga reemplaza completamente la información anterior de este módulo.</p>
             </div>
-            <button class="button primary" type="button" data-toggle-nucleus-import aria-expanded="${importOpen ? 'true' : 'false'}">${importOpen ? 'Cerrar carga' : '+ Cargar núcleo'}</button>
           </div>
-          ${courses.length ? `<div class="minimal-module-summary"><span>${courses.length} curso${courses.length === 1 ? '' : 's'} cargado${courses.length === 1 ? '' : 's'}</span><span>${totalStudents} registro${totalStudents === 1 ? '' : 's'} de estudiante en total</span></div>` : ''}
+          <form id="nuclei-excel-form" class="nuclei-excel-form">
+            <label class="nuclei-file-field">Archivo Excel (.xlsx)
+              <input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+              <small>Columnas requeridas: nombre_carrera, nombre_profesor, nombre_estudiante, materia, nota_final, estado y trabajoTitulacion.</small>
+            </label>
+            <button class="button primary" type="submit">Subir Excel y reemplazar Núcleos</button>
+          </form>
+          ${importSummaryMarkup(excelImport)}
         </section>
 
-        ${importMarkup()}
-
-        <section class="panel minimal-courses-panel">
+        <section class="panel excel-nuclei-results">
           <div class="panel-head">
-            <div><h2>Cursos cargados</h2><p>Cada curso conserva sus propios participantes, notas, docente y sede. Las notas se muestran solo al abrir el curso.</p></div>
+            <div>
+              <h2>Información importada</h2>
+              <p>Los datos se muestran tal como llegan en el Excel. El campo estado del archivo es el resultado académico oficial del registro.</p>
+            </div>
           </div>
           ${coursesMarkup(courses)}
         </section>
       </div>`;
   }
 
-  function importMarkup() {
-    return `<section class="panel minimal-import-panel" data-nucleus-import-panel ${importOpen ? '' : 'hidden'}>
-      <div class="panel-head">
-        <div><h2>Cargar núcleo</h2><p>Pegue las calificaciones y los participantes del curso Moodle. Todos los estudiantes detectados en esta carga se registran dentro de este módulo.</p></div>
-      </div>
-      <form id="nucleus-import-form" class="minimal-import-form">
-        <div class="minimal-paste-grid">
-          <label>Calificaciones Moodle
-            <textarea name="grades_text" rows="12" required placeholder="Pegue aquí el libro de calificaciones del núcleo."></textarea>
-          </label>
-          <label>Participantes Moodle
-            <textarea name="participants_text" rows="12" placeholder="Pegue aquí la lista de participantes para detectar al docente."></textarea>
-          </label>
-        </div>
-        <details class="minimal-manual-options">
-          <summary>Opciones manuales</summary>
-          <div class="form-grid">
-            <label>Carrera, solo si no se detecta
-              <input name="career_name" placeholder="Ej.: Enfermería">
-            </label>
-            <label>Número de núcleo, solo si no se detecta
-              <input name="nucleus_number" type="number" min="1" max="20" placeholder="1">
-            </label>
-          </div>
-        </details>
-        <div class="form-actions">
-          <button class="button primary" type="submit">Analizar</button>
-          <button class="button secondary" type="button" data-cancel-nucleus-import>Cancelar</button>
-        </div>
-      </form>
-      <div id="nucleus-preview"></div>
-    </section>`;
+  function importSummaryMarkup(summary) {
+    if (!summary) {
+      return '<div class="empty-mini nuclei-import-empty">Todavía no se ha cargado el Excel consolidado de Núcleos.</div>';
+    }
+    return `<div class="nuclei-import-summary">
+      <div><strong>${Number(summary.students || 0)}</strong><span>Estudiantes</span></div>
+      <div><strong>${Number(summary.careers || 0)}</strong><span>Carreras</span></div>
+      <div><strong>${Number(summary.imported_rows || 0)}</strong><span>Registros importados</span></div>
+      <div><strong>${Number(summary.courses || 0)}</strong><span>Materias / grupos</span></div>
+      <div><strong>${Number(summary.duplicate_rows || 0)}</strong><span>Duplicados omitidos</span></div>
+      <div class="nuclei-import-file"><strong>${esc(summary.filename || 'Excel de Núcleos')}</strong><span>Último archivo cargado</span></div>
+    </div>`;
   }
 
   function coursesMarkup(courses) {
-    if (!courses.length) return '<div class="empty-mini">Todavía no existen cursos de Núcleos cargados.</div>';
-    const careers = unique(courses.map(course => course.career_name || 'Sin carrera'));
-    const campuses = unique(
-      courses
-        .filter(course => !selectedCourseCareer || normalize(course.career_name || 'Sin carrera') === normalize(selectedCourseCareer))
-        .map(course => course.campus)
-    );
+    if (!courses.length) {
+      return '<div class="empty-mini">Suba el Excel para cargar la información de Núcleos.</div>';
+    }
+    const careers = unique(courses.map(course => course.career_name));
+    const totalRecords = courses.reduce((sum, course) => sum + Number((course.students || []).length), 0);
     return `
-      <div class="minimal-course-filters">
-        <label>Carrera
-          <select data-course-career-filter>
-            ${careers.map(career => `<option value="${esc(career)}" ${normalize(career) === normalize(selectedCourseCareer) ? 'selected' : ''}>${esc(career)}</option>`).join('')}
-          </select>
-        </label>
-        <label>Sede
-          <select data-course-campus-filter>
-            <option value="">Todas</option>
-            ${campuses.map(campus => `<option value="${esc(campus)}" ${normalize(campus) === normalize(selectedCourseCampus) ? 'selected' : ''}>${esc(campus)}</option>`).join('')}
-          </select>
-        </label>
+      <div class="nuclei-result-bar">
+        <div class="nuclei-result-count">${courses.length} materia${courses.length === 1 ? '' : 's'} / grupo${courses.length === 1 ? '' : 's'} · ${totalRecords} registros</div>
+        <div class="nuclei-result-filters">
+          <label>Carrera
+            <select data-nuclei-career-filter>
+              <option value="">Todas</option>
+              ${careers.map(career => `<option value="${esc(career)}" ${normalize(career) === normalize(selectedCareer) ? 'selected' : ''}>${esc(career)}</option>`).join('')}
+            </select>
+          </label>
+          <label>Buscar
+            <input data-nuclei-search value="${esc(searchText)}" placeholder="Materia, docente o estudiante">
+          </label>
+        </div>
       </div>
-      <div class="minimal-course-list">
+      <div class="nuclei-course-list">
         ${courses
           .slice()
-          .sort((left, right) => compareText(left.career_name, right.career_name) || compareText(left.campus, right.campus) || Number(left.nucleus_number) - Number(right.nucleus_number))
-          .map(courseRowMarkup)
+          .sort((left, right) => compareText(left.career_name, right.career_name) || Number(left.nucleus_number || 0) - Number(right.nucleus_number || 0) || compareText(left.course_title, right.course_title) || compareText(left.teacher_name, right.teacher_name))
+          .map(courseMarkup)
           .join('')}
       </div>`;
   }
 
-  function courseRowMarkup(course) {
+  function courseMarkup(course) {
     const students = course.students || [];
-    const graded = students.filter(student => student.final_grade !== null && student.final_grade !== undefined && Number.isFinite(Number(student.final_grade)));
-    const approved = graded.filter(student => Number(student.final_grade) >= 7).length;
-    const failed = graded.filter(student => Number(student.final_grade) < 7).length;
-    const pending = students.length - graded.length;
-    const average = courseAverage(students);
-    const campus = String(course.campus || '').trim() || 'Sede no indicada';
-    const stateText = pending
-      ? `${pending} sin nota`
-      : failed
-        ? `${failed} reprobado${failed === 1 ? '' : 's'}`
-        : students.length
-          ? 'Sin reprobados'
-          : 'Sin estudiantes';
-    const detailsId = `minimal-course-${Number(course.id)}`;
-    return `<article class="minimal-course-row" data-minimal-course data-career="${esc(course.career_name || 'Sin carrera')}" data-campus="${esc(course.campus || '')}">
-      <div class="minimal-course-main">
-        <div class="minimal-course-title">
-          <strong>${esc(course.career_name || 'Sin carrera')} · ${esc(campus)}</strong>
-          <span>Núcleo ${Number(course.nucleus_number || 0)} · ${esc(course.teacher_name || 'Docente pendiente')}</span>
+    const counts = statusCounts(course);
+    const title = course.course_title || `Núcleo ${Number(course.nucleus_number || 0)}`;
+    const detailId = `excel-nucleus-${Number(course.id)}`;
+    const searchable = normalize([
+      course.career_name,
+      title,
+      course.teacher_name,
+      ...students.map(student => student.full_name),
+    ].join(' '));
+    return `<article class="nuclei-course-row" data-excel-nucleus-course data-career="${esc(course.career_name || '')}" data-search="${esc(searchable)}">
+      <div class="nuclei-course-main">
+        <div class="nuclei-course-title">
+          <strong>${esc(course.career_name || 'Sin carrera')}</strong>
+          <span>${esc(title)}</span>
+          <small>${esc(course.teacher_name || 'Docente no registrado')}</small>
         </div>
-        <div class="minimal-course-stats">
+        <div class="nuclei-course-stats">
           <span>${students.length} estudiante${students.length === 1 ? '' : 's'}</span>
-          <span>Promedio ${fmt(average)}</span>
-          <span class="${failed || pending ? 'minimal-result-fail' : 'minimal-result-ok'}">${stateText}</span>
+          <span>Promedio ${fmt(courseAverage(course))}</span>
+          <span class="nuclei-status-ok">${counts.approved} APR</span>
+          ${counts.failed ? `<span class="nuclei-status-fail">${counts.failed} REP</span>` : ''}
+          ${counts.pending ? `<span class="nuclei-status-pending">${counts.pending} sin evaluación</span>` : ''}
         </div>
-        <div class="minimal-course-actions">
-          <button class="button secondary small" type="button" data-toggle-course="${detailsId}">Ver</button>
-          <button class="button danger small" type="button" data-delete-nucleus="${Number(course.id)}">Eliminar</button>
-        </div>
+        <button class="button secondary small" type="button" data-toggle-nuclei-course="${detailId}">Ver estudiantes</button>
       </div>
-      <div class="minimal-course-detail" id="${detailsId}" hidden>
-        <div class="minimal-course-meta">
-          ${course.module_code ? `<span>Mod ${esc(course.module_code)}</span>` : ''}
-          ${course.period_label ? `<span>${esc(course.period_label)}</span>` : ''}
-          ${course.group_code ? `<span>${esc(course.group_code)}</span>` : ''}
-          ${course.schedule ? `<span>${esc(course.schedule)}</span>` : ''}
-          <span>${approved} aprobado${approved === 1 ? '' : 's'}</span>
-          ${failed ? `<span>${failed} reprobado${failed === 1 ? '' : 's'}</span>` : ''}
-        </div>
-        ${students.length ? studentsTable(course, students) : '<div class="empty-mini">Este curso no contiene estudiantes registrados.</div>'}
+      <div class="nuclei-course-detail" id="${detailId}" hidden>
+        ${studentsTable(students)}
       </div>
     </article>`;
   }
 
-  function studentsTable(course, students) {
-    const assessments = course.assessments || [];
-    return `<div class="student-table-wrap minimal-course-table-wrap">
-      <table class="student-table compact-table minimal-course-table">
-        <thead><tr><th>Estudiante</th><th>Correo</th>${assessments.map(item => `<th>${esc(assessmentName(item))}</th>`).join('')}<th>Total</th><th>Estado</th></tr></thead>
+  function studentsTable(students) {
+    return `<div class="student-table-wrap nuclei-student-table-wrap">
+      <table class="student-table compact-table nuclei-student-table">
+        <thead><tr><th>Estudiante</th><th>Nota final</th><th>Estado</th></tr></thead>
         <tbody>${students.map(student => `<tr>
-          <td>${esc(student.full_name)}</td>
-          <td>${esc(student.email || '—')}</td>
-          ${(student.scores || []).map(score => `<td>${fmt(score.grade)}</td>`).join('')}
+          <td>${esc(student.full_name || '—')}</td>
           <td><strong>${fmt(student.final_grade)}</strong></td>
-          <td>${esc(student.final_status || (student.final_grade == null ? 'Sin nota' : Number(student.final_grade) >= 7 ? 'Aprobado' : 'Reprobado'))}</td>
+          <td>${esc(student.final_status || 'No evaluado')}</td>
         </tr>`).join('')}</tbody>
       </table>
     </div>`;
-  }
-
-  function reportIdForTab(tab) {
-    return Number(tab?.dataset.nucleiReportId || state.activeReport?.id || 0);
-  }
-
-  function setImportState(tab, open) {
-    importOpen = Boolean(open);
-    if (!importOpen) currentAnalysis = null;
-    const panel = tab.querySelector('[data-nucleus-import-panel]');
-    const toggle = tab.querySelector('[data-toggle-nucleus-import]');
-    if (panel) {
-      panel.hidden = !importOpen;
-      if (importOpen) panel.removeAttribute('hidden');
-      else panel.setAttribute('hidden', '');
-    }
-    if (toggle) {
-      toggle.textContent = importOpen ? 'Cerrar carga' : '+ Cargar núcleo';
-      toggle.setAttribute('aria-expanded', importOpen ? 'true' : 'false');
-    }
-    if (importOpen && panel) {
-      requestAnimationFrame(() => {
-        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        panel.querySelector('textarea[name="grades_text"]')?.focus({ preventScroll: true });
-      });
-    }
   }
 
   function bindDelegatedEvents(tab) {
@@ -282,214 +217,142 @@
     tab.dataset.nucleiDelegatedBound = '1';
     tab.addEventListener('click', handleTabClick);
     tab.addEventListener('change', handleTabChange);
+    tab.addEventListener('input', handleTabInput);
+    tab.addEventListener('submit', handleTabSubmit);
   }
 
-  async function handleTabClick(event) {
+  function reportIdForTab(tab) {
+    return Number(tab?.dataset.nucleiReportId || state.activeReport?.id || 0);
+  }
+
+  async function handleTabSubmit(event) {
+    const form = event.target.closest('#nuclei-excel-form');
+    if (!form) return;
+    event.preventDefault();
     const tab = event.currentTarget;
     const reportId = reportIdForTab(tab);
     if (!reportId) return;
 
-    const toggleImport = event.target.closest('[data-toggle-nucleus-import]');
-    if (toggleImport) {
-      event.preventDefault();
-      setImportState(tab, !importOpen);
+    const file = form.elements.file?.files?.[0];
+    if (!file) {
+      toast('Seleccione el Excel de Núcleos.', true);
       return;
     }
-
-    if (event.target.closest('[data-cancel-nucleus-import]')) {
-      event.preventDefault();
-      setImportState(tab, false);
+    if (!/\.xlsx$/i.test(file.name)) {
+      toast('El archivo debe tener extensión .xlsx.', true);
       return;
     }
+    if (!confirm('Esta carga reemplazará toda la información actual del módulo Núcleos. ¿Continuar?')) return;
 
-    const toggleCourse = event.target.closest('[data-toggle-course]');
-    if (toggleCourse) {
-      const detail = tab.querySelector(`#${CSS.escape(toggleCourse.dataset.toggleCourse)}`);
-      if (detail) {
-        detail.hidden = !detail.hidden;
-        toggleCourse.textContent = detail.hidden ? 'Ver' : 'Ocultar';
-      }
-      return;
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit?.disabled) return;
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = 'Importando...';
     }
 
-    const remove = event.target.closest('[data-delete-nucleus]');
-    if (remove) {
-      if (remove.disabled || !confirm('¿Eliminar este curso de Núcleos y todas sus notas?')) return;
-      remove.disabled = true;
-      try {
-        await api(`/api/reports/${reportId}/nuclei/${remove.dataset.deleteNucleus}`, { method: 'DELETE', body: '{}' });
-        toast('Curso de Núcleos eliminado.');
-        await renderNucleiModule();
-      } catch (error) {
-        toast(error.message, true);
-        if (document.contains(remove)) remove.disabled = false;
-      }
-      return;
-    }
-
-    const save = event.target.closest('[data-save-nucleus]');
-    if (save) {
-      if (save.disabled || !currentAnalysis) return;
-      save.disabled = true;
-      const teacher = tab.querySelector('[name="nucleus_teacher"]')?.value || currentAnalysis.teacher_name || '';
-      try {
-        const result = await api(`/api/reports/${reportId}/nuclei`, {
-          method: 'POST',
-          body: JSON.stringify({
-            grades_text: currentAnalysis.grades_text,
-            participants_text: currentAnalysis.participants_text,
-            career_name: currentAnalysis.career_name,
-            nucleus_number: currentAnalysis.nucleus_number,
-            teacher_name: teacher,
-          }),
-        });
-        selectedCourseCareer = result.analysis.career_name || selectedCourseCareer;
-        selectedCourseCampus = result.analysis.campus || selectedCourseCampus;
-        importOpen = false;
-        currentAnalysis = null;
-        toast(`Núcleo ${result.analysis.nucleus_number} guardado con ${result.analysis.students?.length || 0} estudiantes.`);
-        await renderNucleiModule();
-      } catch (error) {
-        toast(error.message, true);
-        if (document.contains(save)) save.disabled = false;
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const result = await api(`/api/reports/${reportId}/nuclei/import-excel`, {
+        method: 'POST',
+        body: JSON.stringify({ filename: file.name, data_url: dataUrl }),
+      });
+      const summary = result.summary || {};
+      toast(`Excel cargado: ${Number(summary.imported_rows || 0)} registros y ${Number(summary.students || 0)} estudiantes.`);
+      selectedCareer = '';
+      searchText = '';
+      await renderNucleiModule();
+    } catch (error) {
+      toast(error.message, true);
+      if (submit && document.contains(submit)) {
+        submit.disabled = false;
+        submit.textContent = 'Subir Excel y reemplazar Núcleos';
       }
     }
+  }
+
+  function handleTabClick(event) {
+    const button = event.target.closest('[data-toggle-nuclei-course]');
+    if (!button) return;
+    const tab = event.currentTarget;
+    const detail = tab.querySelector(`#${CSS.escape(button.dataset.toggleNucleiCourse)}`);
+    if (!detail) return;
+    detail.hidden = !detail.hidden;
+    button.textContent = detail.hidden ? 'Ver estudiantes' : 'Ocultar estudiantes';
   }
 
   function handleTabChange(event) {
-    const tab = event.currentTarget;
-    if (event.target.matches('[data-course-career-filter]')) {
-      selectedCourseCareer = event.target.value;
-      selectedCourseCampus = '';
-      rebuildCampusOptions(tab);
-      refreshCourseFilters(tab);
-    } else if (event.target.matches('[data-course-campus-filter]')) {
-      selectedCourseCampus = event.target.value;
-      refreshCourseFilters(tab);
-    }
+    if (!event.target.matches('[data-nuclei-career-filter]')) return;
+    selectedCareer = event.target.value;
+    applyFilters(event.currentTarget);
   }
 
-  function bindImportForm(tab) {
-    const form = tab.querySelector('#nucleus-import-form');
-    if (!form || form.dataset.nucleiSubmitBound === '1') return;
-    form.dataset.nucleiSubmitBound = '1';
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-      const reportId = reportIdForTab(tab);
-      if (!reportId) return;
-      const submit = form.querySelector('button[type="submit"]');
-      if (submit?.disabled) return;
-      if (submit) submit.disabled = true;
-      const payload = {
-        grades_text: form.elements.grades_text.value,
-        participants_text: form.elements.participants_text.value,
-        career_name: form.elements.career_name.value.trim(),
-        nucleus_number: form.elements.nucleus_number.value ? Number(form.elements.nucleus_number.value) : null,
-      };
-      try {
-        const result = await api(`/api/reports/${reportId}/nuclei/analyze`, { method: 'POST', body: JSON.stringify(payload) });
-        if (reportIdForTab(tab) !== reportId) return;
-        currentAnalysis = { ...payload, ...result.analysis };
-        renderPreview(result.analysis, tab);
-      } catch (error) {
-        toast(error.message, true);
-      } finally {
-        if (submit && document.contains(submit)) submit.disabled = false;
-      }
+  function handleTabInput(event) {
+    if (!event.target.matches('[data-nuclei-search]')) return;
+    searchText = event.target.value;
+    applyFilters(event.currentTarget);
+  }
+
+  function applyFilters(tab) {
+    const career = tab.querySelector('[data-nuclei-career-filter]')?.value || selectedCareer;
+    const query = normalize(tab.querySelector('[data-nuclei-search]')?.value || searchText);
+    selectedCareer = career;
+    searchText = tab.querySelector('[data-nuclei-search]')?.value || searchText;
+    tab.querySelectorAll('[data-excel-nucleus-course]').forEach(card => {
+      const sameCareer = !career || normalize(card.dataset.career) === normalize(career);
+      const matchesSearch = !query || String(card.dataset.search || '').includes(query);
+      card.hidden = !(sameCareer && matchesSearch);
     });
   }
 
-  function renderPreview(analysis, tab) {
-    const preview = tab.querySelector('#nucleus-preview');
-    if (!preview) return;
-    const students = analysis.students || [];
-    const candidates = analysis.teacher_candidates || [];
-    const teacherControl = analysis.teacher_name
-      ? `<input name="nucleus_teacher" value="${esc(analysis.teacher_name)}">`
-      : candidates.length
-        ? `<select name="nucleus_teacher" required><option value="">Seleccione el docente</option>${candidates.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('')}</select>`
-        : '<input name="nucleus_teacher" placeholder="Nombre del docente">';
-    const campus = analysis.campus || 'Sede no indicada';
-    preview.innerHTML = `<div class="minimal-preview">
-      <div class="minimal-preview-head">
-        <div><strong>${esc(analysis.career_name)} · ${esc(campus)} · Núcleo ${Number(analysis.nucleus_number || 0)}</strong><span>${students.length} estudiante${students.length === 1 ? '' : 's'} detectado${students.length === 1 ? '' : 's'}; todos se guardarán en este módulo.</span></div>
-        <button class="button primary" type="button" data-save-nucleus>Guardar núcleo</button>
-      </div>
-      <label class="minimal-teacher-field">Docente${teacherControl}</label>
-      ${students.length ? studentsTable(analysis, students) : '<div class="empty-mini">No se detectaron estudiantes en las calificaciones pegadas.</div>'}
-    </div>`;
-  }
-
-  function rebuildCampusOptions(tab) {
-    const career = tab.querySelector('[data-course-career-filter]')?.value || selectedCourseCareer;
-    const campusSelect = tab.querySelector('[data-course-campus-filter]');
-    if (!campusSelect) return;
-    const campuses = unique(
-      [...tab.querySelectorAll('[data-minimal-course]')]
-        .filter(card => !career || normalize(card.dataset.career) === normalize(career))
-        .map(card => card.dataset.campus)
-    );
-    campusSelect.innerHTML = '<option value="">Todas</option>' + campuses.map(campus => `<option value="${esc(campus)}">${esc(campus)}</option>`).join('');
-    campusSelect.value = '';
-    selectedCourseCampus = '';
-  }
-
-  function refreshCourseFilters(tab) {
-    const cards = [...tab.querySelectorAll('[data-minimal-course]')];
-    const careerFilter = tab.querySelector('[data-course-career-filter]');
-    const campusFilter = tab.querySelector('[data-course-campus-filter]');
-    const career = careerFilter?.value || selectedCourseCareer;
-    const campus = campusFilter?.value || selectedCourseCampus;
-    selectedCourseCareer = career;
-    selectedCourseCampus = campus;
-    cards.forEach(card => {
-      const sameCareer = !career || normalize(card.dataset.career) === normalize(career);
-      const sameCampus = !campus || normalize(card.dataset.campus) === normalize(campus);
-      card.hidden = !(sameCareer && sameCampus);
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo seleccionado.'));
+      reader.readAsDataURL(file);
     });
   }
 
   const style = document.createElement('style');
   style.textContent = `
-    .minimal-nuclei { gap: 14px; }
-    .minimal-main-head { align-items: center; }
-    .minimal-main-head p { margin: 4px 0 0; color: #64748b; max-width: 900px; }
-    .minimal-module-summary { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; color: #64748b; font-size: 12px; font-weight: 700; }
-    .minimal-import-panel[hidden], .minimal-course-row[hidden], .minimal-course-detail[hidden] { display: none !important; }
-    .minimal-import-form { display: grid; gap: 14px; }
-    .minimal-paste-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .minimal-paste-grid textarea { min-height: 230px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
-    .minimal-manual-options { padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
-    .minimal-manual-options summary { cursor: pointer; font-weight: 700; color: #475569; }
-    .minimal-manual-options .form-grid { margin-top: 12px; }
-    .minimal-course-filters { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(180px, .7fr); gap: 12px; margin: 10px 0 14px; }
-    .minimal-course-list { display: grid; gap: 8px; }
-    .minimal-course-row { border: 1px solid #e2e8f0; border-radius: 13px; background: white; overflow: hidden; }
-    .minimal-course-main { display: grid; grid-template-columns: minmax(260px, 1.5fr) minmax(280px, 1fr) auto; gap: 16px; align-items: center; padding: 13px 15px; }
-    .minimal-course-title { display: grid; gap: 3px; }
-    .minimal-course-title strong { color: #173b57; }
-    .minimal-course-title span, .minimal-course-stats span { color: #64748b; font-size: 13px; }
-    .minimal-course-stats { display: flex; gap: 12px; flex-wrap: wrap; }
-    .minimal-result-ok { color: #166534 !important; font-weight: 700; }
-    .minimal-result-fail { color: #991b1b !important; font-weight: 700; }
-    .minimal-course-actions { display: flex; gap: 7px; }
-    .minimal-course-detail { padding: 0 15px 15px; border-top: 1px solid #edf2f7; }
-    .minimal-course-meta { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 0; }
-    .minimal-course-meta span { padding: 4px 8px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 700; }
-    .minimal-course-table-wrap { max-height: 420px; overflow: auto; }
-    .minimal-course-table { min-width: 900px; }
-    .minimal-preview { margin-top: 16px; padding: 14px; border: 1px solid #cbd5e1; border-radius: 13px; background: #f8fafc; }
-    .minimal-preview-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
-    .minimal-preview-head > div { display: grid; gap: 3px; }
-    .minimal-preview-head span { color: #64748b; font-size: 12px; }
-    .minimal-teacher-field { display: block; max-width: 520px; margin: 12px 0; }
-    @media (max-width: 1000px) {
-      .minimal-course-main { grid-template-columns: 1fr; }
-      .minimal-course-actions { justify-content: flex-start; }
-      .minimal-paste-grid, .minimal-course-filters { grid-template-columns: 1fr; }
+    .excel-nuclei { gap: 14px; }
+    .excel-nuclei-upload .panel-head p, .excel-nuclei-results .panel-head p { margin: 4px 0 0; color: #64748b; max-width: 920px; }
+    .nuclei-excel-form { display: grid; grid-template-columns: minmax(280px, 1fr) auto; gap: 14px; align-items: end; margin-top: 12px; }
+    .nuclei-file-field { display: grid; gap: 7px; }
+    .nuclei-file-field input { min-height: 42px; }
+    .nuclei-file-field small { color: #64748b; font-size: 11px; }
+    .nuclei-import-empty { margin-top: 14px; }
+    .nuclei-import-summary { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)) minmax(220px, 1.4fr); gap: 9px; margin-top: 14px; }
+    .nuclei-import-summary > div { padding: 11px 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; display: grid; gap: 2px; }
+    .nuclei-import-summary strong { color: #173b57; font-size: 16px; }
+    .nuclei-import-summary span { color: #64748b; font-size: 11px; }
+    .nuclei-import-file strong { font-size: 12px; overflow-wrap: anywhere; }
+    .nuclei-result-bar { display: grid; gap: 12px; margin: 10px 0 14px; }
+    .nuclei-result-count { color: #64748b; font-size: 12px; font-weight: 700; }
+    .nuclei-result-filters { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(280px, 1fr); gap: 12px; }
+    .nuclei-course-list { display: grid; gap: 8px; }
+    .nuclei-course-row { border: 1px solid #e2e8f0; border-radius: 13px; background: white; overflow: hidden; }
+    .nuclei-course-row[hidden], .nuclei-course-detail[hidden] { display: none !important; }
+    .nuclei-course-main { display: grid; grid-template-columns: minmax(320px, 1.4fr) minmax(300px, 1fr) auto; gap: 14px; align-items: center; padding: 13px 15px; }
+    .nuclei-course-title { display: grid; gap: 3px; }
+    .nuclei-course-title strong { color: #173b57; }
+    .nuclei-course-title span { color: #334155; font-size: 13px; font-weight: 700; }
+    .nuclei-course-title small { color: #64748b; font-size: 12px; }
+    .nuclei-course-stats { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+    .nuclei-course-stats span { color: #64748b; font-size: 12px; }
+    .nuclei-status-ok { color: #166534 !important; font-weight: 800; }
+    .nuclei-status-fail { color: #991b1b !important; font-weight: 800; }
+    .nuclei-status-pending { color: #92400e !important; font-weight: 800; }
+    .nuclei-course-detail { padding: 0 15px 15px; border-top: 1px solid #edf2f7; }
+    .nuclei-student-table-wrap { max-height: 390px; overflow: auto; margin-top: 12px; }
+    .nuclei-student-table { min-width: 640px; }
+    @media (max-width: 1100px) {
+      .nuclei-import-summary { grid-template-columns: repeat(3, 1fr); }
+      .nuclei-course-main { grid-template-columns: 1fr; }
     }
-    @media (max-width: 620px) {
-      .minimal-preview-head { align-items: stretch; flex-direction: column; }
+    @media (max-width: 760px) {
+      .nuclei-excel-form, .nuclei-result-filters, .nuclei-import-summary { grid-template-columns: 1fr; }
     }
   `;
   document.head.appendChild(style);
