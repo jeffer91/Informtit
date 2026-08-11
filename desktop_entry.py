@@ -6,6 +6,7 @@ import desktop_launcher
 import layout_v3
 import nuclei_catalog_export
 import nuclei_course_edit
+import nuclei_excel_report
 import nuclei_export
 import nuclei_fixes
 import nuclei_multicampus
@@ -75,6 +76,9 @@ def prepare() -> None:
     report_enhancements.install()
     report_catalog_independent.install()
     report_table_style.install()
+
+    # La salida de Núcleos usa el Excel consolidado como fuente oficial.
+    nuclei_excel_report.install()
 
 
 def main() -> None:
