@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
+import report_catalog_independent
 import report_enhancements
 
 
@@ -56,6 +57,17 @@ class ReportEnhancementsTest(unittest.TestCase):
             report_enhancements._pretty_assessment("TALLER PRÁCTICO 1"),
             "Taller práctico 1",
         )
+
+    def test_academic_catalog_can_come_from_independent_nuclei_module(self) -> None:
+        report = {"id": 77, "careers": []}
+        with patch.object(
+            report_catalog_independent,
+            "get_nuclei",
+            return_value={"courses": [{"career_name": "Administración"}]},
+        ):
+            catalogs = report_catalog_independent.catalogs_for_independent_report(report)
+        self.assertEqual([item["career"] for item in catalogs], ["Administración"])
+        self.assertEqual(len(catalogs[0]["nuclei"]), 4)
 
 
 if __name__ == "__main__":
