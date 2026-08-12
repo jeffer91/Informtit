@@ -14,17 +14,18 @@ from process_service import (
     replace_schedule,
     reset_schedule,
 )
-from thesis_independent import parse_project_text
+from thesis_independent import analyze_project_text, ensure_thesis_schema, parse_project_text, save_project_data
 
 
-BACKEND_VERSION = "1.2"
-CAPABILITIES = ["roster", "complexive", "schedules", "thesis_projects", "independent_modules"]
+BACKEND_VERSION = "1.3"
+CAPABILITIES = ["roster", "complexive", "schedules", "thesis_projects", "independent_modules", "thesis_preview"]
 
 
 def install() -> None:
     """Instala rutas de cronogramas y Trabajo de Titulación independiente."""
 
     ensure_process_schema()
+    ensure_thesis_schema()
     original_get = core.InformtitHandler._handle_api_get
     original_write = core.InformtitHandler._handle_api_write
 
@@ -53,9 +54,7 @@ def install() -> None:
 
         match = re.fullmatch(r"/api/reports/(\d+)/projects", path)
         if match:
-            self._send_json(
-                {"ok": True, **get_projects(int(match.group(1)))}
-            )
+            self._send_json({"ok": True, **get_projects(int(match.group(1)))})
             return
 
         original_get(self, path, query)
@@ -66,36 +65,22 @@ def install() -> None:
         path: str,
         payload: dict[str, Any],
     ) -> None:
-        match = re.fullmatch(
-            r"/api/reports/(\d+)/schedules/(complexive|thesis)", path
-        )
+        match = re.fullmatch(r"/api/reports/(\d+)/schedules/(complexive|thesis)", path)
         if match and method == "PUT":
             report_id = int(match.group(1))
             schedule_type = match.group(2)
             entries = payload.get("entries")
             if not isinstance(entries, list):
-                raise ValueError(
-                    "Envíe las actividades del cronograma como una lista."
-                )
-            self._send_json(
-                replace_schedule(report_id, schedule_type, entries)
-            )
+                raise ValueError("Envíe las actividades del cronograma como una lista.")
+            self._send_json(replace_schedule(report_id, schedule_type, entries))
             return
 
-        match = re.fullmatch(
-            r"/api/reports/(\d+)/schedules/(complexive|thesis)/reset",
-            path,
-        )
+        match = re.fullmatch(r"/api/reports/(\d+)/schedules/(complexive|thesis)/reset", path)
         if match and method == "POST":
-            self._send_json(
-                reset_schedule(int(match.group(1)), match.group(2))
-            )
+            self._send_json(reset_schedule(int(match.group(1)), match.group(2)))
             return
 
-        match = re.fullmatch(
-            r"/api/reports/(\d+)/schedules/(complexive|thesis)/parse",
-            path,
-        )
+        match = re.fullmatch(r"/api/reports/(\d+)/schedules/(complexive|thesis)/parse", path)
         if match and method == "POST":
             schedule_type = match.group(2)
             if payload.get("data_url"):
@@ -105,28 +90,31 @@ def install() -> None:
                     schedule_type,
                 )
             else:
-                entries = parse_schedule_text(
-                    str(payload.get("text") or ""), schedule_type
-                )
+                entries = parse_schedule_text(str(payload.get("text") or ""), schedule_type)
             if not entries:
-                raise ValueError(
-                    "No se detectaron actividades con fecha de inicio y fin."
-                )
+                raise ValueError("No se detectaron actividades con fecha de inicio y fin.")
             self._send_json({"ok": True, "entries": entries})
             return
 
+        match = re.fullmatch(r"/api/reports/(\d+)/projects/analyze", path)
+        if match and method == "POST":
+            self._send_json(analyze_project_text(int(match.group(1)), payload))
+            return
+
+        match = re.fullmatch(r"/api/reports/(\d+)/projects/save", path)
+        if match and method == "POST":
+            self._send_json(save_project_data(int(match.group(1)), payload), 201)
+            return
+
+        # Ruta de compatibilidad para clientes antiguos.
         match = re.fullmatch(r"/api/reports/(\d+)/projects/parse", path)
         if match and method == "POST":
-            self._send_json(
-                parse_project_text(int(match.group(1)), payload), 201
-            )
+            self._send_json(parse_project_text(int(match.group(1)), payload), 201)
             return
 
         match = re.fullmatch(r"/api/reports/(\d+)/projects/(\d+)", path)
         if match and method == "DELETE":
-            self._send_json(
-                delete_project(int(match.group(1)), int(match.group(2)))
-            )
+            self._send_json(delete_project(int(match.group(1)), int(match.group(2))))
             return
 
         original_write(self, method, path, payload)
