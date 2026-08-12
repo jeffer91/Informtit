@@ -38,18 +38,22 @@ class FullDetailPdfTests(unittest.TestCase):
         self.assertIn('"ÍNDICE DE FIGURAS"', source)
         self.assertIn("RecordingContext", source)
 
-    def test_validation_is_visible_before_export(self) -> None:
-        runtime = (ROOT / "pdf_validation_runtime.py").read_text(encoding="utf-8")
-        ui = (ROOT / "static" / "pdf-validation-ui.js").read_text(encoding="utf-8")
-        self.assertIn("validate-pdf", runtime)
-        self.assertIn("validate-pdf", ui)
-        self.assertIn("warnings", ui)
-        self.assertIn("errors", ui)
+    def test_validation_is_integrated_before_progress_export(self) -> None:
+        validation_runtime = (ROOT / "pdf_validation_runtime.py").read_text(encoding="utf-8")
+        progress_runtime = (ROOT / "pdf_progress_runtime.py").read_text(encoding="utf-8")
+        ui = (ROOT / "static" / "pdf-progress.js").read_text(encoding="utf-8")
+        self.assertIn("validate-pdf", validation_runtime)
+        self.assertIn("validate_pdf_report", progress_runtime)
+        self.assertIn('validation.get("errors")', progress_runtime)
+        self.assertIn('validation.get("warnings")', progress_runtime)
+        self.assertIn("pdf-jobs", ui)
+        self.assertIn("progressbar", ui)
 
     def test_desktop_installs_detail_after_old_overhaul(self) -> None:
         source = (ROOT / "desktop_entry.py").read_text(encoding="utf-8")
         self.assertLess(source.index("report_final_overhaul.install()"), source.index("report_full_detail.install()"))
-        self.assertLess(source.index("report_full_detail.install()"), source.index("pdf_only_runtime.install()"))
+        self.assertLess(source.index("report_full_detail.install()"), source.index("pdf_progress_runtime.install()"))
+        self.assertLess(source.index("pdf_progress_runtime.install()"), source.index("pdf_only_runtime.install()"))
 
 
 if __name__ == "__main__":
