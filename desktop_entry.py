@@ -13,6 +13,7 @@ import nuclei_multicampus
 import nuclei_multicampus_report
 import nuclei_routes
 import optional_content
+import pdf_only_runtime
 import process_export
 import process_routes
 import report_catalog_independent
@@ -87,6 +88,10 @@ def prepare() -> None:
 
     # El cronograma se evalúa únicamente con datos reales de ejecución.
     report_schedule_truth.install()
+
+    # La aplicación final trabaja exclusivamente con PDF. Las firmas/QR no se
+    # cargan como imágenes; la portada conserva solo nombres y cargos.
+    pdf_only_runtime.install()
 
 
 def main() -> None:
