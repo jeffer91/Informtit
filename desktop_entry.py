@@ -14,6 +14,7 @@ import nuclei_multicampus_report
 import nuclei_routes
 import optional_content
 import pdf_only_runtime
+import pdf_validation_runtime
 import process_export
 import process_routes
 import report_catalog_independent
@@ -23,6 +24,7 @@ import report_completion_fixes
 import report_decoupled
 import report_enhancements
 import report_final_overhaul
+import report_full_detail
 import report_quality
 import report_quality_runtime
 import report_schedule_truth
@@ -82,12 +84,16 @@ def prepare() -> None:
     # Núcleos toma el Excel consolidado como fuente oficial.
     nuclei_excel_report.install()
 
-    # Esta capa final concentra consolidados en el cuerpo, mueve listados
-    # nominales a anexos y aplica el Ishikawa/análisis/plan de mejora definitivos.
+    # Conserva los consolidados y análisis estratégicos agregados.
     report_final_overhaul.install()
 
     # El cronograma se evalúa únicamente con datos reales de ejecución.
     report_schedule_truth.install()
+
+    # Restauración final del detalle: los consolidados ya no sustituyen las
+    #  subsecciones nominales de Núcleos, Complexivo o Trabajo de Titulación.
+    report_full_detail.install()
+    pdf_validation_runtime.install()
 
     # La aplicación final trabaja exclusivamente con PDF. Las firmas/QR no se
     # cargan como imágenes; la portada conserva solo nombres y cargos.
