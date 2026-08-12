@@ -1,55 +1,39 @@
-// Informtit 0.8: banco guiado de imágenes según los informes institucionales anteriores.
+// Informtit 0.9: recursos visuales del PDF.
 (function () {
-  const GENERAL_SLOTS = [
+  const PDF_SLOTS = [
     {
       section: 'logo_institucional',
       title: '1. Logo institucional ITSQMET',
-      description: 'Obligatorio. Se coloca en el encabezado de la portada y de todas las páginas.',
+      description: 'Obligatorio. Se utiliza en el encabezado institucional del PDF.',
       source: 'ITSQMET',
-      required: true,
-    },
-    {
-      section: 'firma_elaborado',
-      title: '2. Firma o QR de Elaborado por',
-      description: 'Obligatorio. Se incorpora en el bloque inferior de la portada.',
-      source: 'Firma electrónica institucional',
-      required: true,
-    },
-    {
-      section: 'firma_revisado',
-      title: '3. Firma o QR de Revisado por',
-      description: 'Obligatorio. Se incorpora en el bloque inferior de la portada.',
-      source: 'Firma electrónica institucional',
-      required: true,
-    },
-    {
-      section: 'firma_aprobado',
-      title: '4. Firma o QR de Aprobado por',
-      description: 'Obligatorio. Se incorpora en el bloque inferior de la portada.',
-      source: 'Firma electrónica institucional',
       required: true,
     },
     {
       section: 'infografia_complexivo',
-      title: '5. Infografía del proceso de examen complexivo',
-      description: 'Obligatoria para reproducir el apartado visual del proceso de titulación.',
+      title: '2. Infografía del proceso de Examen Complexivo',
+      description: 'Opcional. Súbala únicamente si existe una versión institucional vigente y aporta valor al informe.',
       source: 'ITSQMET',
-      required: true,
+      required: false,
     },
   ];
 
-  function findImage(section, careerId = null) {
+  // Se conservan como reservadas para que archivos antiguos no reaparezcan como evidencias.
+  const LEGACY_IGNORED = new Set([
+    'firma_elaborado',
+    'firma_revisado',
+    'firma_aprobado',
+    'diagrama_nucleos',
+  ]);
+
+  function findImage(section) {
     const images = state.activeReport?.images || [];
-    const matches = images.filter(image =>
-      image.section === section &&
-      (careerId === null ? !image.career_id : Number(image.career_id) === Number(careerId))
-    );
+    const matches = images.filter(image => image.section === section && !image.career_id);
     return matches.length ? matches[matches.length - 1] : null;
   }
 
-  function slotCard(slot, careerId = null) {
-    const image = findImage(slot.section, careerId);
-    const stateLabel = image ? 'Cargada' : (slot.required ? 'Pendiente obligatoria' : 'Pendiente');
+  function slotCard(slot) {
+    const image = findImage(slot.section);
+    const stateLabel = image ? 'Cargada' : (slot.required ? 'Pendiente obligatoria' : 'Opcional');
     const stateClass = image ? 'ready' : 'pending';
     return `
       <article class="asset-slot ${stateClass}">
@@ -67,7 +51,6 @@
           <div class="asset-actions">
             <button type="button" class="button primary small"
               data-upload-asset="${escapeHtml(slot.section)}"
-              data-career-id="${careerId ?? ''}"
               data-title="${escapeHtml(slot.title.replace(/^\d+\.\s*/, ''))}"
               data-description="${escapeHtml(slot.description)}"
               data-source="${escapeHtml(slot.source || '')}"
@@ -83,49 +66,36 @@
   renderImagesTab = function () {
     const tab = $('#tab-images');
     if (!tab) return;
-    const careers = state.activeReport?.careers || [];
-    const requiredTotal = GENERAL_SLOTS.length + careers.length;
-    const loadedTotal = GENERAL_SLOTS.filter(slot => findImage(slot.section)).length +
-      careers.filter(career => findImage('diagrama_nucleos', career.id)).length;
 
-    const careerSlots = careers.map((career, index) => slotCard({
-      section: 'diagrama_nucleos',
-      title: `${GENERAL_SLOTS.length + index + 1}. Diagrama de núcleos - ${career.name}`,
-      description: `Diagrama visual de los cuatro núcleos estructurantes de la carrera de ${career.name}.`,
-      source: 'Elaboración institucional',
-      required: true,
-    }, career.id)).join('');
-
+    const requiredSlots = PDF_SLOTS.filter(slot => slot.required);
+    const loadedRequired = requiredSlots.filter(slot => findImage(slot.section)).length;
     const extras = (state.activeReport?.images || []).filter(image =>
-      !GENERAL_SLOTS.some(slot => slot.section === image.section) &&
-      image.section !== 'diagrama_nucleos'
+      !PDF_SLOTS.some(slot => slot.section === image.section) &&
+      !LEGACY_IGNORED.has(image.section)
     );
 
     tab.innerHTML = `
       <div class="panel">
         <div class="panel-head asset-panel-head">
           <div>
-            <h2>Imágenes requeridas para el informe</h2>
-            <p>La lista reproduce los elementos visuales utilizados en los informes institucionales anteriores. Debe comenzar con el logo.</p>
+            <h2>Imágenes del PDF</h2>
+            <p>Solo se solicitan recursos que no puede generar automáticamente el informe. No se suben firmas, QR, gráficos, Ishikawa ni diagramas de Núcleos.</p>
           </div>
-          <div class="asset-progress"><strong>${loadedTotal} de ${requiredTotal}</strong><span>imágenes requeridas cargadas</span></div>
+          <div class="asset-progress"><strong>${loadedRequired} de ${requiredSlots.length}</strong><span>imagen obligatoria cargada</span></div>
         </div>
 
         <div class="asset-section">
-          <h3>Imágenes institucionales y de portada</h3>
-          <div class="asset-list">${GENERAL_SLOTS.map(slot => slotCard(slot)).join('')}</div>
-        </div>
-
-        <div class="asset-section">
-          <h3>Diagramas de núcleos por carrera</h3>
-          <p>Los informes anteriores muestran un diagrama visual por cada carrera. Estos archivos se insertarán antes del contenido y resultados de la carrera correspondiente.</p>
-          <div class="asset-list">${careerSlots || '<div class="empty-mini">Importe primero la base de estudiantes para generar la lista de carreras.</div>'}</div>
+          <h3>Recursos institucionales</h3>
+          <div class="asset-list">${PDF_SLOTS.map(slot => slotCard(slot)).join('')}</div>
         </div>
 
         <div class="asset-section">
           <div class="panel-head compact">
-            <div><h3>Imágenes adicionales</h3><p>Evidencias, fotografías, capturas u otros recursos que no formen parte de la plantilla obligatoria.</p></div>
-            <button type="button" class="button secondary" id="add-extra-image">Agregar imagen adicional</button>
+            <div>
+              <h3>Evidencias adicionales</h3>
+              <p>Opcional. Use únicamente fotografías o evidencias institucionales que aporten información que no esté ya representada en tablas, gráficos o anexos automáticos.</p>
+            </div>
+            <button type="button" class="button secondary" id="add-extra-image">Agregar evidencia</button>
           </div>
           <div class="image-grid">
             ${extras.length ? extras.map(image => `
@@ -136,7 +106,7 @@
                   <p>${escapeHtml(image.description || 'Sin descripción')}</p>
                   <button class="button danger small" data-delete-image="${image.id}">Eliminar</button>
                 </div>
-              </article>`).join('') : '<div class="empty-mini">No existen imágenes adicionales.</div>'}
+              </article>`).join('') : '<div class="empty-mini">No existen evidencias adicionales.</div>'}
           </div>
         </div>
       </div>`;
@@ -144,7 +114,6 @@
     $$('[data-upload-asset]', tab).forEach(button => {
       button.onclick = () => openAssetDialog({
         section: button.dataset.uploadAsset,
-        careerId: button.dataset.careerId ? Number(button.dataset.careerId) : null,
         title: button.dataset.title,
         description: button.dataset.description,
         source: button.dataset.source,
@@ -166,12 +135,11 @@
     return input;
   }
 
-  function openAssetDialog({ section = 'evidencia_general', careerId = null, title = '', description = '', source = '', replaceId = null } = {}) {
+  function openAssetDialog({ section = 'evidencia_general', title = '', description = '', source = '', replaceId = null } = {}) {
     const form = $('#image-form');
     form.reset();
-    form.career_id.innerHTML = '<option value="">Imagen general</option>' +
-      (state.activeReport.careers || []).map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-    form.career_id.value = careerId ?? '';
+    form.career_id.innerHTML = '<option value="">Imagen general</option>';
+    form.career_id.value = '';
     form.section.value = section;
     form.title.value = title;
     form.description.value = description;
@@ -180,7 +148,6 @@
     $('#image-dialog').showModal();
   }
 
-  // Intercepta el envío antiguo para permitir reemplazar una imagen del mismo espacio.
   $('#image-form').addEventListener('submit', async event => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -200,7 +167,7 @@
         title: form.title.value,
         description: form.description.value,
         source: form.source.value,
-        career_id: form.career_id.value ? Number(form.career_id.value) : null,
+        career_id: null,
         section: form.section.value || 'evidencia_general',
       };
       await api(`/api/reports/${state.activeReport.id}/images`, { method: 'POST', body: JSON.stringify(payload) });
