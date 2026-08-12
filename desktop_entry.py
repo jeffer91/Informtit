@@ -14,6 +14,7 @@ import nuclei_multicampus_report
 import nuclei_routes
 import optional_content
 import pdf_only_runtime
+import pdf_progress_runtime
 import pdf_validation_runtime
 import process_export
 import process_routes
@@ -91,8 +92,12 @@ def prepare() -> None:
     report_schedule_truth.install()
 
     # Restauración final del detalle: los consolidados ya no sustituyen las
-    #  subsecciones nominales de Núcleos, Complexivo o Trabajo de Titulación.
+    # subsecciones nominales de Núcleos, Complexivo o Trabajo de Titulación.
     report_full_detail.install()
+
+    # La generación del PDF se ejecuta como un trabajo consultable. La barra
+    # refleja etapas reales del generador y permite que la interfaz siga activa.
+    pdf_progress_runtime.install()
     pdf_validation_runtime.install()
 
     # La aplicación final trabaja exclusivamente con PDF. Las firmas/QR no se
