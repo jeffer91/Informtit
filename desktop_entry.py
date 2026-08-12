@@ -24,6 +24,7 @@ import report_enhancements
 import report_final_overhaul
 import report_quality
 import report_quality_runtime
+import report_schedule_truth
 import report_structure
 import report_table_style
 from completion_service import ensure_completion_schema
@@ -83,6 +84,9 @@ def prepare() -> None:
     # Esta capa final concentra consolidados en el cuerpo, mueve listados
     # nominales a anexos y aplica el Ishikawa/análisis/plan de mejora definitivos.
     report_final_overhaul.install()
+
+    # El cronograma se evalúa únicamente con datos reales de ejecución.
+    report_schedule_truth.install()
 
 
 def main() -> None:
