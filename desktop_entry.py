@@ -26,6 +26,7 @@ import report_decoupled
 import report_enhancements
 import report_final_overhaul
 import report_full_detail
+import report_pdf_polish
 import report_quality
 import report_quality_runtime
 import report_schedule_truth
@@ -94,6 +95,11 @@ def prepare() -> None:
     # Restauración final del detalle: los consolidados ya no sustituyen las
     # subsecciones nominales de Núcleos, Complexivo o Trabajo de Titulación.
     report_full_detail.install()
+
+    # Pulido definitivo del PDF: cronogramas cerrados, TOC de dos niveles,
+    # detalle antes del consolidado, nombres cortos, gráficos legibles y
+    # exclusión de carreras ajenas al informe.
+    report_pdf_polish.install()
 
     # La generación del PDF se ejecuta como un trabajo consultable. La barra
     # refleja etapas reales del generador y permite que la interfaz siga activa.
