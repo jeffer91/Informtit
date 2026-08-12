@@ -21,6 +21,7 @@ import report_completion_constants
 import report_completion_fixes
 import report_decoupled
 import report_enhancements
+import report_final_overhaul
 import report_quality
 import report_quality_runtime
 import report_structure
@@ -71,14 +72,17 @@ def prepare() -> None:
     report_completion.install()
     report_completion_fixes.install()
 
-    # Se instala al final para que las mejoras de redacción, tablas, gráficos,
-    # cronogramas y referencias prevalezcan sobre las capas de compatibilidad.
+    # Capas de presentación académica e institucional.
     report_enhancements.install()
     report_catalog_independent.install()
     report_table_style.install()
 
-    # La salida de Núcleos usa el Excel consolidado como fuente oficial.
+    # Núcleos toma el Excel consolidado como fuente oficial.
     nuclei_excel_report.install()
+
+    # Esta capa final concentra consolidados en el cuerpo, mueve listados
+    # nominales a anexos y aplica el Ishikawa/análisis/plan de mejora definitivos.
+    report_final_overhaul.install()
 
 
 def main() -> None:
