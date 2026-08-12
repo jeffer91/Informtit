@@ -183,3 +183,11 @@
     }
   }, true);
 })();
+
+// Carga desacoplada de la barra de progreso del PDF.
+if (!document.querySelector('script[data-pdf-progress]')) {
+  const pdfProgressScript = document.createElement('script');
+  pdfProgressScript.src = '/pdf-progress.js?v=1.0';
+  pdfProgressScript.dataset.pdfProgress = '1';
+  document.body.appendChild(pdfProgressScript);
+}
