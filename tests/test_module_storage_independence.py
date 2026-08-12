@@ -134,10 +134,11 @@ class ModuleStorageIndependenceTests(unittest.TestCase):
             },
         )
         self.assertTrue(result["ok"])
+        project_id = result["saved"][0]["project_id"]
         with db.connection() as conn:
             project = conn.execute(
                 "SELECT student_id, identification, full_name, career_name FROM thesis_projects WHERE id=?",
-                (result["project_id"],),
+                (project_id,),
             ).fetchone()
         self.assertIsNone(project["student_id"])
         self.assertEqual(project["identification"], "1800000001")
