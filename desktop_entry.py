@@ -26,6 +26,7 @@ import report_decoupled
 import report_enhancements
 import report_final_overhaul
 import report_full_detail
+import report_pdf_guard
 import report_pdf_polish
 import report_quality
 import report_quality_runtime
@@ -97,9 +98,12 @@ def prepare() -> None:
     report_full_detail.install()
 
     # Pulido definitivo del PDF: cronogramas cerrados, TOC de dos niveles,
-    # detalle antes del consolidado, nombres cortos, gráficos legibles y
-    # exclusión de carreras ajenas al informe.
+    # detalle antes del consolidado, nombres cortos y gráficos legibles.
     report_pdf_polish.install()
+
+    # Guardia final: elimina variantes largas de carreras excluidas antes de
+    # importar, analizar o renderizar el PDF.
+    report_pdf_guard.install()
 
     # La generación del PDF se ejecuta como un trabajo consultable. La barra
     # refleja etapas reales del generador y permite que la interfaz siga activa.
