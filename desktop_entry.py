@@ -33,6 +33,7 @@ import report_quality_runtime
 import report_schedule_truth
 import report_structure
 import report_table_style
+import thesis_parser_flex
 from completion_service import ensure_completion_schema
 from db import connection
 from import_service import ensure_schema
@@ -59,6 +60,10 @@ def prepare() -> None:
     # Las cuatro áreas del informe se conservan dentro del mismo proyecto,
     # pero no se utilizan como filtros o puertas de acceso entre sí.
     layout_v3.install()
+
+    # Trabajo de Titulación acepta variantes reales del encabezado institucional
+    # y códigos de carrera presenciales/en línea sin depender de una letra fija.
+    thesis_parser_flex.install()
     process_routes.install()
     nuclei_routes.install()
     nuclei_course_edit.install()
