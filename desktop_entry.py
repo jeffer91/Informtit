@@ -33,6 +33,7 @@ import report_quality_runtime
 import report_schedule_truth
 import report_structure
 import report_table_style
+import report_visual_extensions
 import thesis_parser_flex
 from completion_service import ensure_completion_schema
 from db import connection
@@ -109,6 +110,11 @@ def prepare() -> None:
     # Guardia final: elimina variantes largas de carreras excluidas antes de
     # importar, analizar o renderizar el PDF.
     report_pdf_guard.install()
+
+    # Capa visual final: añade gráficos de requisitos, cronograma, Núcleos,
+    # Complexivo, Trabajo de Titulación y priorización estratégica sin alterar
+    # las fórmulas ni las fuentes consolidadas de cada módulo.
+    report_visual_extensions.install()
 
     # La generación del PDF se ejecuta como un trabajo consultable. La barra
     # refleja etapas reales del generador y permite que la interfaz siga activa.
