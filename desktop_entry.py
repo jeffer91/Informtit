@@ -22,6 +22,7 @@ import report_catalog_independent
 import report_completion
 import report_completion_constants
 import report_completion_fixes
+import report_consistency_final
 import report_decoupled
 import report_enhancements
 import report_final_overhaul
@@ -103,8 +104,8 @@ def prepare() -> None:
     # subsecciones nominales de Núcleos, Complexivo o Trabajo de Titulación.
     report_full_detail.install()
 
-    # Pulido definitivo del PDF: cronogramas cerrados, TOC de dos niveles,
-    # detalle antes del consolidado, nombres cortos y gráficos legibles.
+    # Pulido definitivo del PDF: TOC de dos niveles, detalle antes del
+    # consolidado, nombres cortos y gráficos legibles.
     report_pdf_polish.install()
 
     # Guardia final: elimina variantes largas de carreras excluidas antes de
@@ -112,9 +113,13 @@ def prepare() -> None:
     report_pdf_guard.install()
 
     # Capa visual final: añade gráficos de requisitos, cronograma, Núcleos,
-    # Complexivo, Trabajo de Titulación y priorización estratégica sin alterar
-    # las fórmulas ni las fuentes consolidadas de cada módulo.
+    # Complexivo, Trabajo de Titulación y priorización estratégica.
     report_visual_extensions.install()
+
+    # Consistencia final: una sola población por modalidad, cronograma basado
+    # en ejecución real, empates correctos, rúbricas agregadas, validación
+    # ampliada y nombre institucional del archivo PDF.
+    report_consistency_final.install()
 
     # La generación del PDF se ejecuta como un trabajo consultable. La barra
     # refleja etapas reales del generador y permite que la interfaz siga activa.
