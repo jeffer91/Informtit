@@ -23,6 +23,7 @@ import report_completion
 import report_completion_constants
 import report_completion_fixes
 import report_consistency_final
+import report_consistency_followup
 import report_decoupled
 import report_enhancements
 import report_final_overhaul
@@ -120,6 +121,10 @@ def prepare() -> None:
     # en ejecución real, empates correctos, rúbricas agregadas, validación
     # ampliada y nombre institucional del archivo PDF.
     report_consistency_final.install()
+
+    # Última conciliación: evita que una capa anterior vuelva a marcar el
+    # cronograma como 100 % y aclara cursos importados frente a analizados.
+    report_consistency_followup.install()
 
     # La generación del PDF se ejecuta como un trabajo consultable. La barra
     # refleja etapas reales del generador y permite que la interfaz siga activa.
