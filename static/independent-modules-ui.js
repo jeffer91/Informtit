@@ -46,13 +46,15 @@
   function cleanImportWarning() {
     const warning = document.querySelector('#active-report-import-dialog .replace-warning');
     if (!warning) return;
+    // Mantener exactamente el mismo texto usado por pdf-validation-ui.js evita
+    // que dos MutationObserver se alternen reescribiendo el mismo contenido.
     setText(
       warning.querySelector('strong'),
-      'La importación reemplazará únicamente los datos del módulo Requisitos.',
+      'La importación reemplazará únicamente la base de Requisitos de cada modalidad.',
     );
     setText(
       warning.querySelector('span'),
-      'Núcleos, Examen Complexivo y Trabajo de Titulación no se modificarán.',
+      'Núcleos, Examen Complexivo y Trabajo de Titulación se conservan de forma independiente.',
     );
   }
 
@@ -109,11 +111,19 @@
   `;
   document.head.appendChild(style);
 
-  new MutationObserver(records => {
+  const observer = new MutationObserver(records => {
     if (records.some(record => record.addedNodes.length || record.removedNodes.length)) {
       scheduleScan();
     }
-  }).observe(document.body, { childList: true, subtree: true });
+  });
+
+  // Solo se observan las superficies que este módulo realmente modifica.
+  // Evita despertar el escáner por cada cambio interno de cualquier diálogo,
+  // overlay o componente ajeno a Requisitos/Inicio.
+  const mainRoot = document.querySelector('.main');
+  if (mainRoot) observer.observe(mainRoot, { childList: true, subtree: true });
+  const importDialog = document.querySelector('#active-report-import-dialog');
+  if (importDialog) observer.observe(importDialog, { childList: true, subtree: true });
 
   document.addEventListener('click', event => {
     if (event.target.closest('[data-tab="roster"], #report-import-roster, #roster-upload-btn, #roster-empty-upload, [data-view="dashboard"]')) {
