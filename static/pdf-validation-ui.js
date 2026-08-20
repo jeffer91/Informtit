@@ -4,6 +4,14 @@
 (function () {
   const normalize = value => String(value || '').trim().toLocaleLowerCase('es');
 
+  function setTextIfChanged(node, text) {
+    if (node && node.textContent !== text) node.textContent = text;
+  }
+
+  function setHtmlIfChanged(node, html) {
+    if (node && node.innerHTML !== html) node.innerHTML = html;
+  }
+
   function relatedReports(report) {
     if (!report) return [];
     const reports = Array.isArray(state?.reports) ? state.reports : [];
@@ -82,36 +90,54 @@
     if (!dialog) return;
 
     const intro = dialog.querySelector('.dialog-head p');
-    const desiredIntro = 'Una sola carga separará automáticamente los registros Presencial y Online.';
-    if (intro && intro.textContent !== desiredIntro) intro.textContent = desiredIntro;
+    setTextIfChanged(
+      intro,
+      'Una sola carga separará automáticamente los registros Presencial y Online.'
+    );
 
     const title = dialog.querySelector('.dialog-head h2');
-    if (title && title.textContent !== 'Cargar base de requisitos') {
-      title.textContent = 'Cargar base de requisitos';
-    }
+    setTextIfChanged(title, 'Cargar base de requisitos');
 
     const note = document.getElementById('active-modality-note');
     if (note && !document.getElementById('active-import-confirm-step')?.hidden) {
-      const desired = '<strong>Informtit actualizará Presencial y Online por separado</strong> cuando ambas modalidades existan en el archivo.';
-      if (note.innerHTML !== desired) note.innerHTML = desired;
+      setHtmlIfChanged(
+        note,
+        '<strong>Informtit actualizará Presencial y Online por separado</strong> cuando ambas modalidades existan en el archivo.'
+      );
     }
 
     const warning = dialog.querySelector('.replace-warning');
     if (warning) {
-      const strong = warning.querySelector('strong');
-      const span = warning.querySelector('span');
-      if (strong) strong.textContent = 'La importación reemplazará únicamente la base de Requisitos de cada modalidad.';
-      if (span) span.textContent = 'Núcleos, Examen Complexivo y Trabajo de Titulación se conservan de forma independiente.';
+      setTextIfChanged(
+        warning.querySelector('strong'),
+        'La importación reemplazará únicamente la base de Requisitos de cada modalidad.'
+      );
+      setTextIfChanged(
+        warning.querySelector('span'),
+        'Núcleos, Examen Complexivo y Trabajo de Titulación se conservan de forma independiente.'
+      );
     }
 
     const commit = document.getElementById('commit-active-roster');
-    if (commit && !commit.disabled && commit.textContent !== 'Importar Presencial y Online') {
-      commit.textContent = 'Importar Presencial y Online';
+    if (commit && !commit.disabled) {
+      setTextIfChanged(commit, 'Importar Presencial y Online');
     }
   }
 
-  const observer = new MutationObserver(() => updateImportDialogText());
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+  // El diálogo ya fue creado por forms-hotfix.js. Observar únicamente ese nodo
+  // evita procesar cada cambio de toda la aplicación y, sobre todo, evita el
+  // bucle de mutaciones que bloqueaba completamente el renderer de Electron.
+  const importDialog = document.getElementById('active-report-import-dialog');
+  if (importDialog) {
+    const observer = new MutationObserver(() => updateImportDialogText());
+    observer.observe(importDialog, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'disabled'],
+    });
+  }
+
   updateImportDialogText();
   renderModalitySwitcher();
 })();
