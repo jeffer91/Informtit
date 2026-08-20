@@ -3,6 +3,7 @@ from __future__ import annotations
 import app as core
 import completion_routes
 import desktop_launcher
+import dual_modality_runtime
 import layout_v3
 import nuclei_catalog_export
 import nuclei_course_edit
@@ -134,6 +135,11 @@ def prepare() -> None:
     # La aplicación final trabaja exclusivamente con PDF. Las firmas/QR no se
     # cargan como imágenes; la portada conserva solo nombres y cargos.
     pdf_only_runtime.install()
+
+    # Una sola carga del reporte general debe mantener dos informes hermanos:
+    # Presencial y Online. Se instala al final para que esta ruta de importación
+    # tenga prioridad sobre las capas antiguas que solo actualizan el informe activo.
+    dual_modality_runtime.install()
 
 
 def main() -> None:
