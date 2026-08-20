@@ -60,7 +60,7 @@ def _upsert_report(
     active: Any,
     report_id: int | None,
     modality: str,
-    import_id: int,
+    import_id: int | None,
     period: str,
     version: str,
     elaboration_date: str,
@@ -128,6 +128,50 @@ def _upsert_report(
     new_id = int(cursor.lastrowid)
     create_default_sections(conn, new_id)
     return new_id
+
+
+def ensure_report_pairs() -> dict[str, Any]:
+    """Garantiza que todo informe tenga su hermano Presencial/Online.
+
+    Esto también repara bases locales creadas antes de la importación dual. El
+    informe hermano se crea vacío y comparte el mismo identificador de importación
+    cuando existe; al volver a cargar Requisitos, cada modalidad recibe sus datos.
+    """
+    now = utcnow()
+    created: list[int] = []
+
+    with connection() as conn:
+        reports = conn.execute(
+            """
+            SELECT * FROM reports
+            WHERE modality IN ('presencial', 'en_linea')
+            ORDER BY id
+            """
+        ).fetchall()
+
+        for active in reports:
+            active_modality = str(active["modality"] or "presencial")
+            other_modality = "en_linea" if active_modality == "presencial" else "presencial"
+            period = clean_cell(active["period"])
+            counterpart = _counterpart_id(conn, active, other_modality, period)
+            if counterpart is not None:
+                continue
+
+            new_id = _upsert_report(
+                conn,
+                active=active,
+                report_id=None,
+                modality=other_modality,
+                import_id=active["source_import_id"],
+                period=period,
+                version=clean_cell(active["version"] or "1.0"),
+                elaboration_date=clean_cell(active["elaboration_date"]),
+                code=clean_cell(active["code"]),
+                now=now,
+            )
+            created.append(new_id)
+
+    return {"ok": True, "created": created, "count": len(created)}
 
 
 def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str, Any]) -> dict[str, Any]:
@@ -226,6 +270,7 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
 
 def install() -> None:
     if getattr(core.InformtitHandler, "_dual_modality_runtime_installed", False):
+        ensure_report_pairs()
         return
 
     # La detección se usa al analizar el .xls, antes de confirmar la importación.
@@ -243,3 +288,6 @@ def install() -> None:
 
     core.InformtitHandler._handle_api_write = dual_write
     core.InformtitHandler._dual_modality_runtime_installed = True
+
+    # Repara también los informes que ya existían antes de esta función.
+    ensure_report_pairs()
