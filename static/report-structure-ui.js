@@ -120,14 +120,35 @@
   `;
   document.head.appendChild(style);
 
+  let scanQueued = false;
   function scan() {
     enhanceGeneralForm();
     enhanceRosterAnalysis();
   }
 
-  new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+  function scheduleScan() {
+    if (scanQueued) return;
+    scanQueued = true;
+    requestAnimationFrame(() => {
+      scanQueued = false;
+      scan();
+    });
+  }
+
+  // Este complemento solo trabaja dentro del contenido principal. Observar
+  // document.body hacía que cualquier cambio de diálogos, overlays o progreso
+  // de PDF activara análisis innecesarios del módulo Requisitos.
+  const mainRoot = document.querySelector('.main');
+  if (mainRoot) {
+    new MutationObserver(records => {
+      if (records.some(record => record.addedNodes.length || record.removedNodes.length)) {
+        scheduleScan();
+      }
+    }).observe(mainRoot, { childList: true, subtree: true });
+  }
+
   document.addEventListener('click', event => {
-    if (event.target.closest('[data-tab="general"], [data-tab="roster"]')) setTimeout(scan, 0);
+    if (event.target.closest('[data-tab="general"], [data-tab="roster"]')) scheduleScan();
   });
-  scan();
+  scheduleScan();
 })();
