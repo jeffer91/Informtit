@@ -4,6 +4,7 @@ import app as core
 import completion_routes
 import desktop_launcher
 import dual_modality_runtime
+import firebase_sync_runtime
 import layout_v3
 import nuclei_catalog_export
 import nuclei_course_edit
@@ -17,6 +18,7 @@ import optional_content
 import pdf_only_runtime
 import pdf_progress_runtime
 import pdf_validation_runtime
+import period_policy_runtime
 import process_export
 import process_routes
 import report_catalog_independent
@@ -50,8 +52,13 @@ from thesis_followup import ensure_thesis_followup_schema
 def prepare() -> None:
     """Prepara la base y aplica extensiones en un orden determinista."""
 
+    # Electron entrega una carpeta persistente para que la base y las cargas no
+    # dependan de la ubicación del código o de una actualización de la app.
+    period_policy_runtime.configure_storage()
+
     core.init_db()
     ensure_schema()
+    period_policy_runtime.ensure_schema()
     ensure_process_schema()
     ensure_nuclei_schema()
     ensure_completion_schema()
@@ -136,10 +143,15 @@ def prepare() -> None:
     # cargan como imágenes; la portada conserva solo nombres y cargos.
     pdf_only_runtime.install()
 
-    # Una sola carga del reporte general debe mantener dos informes hermanos:
-    # Presencial y Online. Se instala al final para que esta ruta de importación
-    # tenga prioridad sobre las capas antiguas que solo actualizan el informe activo.
+    # Los periodos normales mantienen Presencial + Online. Cualquier otro
+    # rango se clasifica como PVC y nunca crea un informe Online adicional.
+    period_policy_runtime.prepare_dual_policy()
     dual_modality_runtime.install()
+    period_policy_runtime.install()
+
+    # Firebase se instala al final: las colecciones existentes son solo lectura
+    # y únicamente nucleos, complexivo, titulacion y cronogramas admiten escritura.
+    firebase_sync_runtime.install()
 
 
 def main() -> None:
