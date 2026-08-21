@@ -4,6 +4,7 @@ import app as core
 import completion_routes
 import desktop_launcher
 import dual_modality_runtime
+import firebase_catalog_runtime
 import firebase_sync_runtime
 import layout_v3
 import nuclei_catalog_export
@@ -150,6 +151,7 @@ def prepare() -> None:
     period_policy_runtime.prepare_dual_policy()
     dual_modality_runtime.install()
     period_policy_runtime.install()
+    firebase_catalog_runtime.install()
 
     # Firebase se instala al final: las colecciones existentes son solo lectura
     # y únicamente nucleos, complexivo, titulacion y cronogramas admiten escritura.
