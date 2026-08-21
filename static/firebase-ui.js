@@ -5,10 +5,16 @@
     return String(report?.report_type || "").toLowerCase() === "pvc" ? "pvc" : "normal";
   }
 
+  function setText(node, value) {
+    if (!node) return;
+    const next = String(value ?? "");
+    if (node.textContent !== next) node.textContent = next;
+  }
+
   function decorate() {
     try {
       const footer = document.querySelector(".sidebar-footer span:last-child");
-      if (footer) footer.textContent = "Firebase + respaldo local";
+      setText(footer, "Firebase + respaldo local");
 
       document.querySelectorAll(".report-card").forEach(card => {
         const button = card.querySelector("[data-open-report]");
@@ -18,13 +24,13 @@
         );
         if (!report) return;
         const badge = card.querySelector(".badge");
-        if (badge && reportType(report) === "pvc") badge.textContent = "PVC";
+        if (badge && reportType(report) === "pvc") setText(badge, "PVC");
       });
 
       if (typeof state !== "undefined" && state.activeReport) {
         const pvc = reportType(state.activeReport) === "pvc";
         const modality = document.querySelector("#report-modality");
-        if (pvc && modality) modality.textContent = "PVC";
+        if (pvc && modality) setText(modality, "PVC");
 
         const select = document.querySelector("#general-form [name=modality]");
         if (select) {
@@ -39,7 +45,7 @@
         const label = metric.querySelector("span");
         const value = metric.querySelector("strong");
         if (label?.textContent.trim() === "Base de datos" && value) {
-          value.textContent = "Firebase + local";
+          setText(value, "Firebase + local");
         }
       });
     } catch (error) {
@@ -84,7 +90,7 @@
 
     select.addEventListener("change", () => {
       const option = select.selectedOptions[0];
-      note.textContent = option?.dataset.note || "";
+      setText(note, option?.dataset.note || "");
     });
 
     form.addEventListener("submit", async event => {
@@ -94,7 +100,7 @@
 
       const submit = dialog.querySelector("#firebase-sync-submit");
       submit.disabled = true;
-      submit.textContent = "Sincronizando...";
+      setText(submit, "Sincronizando...");
       try {
         const result = await api("/api/firebase/sync", {
           method: "POST",
@@ -118,7 +124,7 @@
         toast(error.message || "No se pudo sincronizar Firebase.", true);
       } finally {
         submit.disabled = false;
-        submit.textContent = "Sincronizar";
+        setText(submit, "Sincronizar");
       }
     });
 
@@ -130,7 +136,7 @@
     const select = dialog.querySelector("[name=period_id]");
     const note = dialog.querySelector("#firebase-period-note");
     select.innerHTML = '<option value="">Cargando periodos...</option>';
-    note.textContent = "";
+    setText(note, "");
     dialog.showModal();
 
     try {
@@ -171,9 +177,15 @@
   installButton();
   decorate();
 
+  let renderQueued = false;
   const observer = new MutationObserver(() => {
-    installButton();
-    decorate();
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      installButton();
+      decorate();
+    });
   });
   observer.observe(document.body, { childList: true, subtree: true });
 })();
