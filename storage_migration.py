@@ -10,19 +10,24 @@ import app as core
 import db
 
 
-MEANINGFUL_TABLES = (
-    "reports",
-    "requirements_students",
-    "careers",
-    "students",
-    "nucleus_courses",
-    "thesis_projects",
-    "schedule_items",
-)
+DATA_TABLE_WEIGHTS = {
+    "requirements_students": 1000,
+    "students": 500,
+    "nucleus_courses": 100,
+    "thesis_projects": 100,
+    "images": 25,
+}
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {
+        str(row[1])
+        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
 
 
 def _database_score(path: Path) -> int:
-    """Cuenta datos útiles sin crear ni modificar la base inspeccionada."""
+    """Mide datos reales sin contar estructuras automáticas o cronogramas semilla."""
     if not path.exists() or not path.is_file() or path.stat().st_size == 0:
         return 0
     try:
@@ -36,10 +41,75 @@ def _database_score(path: Path) -> int:
                 ).fetchall()
             }
             score = 0
-            for table in MEANINGFUL_TABLES:
+
+            for table, weight in DATA_TABLE_WEIGHTS.items():
                 if table not in tables:
                     continue
-                score += int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+                count = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+                score += count * weight
+
+            # Los cronogramas se crean automáticamente. Solo cuentan si existe
+            # evidencia de ejecución real ingresada por el usuario.
+            if "schedule_items" in tables:
+                columns = _columns(conn, "schedule_items")
+                execution_fields = {
+                    "executed_date",
+                    "execution_status",
+                    "compliance_percentage",
+                    "evidence",
+                    "observation",
+                }
+                if execution_fields.issubset(columns):
+                    executed = int(
+                        conn.execute(
+                            """
+                            SELECT COUNT(*) FROM schedule_items
+                            WHERE COALESCE(executed_date,'')<>''
+                               OR COALESCE(execution_status,'')<>''
+                               OR compliance_percentage IS NOT NULL
+                               OR COALESCE(evidence,'')<>''
+                               OR COALESCE(observation,'')<>''
+                            """
+                        ).fetchone()[0]
+                    )
+                    score += executed * 20
+
+            if "analyses" in tables:
+                columns = _columns(conn, "analyses")
+                if {"text_before", "text_after"}.issubset(columns):
+                    analyses = int(
+                        conn.execute(
+                            """
+                            SELECT COUNT(*) FROM analyses
+                            WHERE COALESCE(text_before,'')<>''
+                               OR COALESCE(text_after,'')<>''
+                            """
+                        ).fetchone()[0]
+                    )
+                    score += analyses * 20
+
+            if "institutional_sections" in tables:
+                columns = _columns(conn, "institutional_sections")
+                if "customized" in columns:
+                    customized = int(
+                        conn.execute(
+                            "SELECT COUNT(*) FROM institutional_sections WHERE customized=1"
+                        ).fetchone()[0]
+                    )
+                    score += customized * 10
+
+            # Un informe creado automáticamente no cuenta por sí solo. Un informe
+            # que provino de una importación sí constituye trabajo recuperable.
+            if "reports" in tables:
+                columns = _columns(conn, "reports")
+                if "source_import_id" in columns:
+                    imported = int(
+                        conn.execute(
+                            "SELECT COUNT(*) FROM reports WHERE source_import_id IS NOT NULL"
+                        ).fetchone()[0]
+                    )
+                    score += imported * 50
+
             return score
         finally:
             conn.close()
@@ -69,10 +139,10 @@ def _merge_directory(source: Path, target: Path) -> bool:
 def migrate_legacy_storage() -> dict[str, bool]:
     """Migra de forma conservadora la base/cargas antiguas a userData de Electron.
 
-    Una versión anterior podía crear primero una base persistente vacía. En ese
-    caso se conserva una copia de seguridad de esa base vacía y se recupera la
-    base antigua con datos. Si ambas bases contienen información, ninguna se
-    sobrescribe automáticamente.
+    Una versión anterior podía crear primero una base persistente con informes y
+    cronogramas semilla, pero sin información real. Ese cascarón ya no bloquea la
+    recuperación de una base antigua que sí contiene estudiantes o trabajo del
+    usuario. Si ambas bases contienen datos reales, ninguna se sobrescribe.
     """
     storage = str(os.environ.get("INFORMTIT_STORAGE_DIR") or "").strip()
     if not storage:
