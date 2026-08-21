@@ -39,6 +39,7 @@ import report_schedule_truth
 import report_structure
 import report_table_style
 import report_visual_extensions
+import storage_migration
 import thesis_parser_flex
 from completion_service import ensure_completion_schema
 from db import connection
@@ -52,8 +53,9 @@ from thesis_followup import ensure_thesis_followup_schema
 def prepare() -> None:
     """Prepara la base y aplica extensiones en un orden determinista."""
 
-    # Electron entrega una carpeta persistente para que la base y las cargas no
-    # dependan de la ubicación del código o de una actualización de la app.
+    # Conserva automáticamente la base/cargas creadas por versiones anteriores
+    # antes de empezar a usar la carpeta persistente que Electron entrega.
+    storage_migration.migrate_legacy_storage()
     period_policy_runtime.configure_storage()
 
     core.init_db()
