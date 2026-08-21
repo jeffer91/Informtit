@@ -57,6 +57,14 @@ class FirebaseProtectionTests(unittest.TestCase):
                 {"periodoId": "2026-04__2026-09"},
             )
 
+    def test_write_guard_blocks_official_notes_collection(self) -> None:
+        with self.assertRaises(ValueError):
+            firebase_sync_runtime.write_document(
+                "notas",
+                "2026-04__2026-09__0000000000",
+                {"periodoId": "2026-04__2026-09"},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
