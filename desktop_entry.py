@@ -5,6 +5,7 @@ import completion_routes
 import desktop_launcher
 import dual_modality_runtime
 import firebase_catalog_runtime
+import firebase_integrity_runtime
 import firebase_sync_runtime
 import layout_v3
 import nuclei_catalog_export
@@ -156,6 +157,10 @@ def prepare() -> None:
     # Firebase se instala al final: las colecciones existentes son solo lectura
     # y únicamente nucleos, complexivo, titulacion y cronogramas admiten escritura.
     firebase_sync_runtime.install()
+
+    # Salvaguardas posteriores: recupera correctamente duplicados PVC históricos,
+    # separa los IDs de Núcleos por grupo y evita clasificaciones ambiguas.
+    firebase_integrity_runtime.install()
 
 
 def main() -> None:
