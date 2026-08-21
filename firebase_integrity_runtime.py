@@ -31,12 +31,46 @@ def _count(conn: Any, table: str, report_id: int) -> int:
         return 0
 
 
+def _executed_schedule_count(conn: Any, report_id: int) -> int:
+    """Cuenta únicamente cronograma con ejecución real, no filas semilla."""
+    if not _table_exists(conn, "schedule_items"):
+        return 0
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(schedule_items)").fetchall()
+    }
+    required = {
+        "executed_date",
+        "execution_status",
+        "compliance_percentage",
+        "evidence",
+        "observation",
+    }
+    if not required.issubset(columns):
+        return 0
+    return int(
+        conn.execute(
+            """
+            SELECT COUNT(*) FROM schedule_items
+            WHERE report_id=? AND (
+                COALESCE(executed_date,'')<>'' OR
+                COALESCE(execution_status,'')<>'' OR
+                compliance_percentage IS NOT NULL OR
+                COALESCE(evidence,'')<>'' OR
+                COALESCE(observation,'')<>''
+            )
+            """,
+            (report_id,),
+        ).fetchone()[0]
+    )
+
+
 def _report_score(conn: Any, report_id: int) -> int:
     """Prioriza el informe PVC que realmente contiene trabajo del usuario."""
     requirements = _count(conn, "requirements_students", report_id)
     nuclei = _count(conn, "nucleus_courses", report_id)
     thesis = _count(conn, "thesis_projects", report_id)
-    schedules = _count(conn, "schedule_items", report_id)
+    schedules = _executed_schedule_count(conn, report_id)
     careers = _count(conn, "careers", report_id)
 
     students = 0
@@ -53,6 +87,7 @@ def _report_score(conn: Any, report_id: int) -> int:
         )
 
     # La población pesa más que los metadatos; los demás módulos desempatan.
+    # Las filas automáticas del cronograma ya no pueden hacer ganar un PVC vacío.
     return (
         requirements * 1000
         + students * 500
@@ -194,6 +229,11 @@ def _explicit_study_modality(enrollment: dict[str, Any]) -> str:
 def install() -> None:
     if getattr(firebase_sync, "_integrity_runtime_installed", False):
         return
+
+    # `notas` forma parte del esquema oficial existente. Informtit puede leerla
+    # cuando se necesite, pero queda expresamente fuera de cualquier escritura.
+    firebase_sync.READ_ONLY_COLLECTIONS.add("notas")
+    firebase_sync.ALL_ALLOWED_COLLECTIONS.add("notas")
 
     # Reemplaza la deduplicación antigua: un hermano PVC vacío nunca debe ocultar
     # el informe histórico que sí contiene estudiantes o módulos cargados.
