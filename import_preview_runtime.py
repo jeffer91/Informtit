@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 import traceback
 from typing import Any
@@ -11,17 +12,25 @@ import import_service
 _INSTALLED = False
 
 
-def install() -> None:
-    """Atiende la previsualización de Requisitos en una ruta final y observable.
+def _configure_console() -> None:
+    """Evita que caracteres del archivo o de los logs rompan la consola de Windows."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
 
-    La ruta se instala de último para no depender de la cadena de wrappers. Además
-    registra inicio, duración, resultado y errores en la terminal que ejecuta
-    ``npm start`` para distinguir un análisis activo de un bloqueo real.
-    """
+
+def install() -> None:
+    """Atiende la previsualización de Requisitos en una ruta final y observable."""
     global _INSTALLED
     if _INSTALLED:
         return
 
+    _configure_console()
     previous_write = core.InformtitHandler._handle_api_write
 
     def handle_write(self: Any, method: str, path: str, payload: dict[str, Any]) -> None:
@@ -36,7 +45,7 @@ def install() -> None:
             started = time.perf_counter()
             approx_kb = round((len(data_url) * 3 / 4) / 1024, 1)
             print(
-                f"[ImportPreview] INICIO archivo={original_name!r} carga≈{approx_kb} KB",
+                f"[ImportPreview] INICIO archivo={original_name!r} carga~{approx_kb} KB",
                 flush=True,
             )
             try:
@@ -44,7 +53,7 @@ def install() -> None:
             except Exception as exc:
                 elapsed = time.perf_counter() - started
                 print(
-                    f"[ImportPreview] ERROR después de {elapsed:.3f}s: "
+                    f"[ImportPreview] ERROR despues de {elapsed:.3f}s: "
                     f"{type(exc).__name__}: {exc}",
                     flush=True,
                 )
@@ -54,9 +63,10 @@ def install() -> None:
             elapsed = time.perf_counter() - started
             print(
                 "[ImportPreview] OK "
-                f"{elapsed:.3f}s · total={preview.get('total', 0)} · "
-                f"presencial={preview.get('presencial', 0)} · "
-                f"online={preview.get('en_linea', 0)}",
+                f"{elapsed:.3f}s | total={preview.get('total', 0)} | "
+                f"presencial={preview.get('presencial', 0)} | "
+                f"online={preview.get('en_linea', 0)} | "
+                f"formato={preview.get('file_type', '')}",
                 flush=True,
             )
             self._send_json({"ok": True, "preview": preview}, 200)
