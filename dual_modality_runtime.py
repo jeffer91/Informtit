@@ -22,6 +22,33 @@ def _robust_modality(career_name: str, career_code: str) -> str:
     ) else "presencial"
 
 
+def _reclassify_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Recalcula la modalidad desde la carrera y el código antes de guardar.
+
+    No se confía ciegamente en el campo ``modality`` almacenado en una
+    previsualización anterior. Así, un registro con código ``-L-`` o carrera
+    ONLINE siempre termina en el dataset Online aunque la previsualización haya
+    sido creada por una versión antigua del parser.
+    """
+    result: list[dict[str, Any]] = []
+    for item in records:
+        row = dict(item)
+        row["modality"] = _robust_modality(
+            str(row.get("career_name") or ""),
+            str(row.get("career_code") or ""),
+        )
+        result.append(row)
+    return result
+
+
+def modality_counts(records: list[dict[str, Any]]) -> dict[str, int]:
+    classified = _reclassify_records(records)
+    return {
+        "presencial": sum(row.get("modality") == "presencial" for row in classified),
+        "en_linea": sum(row.get("modality") == "en_linea" for row in classified),
+    }
+
+
 def _counterpart_id(conn: Any, active: Any, other_modality: str, period: str) -> int | None:
     old_import_id = active["source_import_id"]
     if old_import_id:
@@ -131,12 +158,7 @@ def _upsert_report(
 
 
 def ensure_report_pairs() -> dict[str, Any]:
-    """Garantiza que todo informe tenga su hermano Presencial/Online.
-
-    Esto también repara bases locales creadas antes de la importación dual. El
-    informe hermano se crea vacío y comparte el mismo identificador de importación
-    cuando existe; al volver a cargar Requisitos, cada modalidad recibe sus datos.
-    """
+    """Garantiza que todo informe tenga su hermano Presencial/Online."""
     now = utcnow()
     created: list[int] = []
 
@@ -175,19 +197,24 @@ def ensure_report_pairs() -> dict[str, Any]:
 
 
 def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    """Carga una sola base y mantiene dos informes hermanos por modalidad.
+    """Carga una sola base y actualiza los datasets Presencial y Online.
 
-    Ambas modalidades se actualizan siempre, incluso cuando una de ellas contiene
-    cero registros. Así el informe vacío recibe el nuevo source_import_id, se
-    limpian datos de Requisitos anteriores y la auditoría puede distinguir de
-    forma fiable SIN POBLACIÓN de ERROR DE CARGA.
+    La modalidad se vuelve a calcular en el momento del commit y se verifica que
+    el número realmente guardado coincida con el número detectado. Una importación
+    no puede terminar silenciosamente con Online=0 cuando la fuente contiene
+    carreras ONLINE o códigos -L-.
     """
     requirements_store.ensure_requirements_schema()
     parsed = _load_preview(token)
     preview = parsed.get("preview") or {}
-    records = list(parsed.get("records") or [])
+    records = _reclassify_records(list(parsed.get("records") or []))
     if not records:
         raise ValueError("El archivo no contiene estudiantes válidos.")
+
+    by_modality = {
+        "presencial": [row for row in records if row.get("modality") == "presencial"],
+        "en_linea": [row for row in records if row.get("modality") == "en_linea"],
+    }
 
     with connection() as conn:
         active = conn.execute("SELECT * FROM reports WHERE id=?", (active_report_id,)).fetchone()
@@ -200,11 +227,6 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
         version = clean_cell(payload.get("version") or active["version"] or "1.0")
         elaboration_date = clean_cell(payload.get("elaboration_date") or active["elaboration_date"])
         now = utcnow()
-
-        by_modality = {
-            "presencial": [row for row in records if row.get("modality") == "presencial"],
-            "en_linea": [row for row in records if row.get("modality") == "en_linea"],
-        }
         active_modality = str(active["modality"] or "presencial")
 
         cursor = conn.execute(
@@ -226,6 +248,7 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
         import_id = int(cursor.lastrowid)
 
         report_ids: dict[str, int] = {}
+        persisted: dict[str, int] = {}
         for modality in ("presencial", "en_linea"):
             modality_records = by_modality[modality]
 
@@ -248,12 +271,29 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
             )
             report_ids[modality] = target_id
 
-            # Requisitos se reemplaza para ambas modalidades. Si la fuente trae
-            # cero registros de una modalidad, se limpia la población anterior
-            # y el nuevo historial deja constancia explícita de ese cero.
             conn.execute("DELETE FROM requirements_students WHERE report_id=?", (target_id,))
             for record in modality_records:
                 requirements_store._insert_requirement_record(conn, target_id, record, now)
+
+            saved = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM requirements_students WHERE report_id=?",
+                    (target_id,),
+                ).fetchone()[0]
+            )
+            expected = len(modality_records)
+            persisted[modality] = saved
+            if saved != expected:
+                label = "Online" if modality == "en_linea" else "Presencial"
+                raise ValueError(
+                    f"Error de importación {label}: se detectaron {expected} estudiantes "
+                    f"pero se guardaron {saved}. La operación fue cancelada para evitar datos incompletos."
+                )
+
+        if persisted["presencial"] + persisted["en_linea"] != len(records):
+            raise ValueError(
+                "Error de conciliación de la importación: Presencial + Online no coincide con el total del archivo."
+            )
 
     other_modality = "en_linea" if active_modality == "presencial" else "presencial"
     return {
@@ -267,6 +307,8 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
         "active_students": len(by_modality[active_modality]),
         "presencial": len(by_modality["presencial"]),
         "en_linea": len(by_modality["en_linea"]),
+        "persisted_presencial": persisted["presencial"],
+        "persisted_en_linea": persisted["en_linea"],
         "careers": len({clean_cell(row.get("career_name")) for row in records if row.get("career_name")}),
         "filename": clean_cell(preview.get("filename") or "requisitos.xls"),
     }
@@ -274,10 +316,11 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
 
 def install() -> None:
     if getattr(core.InformtitHandler, "_dual_modality_runtime_installed", False):
+        import_service._modality = _robust_modality
         ensure_report_pairs()
         return
 
-    # La detección se usa al analizar el .xls, antes de confirmar la importación.
+    # La detección se usa al analizar el .xls y se repite al confirmar la carga.
     import_service._modality = _robust_modality
 
     previous_write = core.InformtitHandler._handle_api_write
@@ -292,6 +335,4 @@ def install() -> None:
 
     core.InformtitHandler._handle_api_write = dual_write
     core.InformtitHandler._dual_modality_runtime_installed = True
-
-    # Repara también los informes que ya existían antes de esta función.
     ensure_report_pairs()
