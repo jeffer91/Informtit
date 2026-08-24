@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import unittest
 
 import robust_import_fixes
@@ -40,6 +41,32 @@ class RobustImportRuntimeTests(unittest.TestCase):
         self.assertEqual(preview["presencial"], 1)
         self.assertEqual(preview["en_linea"], 1)
         self.assertGreaterEqual(preview["columns_recognized"], 5)
+
+    def test_utf16_text_export_is_supported(self) -> None:
+        text = (
+            "Cédula\tNombres\tCódigo Carrera\tCarrera\tCorreo\n"
+            "0101\tAna\tABC-P-01\tADMINISTRACION\tana@itsqmet.edu.ec\n"
+            "0102\tLuis\tABC-L-01\tADMINISTRACION ONLINE\tluis@itsqmet.edu.ec\n"
+        ).encode("utf-16")
+        parsed = robust.parse_roster_bytes(text, "requisitos.txt")
+        self.assertEqual(parsed["preview"]["encoding"], "UTF-16")
+        self.assertEqual(parsed["preview"]["total"], 2)
+
+    def test_xlsx_is_supported(self) -> None:
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(["Cédula", "Nombres", "Código Carrera", "Carrera", "Correo"])
+        sheet.append(["0101", "Ana", "ABC-P-01", "ADMINISTRACION", "ana@itsqmet.edu.ec"])
+        sheet.append(["0102", "Luis", "ABC-L-01", "ADMINISTRACION ONLINE", "luis@itsqmet.edu.ec"])
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+
+        parsed = robust.parse_roster_bytes(buffer.getvalue(), "requisitos.xlsx")
+        self.assertEqual(parsed["preview"]["file_type"], "Excel moderno (.xlsx)")
+        self.assertEqual(parsed["preview"]["presencial"], 1)
+        self.assertEqual(parsed["preview"]["en_linea"], 1)
 
     def test_ambiguous_modality_is_visible(self) -> None:
         html = """<table>
