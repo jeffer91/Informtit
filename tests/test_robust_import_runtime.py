@@ -4,6 +4,7 @@ import io
 import unittest
 
 import robust_import_fixes
+import robust_import_policy
 import robust_import_runtime as robust
 
 
@@ -12,6 +13,7 @@ class RobustImportRuntimeTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         robust.install()
         robust_import_fixes.install()
+        robust_import_policy.install()
 
     def test_html_cp1252_detects_presencial_and_online(self) -> None:
         html = """<table>
@@ -67,6 +69,19 @@ class RobustImportRuntimeTests(unittest.TestCase):
         self.assertEqual(parsed["preview"]["file_type"], "Excel moderno (.xlsx)")
         self.assertEqual(parsed["preview"]["presencial"], 1)
         self.assertEqual(parsed["preview"]["en_linea"], 1)
+
+    def test_old_export_can_omit_email_and_career_code(self) -> None:
+        html = """<table>
+        <tr><td>Documento Identidad</td><td>Nombres y Apellidos</td><td>Oferta Académica</td></tr>
+        <tr><td>0101</td><td>Ana</td><td>ADMINISTRACION</td></tr>
+        <tr><td>0102</td><td>Luis</td><td>ADMINISTRACION ONLINE</td></tr>
+        </table>""".encode("utf-8")
+
+        parsed = robust.parse_roster_bytes(html, "reporte_antiguo.xls")
+        self.assertEqual(parsed["preview"]["total"], 2)
+        self.assertEqual(parsed["preview"]["presencial"], 1)
+        self.assertEqual(parsed["preview"]["en_linea"], 1)
+        self.assertEqual(parsed["preview"]["missing_institutional_email"], 2)
 
     def test_ambiguous_modality_is_visible(self) -> None:
         html = """<table>
