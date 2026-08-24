@@ -20,6 +20,7 @@ import optional_content
 import pdf_only_runtime
 import pdf_progress_runtime
 import pdf_validation_runtime
+import period_import_guard
 import period_policy_runtime
 import period_unified_runtime
 import process_export
@@ -59,8 +60,6 @@ from thesis_followup import ensure_thesis_followup_schema
 def prepare() -> None:
     """Prepara la base y aplica extensiones en un orden determinista."""
 
-    # Conserva automáticamente la base/cargas creadas por versiones anteriores
-    # antes de empezar a usar la carpeta persistente que Electron entrega.
     storage_migration.migrate_legacy_storage()
     period_policy_runtime.configure_storage()
 
@@ -76,12 +75,7 @@ def prepare() -> None:
     with connection() as conn:
         apply_defaults(conn)
 
-    # Las cuatro áreas del informe se conservan dentro del mismo proyecto,
-    # pero no se utilizan como filtros o puertas de acceso entre sí.
     layout_v3.install()
-
-    # Trabajo de Titulación acepta variantes reales del encabezado institucional
-    # y códigos de carrera presenciales/en línea sin depender de una letra fija.
     thesis_parser_flex.install()
     process_routes.install()
     nuclei_routes.install()
@@ -97,91 +91,43 @@ def prepare() -> None:
     nuclei_multicampus_report.install()
     report_completion_constants.install()
 
-    # Debe instalarse antes de report_completion para que sus envoltorios usen
-    # narrativas y cálculos independientes por módulo.
     report_decoupled.install()
     report_completion.install()
     report_completion_fixes.install()
-
-    # Capas de presentación académica e institucional.
     report_enhancements.install()
     report_catalog_independent.install()
     report_table_style.install()
-
-    # Núcleos toma el Excel consolidado como fuente oficial.
     nuclei_excel_report.install()
-
-    # Conserva los consolidados y análisis estratégicos agregados.
     report_final_overhaul.install()
-
-    # El cronograma se evalúa únicamente con datos reales de ejecución.
     report_schedule_truth.install()
-
-    # Restauración final del detalle: los consolidados ya no sustituyen las
-    # subsecciones nominales de Núcleos, Complexivo o Trabajo de Titulación.
     report_full_detail.install()
-
-    # Pulido definitivo del PDF: TOC de dos niveles, detalle antes del
-    # consolidado, nombres cortos y gráficos legibles.
     report_pdf_polish.install()
-
-    # Guardia final: elimina variantes largas de carreras excluidas antes de
-    # importar, analizar o renderizar el PDF.
     report_pdf_guard.install()
-
-    # Capa visual final: añade gráficos de requisitos, cronograma, Núcleos,
-    # Complexivo, Trabajo de Titulación y priorización estratégica.
     report_visual_extensions.install()
-
-    # Consistencia final: una sola población por modalidad, cronograma basado
-    # en ejecución real, empates correctos, rúbricas agregadas, validación
-    # ampliada y nombre institucional del archivo PDF.
     report_consistency_final.install()
-
-    # Última conciliación: evita que una capa anterior vuelva a marcar el
-    # cronograma como 100 % y aclara cursos importados frente a analizados.
     report_consistency_followup.install()
-
-    # La generación del PDF se ejecuta como un trabajo consultable. La barra
-    # refleja etapas reales del generador y permite que la interfaz siga activa.
     pdf_progress_runtime.install()
     pdf_validation_runtime.install()
-
-    # La aplicación final trabaja exclusivamente con PDF. Las firmas/QR no se
-    # cargan como imágenes; la portada conserva solo nombres y cargos.
     pdf_only_runtime.install()
 
-    # Los periodos normales mantienen datasets Presencial + Online. Cualquier
-    # otro rango se clasifica como PVC y nunca crea un dataset Online adicional.
+    # Períodos normales: una sola fuente con datasets Presencial + Online.
     period_policy_runtime.prepare_dual_policy()
     dual_modality_runtime.install()
     period_policy_runtime.install()
     firebase_catalog_runtime.install()
-
-    # Firebase se instala al final: las colecciones existentes son solo lectura
-    # y únicamente nucleos, complexivo, titulacion y cronogramas admiten escritura.
     firebase_sync_runtime.install()
-
-    # Salvaguardas posteriores: recupera correctamente duplicados PVC históricos,
-    # separa los IDs de Núcleos por grupo y evita clasificaciones ambiguas.
     firebase_integrity_runtime.install()
 
-    # Capa definitiva de integridad: estadísticas, denominadores, conciliación,
-    # deduplicación, auditoría, estado documental y bloqueo previo al PDF.
     report_integrity_runtime.install()
-
-    # Última guarda de ejecución: conserva la presencia real del cronograma y
-    # activa las correcciones finales de empates y conteo de notas cero.
     report_integrity_last_guard.install()
-
-    # El Ishikawa se calcula después de todas las correcciones y usa las mismas
-    # métricas conciliadas del informe, incluyendo empates y ausencia de datos.
     report_integrity_ishikawa.install()
 
-    # Modelo final de navegación: un único proyecto por período. Presencial y
-    # Online quedan como datasets internos filtrables, con cronograma compartido
-    # y dos salidas PDF independientes desde la misma ficha del período.
+    # Un proyecto visible por período con dos salidas PDF filtradas.
     period_unified_runtime.install()
+
+    # Última guarda: vuelve a clasificar NombreCarrera/CodigoCarrera justo antes
+    # de confirmar la importación y evita que un archivo con Online termine en 0.
+    period_import_guard.install()
 
 
 def main() -> None:
