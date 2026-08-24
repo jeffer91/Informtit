@@ -33,6 +33,7 @@ import report_decoupled
 import report_enhancements
 import report_final_overhaul
 import report_full_detail
+import report_integrity_last_guard
 import report_integrity_runtime
 import report_pdf_guard
 import report_pdf_polish
@@ -166,6 +167,10 @@ def prepare() -> None:
     # Capa definitiva de integridad: estadísticas, denominadores, conciliación,
     # deduplicación, auditoría, estado documental y bloqueo previo al PDF.
     report_integrity_runtime.install()
+
+    # Última guarda de ejecución: conserva la presencia real del cronograma y
+    # activa las correcciones finales de empates y conteo de notas cero.
+    report_integrity_last_guard.install()
 
 
 def main() -> None:
