@@ -81,13 +81,10 @@ def corrected_requirement_analysis(report_id: int) -> dict[str, Any] | None:
     if not students:
         return None
 
-    active = [
-        (key, label)
-        for key, label in REQUIREMENTS
-        if any(_raw(student, key) for student in students)
-    ]
-    if not active:
-        return None
+    # Los ocho requisitos previos forman parte del control institucional aunque
+    # una columna haya llegado completamente vacía. Ocultar una columna vacía
+    # convertiría una ausencia de información en una falsa ausencia de requisito.
+    active = list(REQUIREMENTS)
 
     def classify(student: dict[str, Any]) -> str:
         states = [_state(student, key) for key, _ in active]
