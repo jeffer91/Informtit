@@ -10,6 +10,18 @@
     return Number.isFinite(value) ? value : null;
   }
 
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+
+  function setHtml(node, value) {
+    if (node && node.innerHTML !== value) node.innerHTML = value;
+  }
+
+  function setStyle(node, property, value) {
+    if (node && node.style[property] !== value) node.style[property] = value;
+  }
+
   function refresh() {
     const dialog = document.getElementById('active-report-import-dialog');
     const confirmStep = document.getElementById('active-import-confirm-step');
@@ -24,10 +36,11 @@
     const invalid = presencial <= 0 || online <= 0;
 
     if (button) {
-      button.disabled = invalid;
-      button.textContent = invalid
-        ? 'Corrija la clasificación antes de importar'
-        : 'Importar Presencial + Online';
+      if (button.disabled !== invalid) button.disabled = invalid;
+      setText(
+        button,
+        invalid ? 'Corrija la clasificación antes de importar' : 'Importar Presencial + Online'
+      );
     }
 
     if (note) {
@@ -36,18 +49,34 @@
           presencial <= 0 ? 'Presencial' : '',
           online <= 0 ? 'Online' : '',
         ].filter(Boolean).join(' y ');
-        note.innerHTML = `<strong>Error de clasificación:</strong> la fuente presenta 0 registros ${missing}. Informtit no permitirá guardar la importación hasta que ambas modalidades sean reconocidas.`;
-        note.style.background = '#fff0ee';
-        note.style.color = '#91382f';
+        setHtml(
+          note,
+          `<strong>Error de clasificación:</strong> la fuente presenta 0 registros ${missing}. Informtit no permitirá guardar la importación hasta que ambas modalidades sean reconocidas.`
+        );
+        setStyle(note, 'background', '#fff0ee');
+        setStyle(note, 'color', '#91382f');
       } else {
-        note.innerHTML = `<strong>Clasificación verificada:</strong> ${presencial} estudiantes Presencial + ${online} estudiantes Online = ${presencial + online} registros que se guardarán en el mismo período.`;
-        note.style.background = '#edf8f1';
-        note.style.color = '#245f43';
+        setHtml(
+          note,
+          `<strong>Clasificación verificada:</strong> ${presencial} estudiantes Presencial + ${online} estudiantes Online = ${presencial + online} registros que se guardarán en el mismo período.`
+        );
+        setStyle(note, 'background', '#edf8f1');
+        setStyle(note, 'color', '#245f43');
       }
     }
   }
 
-  const observer = new MutationObserver(() => queueMicrotask(refresh));
+  let queued = false;
+  function scheduleRefresh() {
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      refresh();
+    });
+  }
+
+  const observer = new MutationObserver(scheduleRefresh);
   observer.observe(document.body, {
     childList: true,
     subtree: true,
@@ -56,7 +85,7 @@
   });
 
   document.addEventListener('change', event => {
-    if (event.target?.id === 'active-roster-file') queueMicrotask(refresh);
+    if (event.target?.id === 'active-roster-file') scheduleRefresh();
   });
 
   refresh();
