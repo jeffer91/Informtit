@@ -21,6 +21,7 @@ import pdf_only_runtime
 import pdf_progress_runtime
 import pdf_validation_runtime
 import period_policy_runtime
+import period_unified_runtime
 import process_export
 import process_routes
 import report_catalog_independent
@@ -150,8 +151,8 @@ def prepare() -> None:
     # cargan como imágenes; la portada conserva solo nombres y cargos.
     pdf_only_runtime.install()
 
-    # Los periodos normales mantienen Presencial + Online. Cualquier otro
-    # rango se clasifica como PVC y nunca crea un informe Online adicional.
+    # Los periodos normales mantienen datasets Presencial + Online. Cualquier
+    # otro rango se clasifica como PVC y nunca crea un dataset Online adicional.
     period_policy_runtime.prepare_dual_policy()
     dual_modality_runtime.install()
     period_policy_runtime.install()
@@ -176,6 +177,11 @@ def prepare() -> None:
     # El Ishikawa se calcula después de todas las correcciones y usa las mismas
     # métricas conciliadas del informe, incluyendo empates y ausencia de datos.
     report_integrity_ishikawa.install()
+
+    # Modelo final de navegación: un único proyecto por período. Presencial y
+    # Online quedan como datasets internos filtrables, con cronograma compartido
+    # y dos salidas PDF independientes desde la misma ficha del período.
+    period_unified_runtime.install()
 
 
 def main() -> None:
