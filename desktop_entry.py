@@ -7,6 +7,7 @@ import dual_modality_runtime
 import firebase_catalog_runtime
 import firebase_integrity_runtime
 import firebase_sync_runtime
+import import_preview_runtime
 import layout_v3
 import nuclei_catalog_export
 import nuclei_course_edit
@@ -125,9 +126,13 @@ def prepare() -> None:
     # Un proyecto visible por período con dos salidas PDF filtradas.
     period_unified_runtime.install()
 
-    # Última guarda: vuelve a clasificar NombreCarrera/CodigoCarrera justo antes
-    # de confirmar la importación y evita que un archivo con Online termine en 0.
+    # Vuelve a clasificar NombreCarrera/CodigoCarrera justo antes de confirmar.
     period_import_guard.install()
+
+    # Se instala de último para que el análisis del .xls no atraviese toda la
+    # cadena de wrappers de escritura. Esto evita que el diálogo quede en
+    # "Analizando..." aunque el archivo sea pequeño y válido.
+    import_preview_runtime.install()
 
 
 def main() -> None:
