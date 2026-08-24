@@ -47,6 +47,7 @@ import report_schedule_truth
 import report_structure
 import report_table_style
 import report_visual_extensions
+import robust_import_fixes
 import robust_import_runtime
 import storage_migration
 import thesis_parser_flex
@@ -118,6 +119,7 @@ def prepare() -> None:
     # Detecta el contenido real del archivo (HTML antiguo, XLS, XLSX, XML, CSV/TSV)
     # y normaliza encabezados antes de clasificar las modalidades.
     robust_import_runtime.install()
+    robust_import_fixes.install()
 
     dual_modality_runtime.install()
     period_policy_runtime.install()
