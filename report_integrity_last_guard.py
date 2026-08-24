@@ -76,7 +76,7 @@ def repair_schedule_presence() -> int:
 
 
 def source_mode_strict(metrics: dict[str, Any], source: dict[str, Any]) -> str:
-    """Distingue ausencia real de población de una carga contradictoria."""
+    """Una modalidad regular con población 0 se considera un error de fuente/carga."""
     req_total = int(metrics["requirements"]["registered"] or 0)
     module_total = (
         req_total
@@ -88,9 +88,10 @@ def source_mode_strict(metrics: dict[str, Any], source: dict[str, Any]) -> str:
     if source.get("exists"):
         expected = int(source.get("source_modality_count") or 0)
         if expected == 0:
-            # Si la fuente confirma cero población pero aparecen datos académicos,
-            # existe una contradicción y no debe emitirse un informe normal.
-            return "no_population" if module_total == 0 else "import_error"
+            # Para los períodos regulares Presencial y Online deben existir en
+            # la misma fuente. Un cero no se interpreta como "sin población":
+            # se bloquea la emisión hasta revisar el archivo o la clasificación.
+            return "import_error"
         # La fuente confirma población. Requisitos debe contenerla; si quedó vacío,
         # no se permite encubrir el fallo con datos residuales de otros módulos.
         if req_total == 0:
@@ -121,8 +122,8 @@ def report_counts_strict(conn: Any, report_id: int) -> tuple[int, int]:
                 (report_id,),
             ).fetchone()[0]
         )
-        # El cero también es un dato válido: no se debe sustituir por estudiantes
-        # residuales de la estructura antigua.
+        # El cero también es un dato válido para detectar un error; no se debe
+        # sustituir por estudiantes residuales de la estructura antigua.
         return careers, students
 
     return period_policy_runtime._report_counts_original(conn, report_id)
@@ -287,9 +288,6 @@ def install() -> None:
     # Ajustes finales que deben quedar activos después de todas las capas previas.
     integrity._source_mode = source_mode_strict
     integrity.nuclei_duplicate_entries = nuclei_duplicate_entries_strict
-    if not hasattr(period_policy_runtime, "_report_counts_original"):
-        period_policy_runtime._report_counts_original = period_policy_runtime._report_counts
-    period_policy_runtime._report_counts = report_counts_strict
     institutional.draw_header = draw_header_safe
     final_fixes.install()
     _INSTALLED = True
