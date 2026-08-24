@@ -102,6 +102,28 @@ class ReportIntegrityCoreTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["documentation_status"], "REQUIERE CORRECCIÓN")
 
+    def test_empty_requirement_columns_are_not_silently_omitted(self):
+        original = integrity_requirements.get_report_roster
+        integrity_requirements.get_report_roster = lambda report_id: {
+            "students": [
+                {
+                    "identification": "0101",
+                    "full_name": "ESTUDIANTE UNO",
+                    "career_name": "CARRERA",
+                }
+            ]
+        }
+        try:
+            result = integrity_requirements.corrected_requirement_analysis(1)
+        finally:
+            integrity_requirements.get_report_roster = original
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["incomplete"], 1)
+        self.assertEqual(len(result["requirements"]), len(integrity_requirements.REQUIREMENTS))
+        self.assertTrue(all(row["blank"] == 1 for row in result["requirements"]))
+
 
 if __name__ == "__main__":
     unittest.main()
