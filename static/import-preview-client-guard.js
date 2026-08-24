@@ -128,8 +128,6 @@
     }, 350);
   }
 
-  // Se ejecuta antes del manejador principal del formulario para que el usuario
-  // vea actividad incluso durante FileReader.readAsDataURL().
   document.addEventListener('submit', event => {
     if (event.target?.id !== 'active-report-import-form') return;
     const confirmStep = document.getElementById('active-import-confirm-step');
@@ -206,4 +204,13 @@
 
   installConsoleButton();
   window.__informtitPreviewTimeoutInstalled = true;
+
+  // La interfaz robusta se carga al final para reemplazar el flujo antiguo
+  // "solo modalidad activa" sin depender de la caché del index principal.
+  if (!document.querySelector('script[data-robust-import-ui]')) {
+    const script = document.createElement('script');
+    script.src = '/robust-import-ui.js?v=4.2';
+    script.dataset.robustImportUi = '1';
+    document.head.appendChild(script);
+  }
 })();
