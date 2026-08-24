@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, dialog, shell, Menu, ipcMain } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -144,8 +144,8 @@ async function startBackend() {
       const processHandle = spawnPython(candidate, port);
       backendProcess = processHandle;
 
-      processHandle.stdout.on('data', (chunk) => console.log(`[Informtit] ${chunk}`));
-      processHandle.stderr.on('data', (chunk) => console.error(`[Informtit] ${chunk}`));
+      processHandle.stdout.on('data', (chunk) => console.log(`[Informtit] ${String(chunk).trimEnd()}`));
+      processHandle.stderr.on('data', (chunk) => console.error(`[Informtit] ${String(chunk).trimEnd()}`));
 
       const started = await Promise.race([
         waitForBackend(url),
@@ -166,6 +166,7 @@ async function startBackend() {
       if (started) {
         backendPort = port;
         appUrl = url;
+        console.log(`[Informtit] Backend listo: ${url}`);
         return;
       }
 
@@ -182,15 +183,65 @@ async function startBackend() {
 }
 
 function toggleDevTools() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
   if (mainWindow.webContents.isDevToolsOpened()) mainWindow.webContents.closeDevTools();
   else mainWindow.webContents.openDevTools({ mode: 'detach' });
+  return true;
+}
+
+function openDevTools() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (!mainWindow.webContents.isDevToolsOpened()) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+  return true;
+}
+
+function reloadInterface() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  mainWindow.webContents.reloadIgnoringCache();
+  return true;
+}
+
+function installApplicationMenu() {
+  const template = [
+    {
+      label: 'Archivo',
+      submenu: [
+        { label: 'Recargar interfaz', accelerator: 'Ctrl+R', click: reloadInterface },
+        { type: 'separator' },
+        { role: 'quit', label: 'Salir' },
+      ],
+    },
+    {
+      label: 'Consola',
+      submenu: [
+        { label: 'Abrir consola', accelerator: 'F12', click: openDevTools },
+        { label: 'Abrir / cerrar consola', accelerator: 'Ctrl+Shift+I', click: toggleDevTools },
+        { type: 'separator' },
+        {
+          label: 'Recargar sin caché',
+          click: reloadInterface,
+        },
+      ],
+    },
+    {
+      label: 'Ver',
+      submenu: [
+        { role: 'resetZoom', label: 'Tamaño real' },
+        { role: 'zoomIn', label: 'Acercar' },
+        { role: 'zoomOut', label: 'Alejar' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: 'Pantalla completa' },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function installDeveloperAccess() {
   if (!mainWindow) return;
 
-  // F12 y Ctrl+Shift+I abren/cierra la consola de Chromium.
   mainWindow.webContents.on('before-input-event', (event, input) => {
     const key = String(input.key || '').toLowerCase();
     const shortcut = input.key === 'F12' || (input.control && input.shift && key === 'i');
@@ -199,21 +250,18 @@ function installDeveloperAccess() {
     toggleDevTools();
   });
 
-  // Clic derecho permite abrir la consola o inspeccionar el elemento señalado.
   mainWindow.webContents.on('context-menu', (_event, params) => {
     const template = [
       {
         label: 'Inspeccionar elemento',
         click: () => {
           mainWindow.webContents.inspectElement(params.x, params.y);
-          if (!mainWindow.webContents.isDevToolsOpened()) {
-            mainWindow.webContents.openDevTools({ mode: 'detach' });
-          }
+          openDevTools();
         },
       },
       { type: 'separator' },
       { label: 'Abrir/Cerrar consola', accelerator: 'F12', click: toggleDevTools },
-      { label: 'Recargar interfaz', accelerator: 'Ctrl+R', click: () => mainWindow.webContents.reload() },
+      { label: 'Recargar interfaz', accelerator: 'Ctrl+R', click: reloadInterface },
     ];
     Menu.buildFromTemplate(template).popup({ window: mainWindow });
   });
@@ -229,7 +277,7 @@ function createWindow() {
     minHeight: 720,
     show: false,
     backgroundColor: '#f4f7fb',
-    autoHideMenuBar: true,
+    autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -239,6 +287,9 @@ function createWindow() {
     },
   });
 
+  installApplicationMenu();
+  mainWindow.setAutoHideMenuBar(false);
+  mainWindow.setMenuBarVisibility(true);
   installDeveloperAccess();
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.loadURL(appUrl);
@@ -250,6 +301,10 @@ function createWindow() {
     return { action: 'deny' };
   });
 }
+
+ipcMain.handle('informtit:toggle-devtools', () => toggleDevTools());
+ipcMain.handle('informtit:open-devtools', () => openDevTools());
+ipcMain.handle('informtit:reload', () => reloadInterface());
 
 async function boot() {
   try {
