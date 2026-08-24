@@ -33,6 +33,7 @@ import report_decoupled
 import report_enhancements
 import report_final_overhaul
 import report_full_detail
+import report_integrity_ishikawa
 import report_integrity_last_guard
 import report_integrity_runtime
 import report_pdf_guard
@@ -171,6 +172,10 @@ def prepare() -> None:
     # Última guarda de ejecución: conserva la presencia real del cronograma y
     # activa las correcciones finales de empates y conteo de notas cero.
     report_integrity_last_guard.install()
+
+    # El Ishikawa se calcula después de todas las correcciones y usa las mismas
+    # métricas conciliadas del informe, incluyendo empates y ausencia de datos.
+    report_integrity_ishikawa.install()
 
 
 def main() -> None:
