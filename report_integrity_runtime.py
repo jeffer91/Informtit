@@ -15,6 +15,7 @@ import report_consistency_final as consistency
 import report_final_overhaul as final
 import report_full_detail as full
 import report_integrity_core as integrity
+import report_integrity_final_fixes as final_fixes
 import report_integrity_hooks as hooks
 import report_integrity_overrides as overrides
 import report_integrity_pdf as integrity_pdf
@@ -94,6 +95,10 @@ def install() -> None:
     report_quality._pdf_bullet = integrity_pdf.pdf_bullet_integrity
     report_quality._pdf_methodology = integrity_pdf.pdf_methodology_integrity
     report_quality._pdf_post_sections = integrity_pdf.pdf_post_sections_integrity
+
+    # Últimos detalles de presentación: empates conservan el mismo puesto y
+    # los ceros de No evaluado no se describen como calificaciones académicas.
+    final_fixes.install()
 
     # Validación y generación final. El modo SIN POBLACIÓN evita secciones vacías.
     polish.validate_pdf_report = hooks.validation_integrity
