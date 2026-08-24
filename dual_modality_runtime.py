@@ -175,7 +175,13 @@ def ensure_report_pairs() -> dict[str, Any]:
 
 
 def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    """Carga una sola base y mantiene dos informes hermanos por modalidad."""
+    """Carga una sola base y mantiene dos informes hermanos por modalidad.
+
+    Ambas modalidades se actualizan siempre, incluso cuando una de ellas contiene
+    cero registros. Así el informe vacío recibe el nuevo source_import_id, se
+    limpian datos de Requisitos anteriores y la auditoría puede distinguir de
+    forma fiable SIN POBLACIÓN de ERROR DE CARGA.
+    """
     requirements_store.ensure_requirements_schema()
     parsed = _load_preview(token)
     preview = parsed.get("preview") or {}
@@ -200,9 +206,6 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
             "en_linea": [row for row in records if row.get("modality") == "en_linea"],
         }
         active_modality = str(active["modality"] or "presencial")
-        if not by_modality.get(active_modality):
-            label = "en línea" if active_modality == "en_linea" else "presencial"
-            raise ValueError(f"El archivo no contiene estudiantes de modalidad {label}.")
 
         cursor = conn.execute(
             """
@@ -225,8 +228,6 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
         report_ids: dict[str, int] = {}
         for modality in ("presencial", "en_linea"):
             modality_records = by_modality[modality]
-            if not modality_records:
-                continue
 
             if modality == active_modality:
                 target_id = active_report_id
@@ -247,6 +248,9 @@ def commit_preview_to_pair(token: str, active_report_id: int, payload: dict[str,
             )
             report_ids[modality] = target_id
 
+            # Requisitos se reemplaza para ambas modalidades. Si la fuente trae
+            # cero registros de una modalidad, se limpia la población anterior
+            # y el nuevo historial deja constancia explícita de ese cero.
             conn.execute("DELETE FROM requirements_students WHERE report_id=?", (target_id,))
             for record in modality_records:
                 requirements_store._insert_requirement_record(conn, target_id, record, now)
