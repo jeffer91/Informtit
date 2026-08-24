@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import report_final_overhaul as final
 import report_integrity_core as integrity
 
 
@@ -56,7 +57,10 @@ def factors(report_id: int, report: dict[str, Any]) -> list[tuple[str, list[str]
 
     academic_factors: list[str] = []
     strict = integrity.strict_nuclei(report_id)
-    low_courses = [row for row in strict.get("course_rows", []) if row.get("approval") is not None and float(row["approval"]) < 70]
+    low_courses = [
+        row for row in strict.get("course_rows", [])
+        if row.get("approval") is not None and float(row["approval"]) < 70
+    ]
     if low_courses:
         academic_factors.append(f"{len(low_courses)} cursos o núcleos con aprobación menor al 70 %")
     careers = list(nuclei.get("careers", []))
@@ -107,3 +111,7 @@ def factors(report_id: int, report: dict[str, Any]) -> list[tuple[str, list[str]
         ("Planificación y cronogramas", _none(schedule_factors)),
         ("Gestión tecnológica y administrativa", _none(tech_factors)),
     ]
+
+
+def install() -> None:
+    final._ishikawa_factors = factors
