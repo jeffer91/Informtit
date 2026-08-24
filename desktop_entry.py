@@ -9,6 +9,7 @@ import firebase_integrity_runtime
 import firebase_sync_runtime
 import import_preview_runtime
 import layout_v3
+import modality_classifier_runtime
 import nuclei_catalog_export
 import nuclei_course_edit
 import nuclei_excel_report
@@ -122,6 +123,7 @@ def prepare() -> None:
     robust_import_fixes.install()
 
     dual_modality_runtime.install()
+    modality_classifier_runtime.install()
     period_policy_runtime.install()
     firebase_catalog_runtime.install()
     firebase_sync_runtime.install()
