@@ -31,6 +31,7 @@
     const online = metricValue('Online');
     if (presencial === null || online === null) return;
 
+    const ambiguous = metricValue('Modalidad ambigua') || 0;
     const button = document.getElementById('commit-active-roster');
     const note = document.getElementById('active-modality-note');
     const invalid = presencial <= 0 || online <= 0;
@@ -55,6 +56,13 @@
         );
         setStyle(note, 'background', '#fff0ee');
         setStyle(note, 'color', '#91382f');
+      } else if (ambiguous > 0) {
+        setHtml(
+          note,
+          `<strong>Clasificación válida con advertencias:</strong> ${presencial} estudiantes Presencial + ${online} estudiantes Online. Hay ${ambiguous} registro(s) sin marca explícita P/L u Online; revise la clasificación inferida antes de emitir el informe.`
+        );
+        setStyle(note, 'background', '#fff8e8');
+        setStyle(note, 'color', '#76551f');
       } else {
         setHtml(
           note,
