@@ -11,6 +11,7 @@
     .period-card .period-badge{display:inline-flex;padding:5px 9px;border-radius:999px;background:#e8f2fb;color:#17659d;font-size:11px;font-weight:800;margin-bottom:9px}
     .period-card h3{margin:0 0 5px}.period-card p{margin:3px 0;color:#61758b}
     .period-split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+    .period-split.single{grid-template-columns:1fr}
     .period-split>div{background:#f5f8fb;border-radius:10px;padding:10px}.period-split span{display:block;font-size:11px;color:#667b90}.period-split strong{font-size:16px}
     .period-alert{margin:10px 0;padding:9px 11px;border-radius:9px;background:#fff0ee;color:#963b31;font-size:12px;font-weight:650}
     .period-filter{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}
@@ -27,12 +28,17 @@
     .period-overview-table{width:100%;border-collapse:collapse}.period-overview-table th,.period-overview-table td{border-bottom:1px solid #e2e8ee;padding:9px;text-align:left}.period-overview-table th{font-size:12px;color:#597087;background:#f4f7fa}.period-overview-table td:not(:first-child),.period-overview-table th:not(:first-child){text-align:center}
     .period-shared-note{padding:10px 12px;border-radius:9px;background:#eef5fb;color:#2b5f83;margin-top:12px}
     .unified-general-note{padding:12px;border-radius:10px;background:#eef5fb;color:#315f80;grid-column:1/-1}
+    #report-workspace[data-unified-normal="1"] #report-audit-state-badge{display:none!important}
     @media(max-width:800px){.period-split,.period-overview-grid,.period-audit-strip{grid-template-columns:1fr}}
   `;
   document.head.appendChild(css);
 
   function projectSummary() {
     return state?.activeReport?.project_summary || null;
+  }
+
+  function isPvcProject(project) {
+    return String(project?.report_type || '').toLowerCase() === 'pvc';
   }
 
   function auditClass(stateValue) {
@@ -43,7 +49,7 @@
 
   async function getOverview(force = false) {
     const project = projectSummary();
-    if (!project?.period_project_id) return null;
+    if (!project?.period_project_id || isPvcProject(project)) return null;
     if (!force && overviewCache && overviewProjectId === Number(project.period_project_id)) return overviewCache;
     const data = await api(`/api/period-projects/${project.period_project_id}/overview`);
     overviewCache = data;
@@ -68,22 +74,28 @@
       return;
     }
     grid.className = 'period-card-grid';
-    grid.innerHTML = reports.map(report => `
-      <article class="period-card">
-        <span class="period-badge">Presencial + Online</span>
-        <h3>${escapeHtml(report.name || 'Informe del proceso de titulación')}</h3>
-        <p>${escapeHtml(report.period || '')}</p>
-        <p>${escapeHtml(report.code || 'Sin código institucional')}</p>
-        <div class="period-split">
-          <div><span>Presencial</span><strong>${Number(report.presencial_students || 0)} estudiantes</strong><span>${Number(report.presencial_complexive || 0)} registros en Complexivo</span></div>
-          <div><span>Online</span><strong>${Number(report.online_students || 0)} estudiantes</strong><span>${Number(report.online_complexive || 0)} registros en Complexivo</span></div>
-        </div>
-        ${report.population_error ? `<div class="period-alert">${escapeHtml((report.alerts || [])[0] || 'Revise la población por modalidad.')}</div>` : ''}
-        <div class="report-card-actions">
-          <button class="button primary small" data-open-period="${report.id}">Abrir</button>
-          <button class="button danger small" data-delete-period="${report.id}">Eliminar</button>
-        </div>
-      </article>`).join('');
+    grid.innerHTML = reports.map(report => {
+      const pvc = String(report.report_type || '').toLowerCase() === 'pvc';
+      const split = pvc
+        ? `<div class="period-split single"><div><span>Programa</span><strong>${Number(report.presencial_students || 0)} estudiantes</strong><span>${Number(report.presencial_complexive || 0)} registros en Complexivo</span></div></div>`
+        : `<div class="period-split">
+            <div><span>Presencial</span><strong>${Number(report.presencial_students || 0)} estudiantes</strong><span>${Number(report.presencial_complexive || 0)} registros en Complexivo</span></div>
+            <div><span>Online</span><strong>${Number(report.online_students || 0)} estudiantes</strong><span>${Number(report.online_complexive || 0)} registros en Complexivo</span></div>
+          </div>`;
+      return `
+        <article class="period-card">
+          <span class="period-badge">${pvc ? 'PVC' : 'Presencial + Online'}</span>
+          <h3>${escapeHtml(report.name || 'Informe del proceso de titulación')}</h3>
+          <p>${escapeHtml(report.period || '')}</p>
+          <p>${escapeHtml(report.code || 'Sin código institucional')}</p>
+          ${split}
+          ${!pvc && report.population_error ? `<div class="period-alert">${escapeHtml((report.alerts || [])[0] || 'Revise la población por modalidad.')}</div>` : ''}
+          <div class="report-card-actions">
+            <button class="button primary small" data-open-period="${report.id}">Abrir</button>
+            <button class="button danger small" data-delete-period="${report.id}">Eliminar</button>
+          </div>
+        </article>`;
+    }).join('');
 
     $$('[data-open-period]', grid).forEach(button => {
       button.onclick = async () => {
@@ -98,6 +110,8 @@
   }
 
   function normalizeGeneralForm() {
+    const project = projectSummary();
+    if (!project || isPvcProject(project)) return;
     const select = document.querySelector('#general-form select[name="modality"]');
     const label = select?.closest('label');
     if (label) {
@@ -108,11 +122,34 @@
     }
   }
 
+  function cleanupUnifiedProjectUiForPvc() {
+    document.getElementById('period-project-controls')?.remove();
+    document.getElementById('period-project-alerts')?.remove();
+    document.getElementById('period-pdf-actions')?.remove();
+    const allView = document.getElementById('period-all-view');
+    if (allView) allView.style.display = 'none';
+    const tabs = $('#report-tabs');
+    if (tabs) tabs.style.display = '';
+    $$('.tab-content').forEach(node => { node.style.display = ''; });
+    const oldPdf = $('#export-pdf');
+    if (oldPdf) oldPdf.style.display = '';
+    const workspace = $('#report-workspace');
+    if (workspace) delete workspace.dataset.unifiedNormal;
+    $('#report-modality').textContent = 'PVC';
+  }
+
   function ensureProjectUi() {
     const report = state?.activeReport;
     const project = projectSummary();
     if (!report || !project) return;
 
+    if (isPvcProject(project)) {
+      cleanupUnifiedProjectUiForPvc();
+      return;
+    }
+
+    const workspace = $('#report-workspace');
+    if (workspace) workspace.dataset.unifiedNormal = '1';
     document.getElementById('modality-report-switcher')?.remove();
     document.getElementById('period-project-controls')?.remove();
     document.getElementById('period-project-alerts')?.remove();
@@ -186,6 +223,8 @@
   }
 
   function applyView() {
+    const project = projectSummary();
+    if (!project || isPvcProject(project)) return;
     const allView = ensureAllView();
     const tabs = $('#report-tabs');
     const contents = $$('.tab-content');
@@ -211,17 +250,27 @@
 
   function renderAlerts(data) {
     const box = document.getElementById('period-project-alerts');
-    if (!box) return;
-    const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
+    if (!box || !data) return;
+    const alerts = Array.isArray(data.alerts) ? data.alerts : [];
     box.innerHTML = `
       <div class="period-audit-strip">
-        ${auditCard('Presencial', data?.audits?.presencial)}
-        ${auditCard('Online', data?.audits?.en_linea)}
+        ${auditCard('Presencial', data.audits?.presencial)}
+        ${auditCard('Online', data.audits?.en_linea)}
       </div>
       ${alerts.length ? alerts.slice(0, 8).map(item => `<div class="period-project-alert-item">${escapeHtml(item)}</div>`).join('') : ''}`;
   }
 
+  function enforceProjectTitle() {
+    const project = projectSummary();
+    const node = $('#report-name');
+    if (!project || isPvcProject(project) || !node) return;
+    const expected = project.name || state.activeReport?.name || 'Informe del proceso de titulación';
+    if (node.textContent !== expected) node.textContent = expected;
+  }
+
   async function renderOverview() {
+    const project = projectSummary();
+    if (!project || isPvcProject(project)) return;
     const view = ensureAllView();
     if (currentView !== 'todos') return;
     view.innerHTML = '<div class="panel"><div class="loading-state">Consolidando Presencial y Online...</div></div>';
@@ -229,11 +278,12 @@
       const data = await getOverview(true);
       if (!data || currentView !== 'todos') return;
       renderAlerts(data);
+      enforceProjectTitle();
       const p = data.audits?.presencial?.metrics || {};
       const o = data.audits?.en_linea?.metrics || {};
       view.innerHTML = `
         <div class="panel">
-          <div class="panel-head"><div><h2>Vista general del período</h2><p>La información se conserva una sola vez por período y se analiza por modalidad.</p></div></div>
+          <div class="panel-head"><div><h2>Vista general del período</h2><p>La información se conserva en un único proyecto y se analiza por modalidad.</p></div></div>
           <div class="period-overview-grid">
             <article class="period-overview-card"><h3>Presencial</h3><p><strong>${Number(p.requirements?.registered || 0)}</strong> estudiantes en Requisitos</p><p>Estado: <strong>${escapeHtml(data.audits?.presencial?.state || 'No disponible')}</strong></p></article>
             <article class="period-overview-card"><h3>Online</h3><p><strong>${Number(o.requirements?.registered || 0)}</strong> estudiantes en Requisitos</p><p>Estado: <strong>${escapeHtml(data.audits?.en_linea?.state || 'No disponible')}</strong></p></article>
@@ -250,9 +300,12 @@
   }
 
   async function refreshProjectStatus() {
+    const project = projectSummary();
+    if (!project || isPvcProject(project)) return;
     try {
       const data = await getOverview(true);
       renderAlerts(data);
+      enforceProjectTitle();
     } catch (error) {
       const box = document.getElementById('period-project-alerts');
       if (box) box.innerHTML = `<div class="period-project-alert-item">${escapeHtml(error.message)}</div>`;
@@ -273,20 +326,25 @@
     previousRenderReport();
     const project = projectSummary();
     if (!project) return;
+    if (isPvcProject(project)) {
+      cleanupUnifiedProjectUiForPvc();
+      return;
+    }
     if (currentView === 'presencial' && state.activeReport.modality !== 'presencial') currentView = 'todos';
     if (currentView === 'en_linea' && state.activeReport.modality !== 'en_linea') currentView = 'todos';
     ensureProjectUi();
     applyView();
     if (currentView === 'todos') void renderOverview();
     else void refreshProjectStatus();
-    queueMicrotask(normalizeGeneralForm);
+    queueMicrotask(() => {
+      normalizeGeneralForm();
+      enforceProjectTitle();
+    });
   };
 
-  // La creación deja de pedir modalidad: un período normal incluye las dos.
-  const reportForm = $('#report-form');
-  const modalityLabel = reportForm?.querySelector('select[name="modality"]')?.closest('label');
-  if (modalityLabel) {
-    modalityLabel.innerHTML = '<span>Modalidades</span><div class="unified-general-note">Presencial + Online</div>';
+  const titleNode = $('#report-name');
+  if (titleNode) {
+    new MutationObserver(() => enforceProjectTitle()).observe(titleNode, {childList: true, characterData: true, subtree: true});
   }
 
   // Si ya se cargó el tablero antes de este script, lo vuelve a dibujar.
