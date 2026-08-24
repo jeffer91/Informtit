@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
-import report_completion
 import report_integrity_core as integrity
 from roster_service import REQUIREMENTS, get_report_roster
 
@@ -19,10 +18,54 @@ INCOMPLETE_STATES = {
     "PENDIENTE DE CLASIFICAR",
 }
 
+# En registros repetidos se conserva el estado que exige mayor atención.
+_STATE_PRIORITY = {
+    "NO CUMPLE": 100,
+    "REQUIERE CORRECCIÓN": 90,
+    "PENDIENTE DE CLASIFICAR": 80,
+    "EN REVISIÓN": 70,
+    "NO EVALUADO": 60,
+    "AUSENTE": 50,
+    "RETIRADO": 40,
+    "SIN INFORMACIÓN": 30,
+    "CUMPLE": 20,
+    "NO APLICA": 10,
+}
+
+
+def _identity_key(student: dict[str, Any]) -> str:
+    identification = integrity.ascii_key(student.get("identification"))
+    if identification:
+        return "id:" + identification
+    email = integrity.norm(student.get("email")).casefold()
+    if email:
+        return "email:" + email
+    career = integrity.ascii_key(student.get("career_name"))
+    name = integrity.ascii_key(student.get("full_name"))
+    return f"name:{career}|{name}"
+
 
 def _dedupe(students: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    helper = getattr(report_completion, "_dedupe_roster", None)
-    return list(helper(students)) if callable(helper) else students
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for student in students:
+        groups[_identity_key(student)].append(dict(student))
+
+    result: list[dict[str, Any]] = []
+    requirement_keys = [key for key, _ in REQUIREMENTS]
+    for items in groups.values():
+        selected = max(
+            items,
+            key=lambda item: sum(bool(integrity.norm(value)) for value in item.values()),
+        )
+        merged = dict(selected)
+        for key in requirement_keys:
+            candidates = [integrity.canonical_state(item.get(key)) for item in items if integrity.norm(item.get(key))]
+            if not candidates:
+                merged[key] = ""
+                continue
+            merged[key] = max(candidates, key=lambda state: _STATE_PRIORITY.get(state, 80))
+        result.append(merged)
+    return result
 
 
 def _raw(student: dict[str, Any], key: str) -> str:
