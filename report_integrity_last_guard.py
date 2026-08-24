@@ -30,11 +30,15 @@ def repair_schedule_presence() -> int:
     Los cronogramas por defecto siguen marcados como ausentes; únicamente se
     reactiva la presencia cuando existen filas distintas de la plantilla base.
     """
-    repaired = 0
     defaults = {
         "complexive": list(COMPLEXIVE_DEFAULTS),
         "thesis": list(THESIS_DEFAULTS),
     }
+    candidates: list[tuple[int, str]] = []
+
+    # Primero se identifican los cronogramas reales y se cierra la conexión.
+    # Las funciones is_present/set_presence abren su propia conexión, por lo que
+    # no se ejecutan dentro de este bloque para evitar bloqueos de SQLite.
     with connection() as conn:
         report_ids = [
             int(row[0])
@@ -52,12 +56,15 @@ def repair_schedule_presence() -> int:
                     (report_id, schedule_type),
                 ).fetchall()
                 current = [tuple(row) for row in rows]
-                if not current or current == defaults[schedule_type]:
-                    continue
-                key = f"schedule_{schedule_type}"
-                if not is_present(report_id, key):
-                    set_presence(report_id, key, True)
-                    repaired += 1
+                if current and current != defaults[schedule_type]:
+                    candidates.append((report_id, schedule_type))
+
+    repaired = 0
+    for report_id, schedule_type in candidates:
+        key = f"schedule_{schedule_type}"
+        if not is_present(report_id, key):
+            set_presence(report_id, key, True)
+            repaired += 1
     return repaired
 
 
