@@ -42,7 +42,7 @@
       <div class="metrics" id="dashboard-metrics"></div>
       <div class="panel">
         <div class="panel-head">
-          <div><h2>Informes</h2><p>Los proyectos se guardan automáticamente en la base local.</p></div>
+          <div><h2>Informes</h2><p>Cada período académico se gestiona como un único proyecto con datos Presencial y Online.</p></div>
         </div>
         <div id="reports-grid" class="reports-grid"></div>
       </div>
@@ -91,11 +91,11 @@
 
   <dialog id="report-dialog">
     <form method="dialog" id="report-form" class="dialog-form">
-      <div class="dialog-head"><div><h2>Crear informe</h2><p>Defina la información básica del nuevo proyecto.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
+      <div class="dialog-head"><div><h2>Crear informe</h2><p>Defina la información básica del nuevo período académico.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
       <label>Nombre del informe<input name="name" required placeholder="Informe final del proceso de titulación"></label>
       <div class="form-grid">
         <label>Periodo académico<input name="period" required placeholder="Octubre 2025 - Marzo 2026"></label>
-        <label>Modalidad<select name="modality"><option value="presencial">Presencial</option><option value="en_linea">En línea</option></select></label>
+        <label>Modalidades<div class="fixed-responsibles-note">Presencial + Online</div></label>
         <label>Código<input name="code" placeholder="UTET-INF-..."></label>
         <label>Versión<input name="version" value="1.0"></label>
         <label>Fecha de elaboración<input type="date" name="elaboration_date"></label>
@@ -161,5 +161,6 @@
   <script src="/independent-modules-ui.js?v=4.0"></script>
   <script src="/thesis-full-ui.js?v=4.0"></script>
   <script src="/pdf-validation-ui.js?v=4.0"></script>
+  <script src="/period-unified-ui.js?v=4.0"></script>
 </body>
 </html>
