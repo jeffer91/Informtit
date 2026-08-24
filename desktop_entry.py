@@ -49,6 +49,7 @@ import report_structure
 import report_table_style
 import report_visual_extensions
 import robust_import_fixes
+import robust_import_policy
 import robust_import_runtime
 import storage_migration
 import thesis_parser_flex
@@ -121,6 +122,7 @@ def prepare() -> None:
     # y normaliza encabezados antes de clasificar las modalidades.
     robust_import_runtime.install()
     robust_import_fixes.install()
+    robust_import_policy.install()
 
     dual_modality_runtime.install()
     modality_classifier_runtime.install()
