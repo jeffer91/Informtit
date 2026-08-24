@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, shell, Menu } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -134,8 +134,6 @@ async function stopProcess(processHandle) {
 async function startBackend() {
   let lastError = null;
 
-  // No se reutiliza un servidor antiguo del puerto 8765. Cada ejecución de
-  // Electron inicia su propio backend actualizado en un puerto libre.
   for (const candidate of pythonCandidates()) {
     const port = await findFreePort();
     const url = `http://${HOST}:${port}`;
@@ -183,6 +181,44 @@ async function startBackend() {
   throw lastError || new Error('No se encontró una instalación funcional de Python 3.');
 }
 
+function toggleDevTools() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.webContents.isDevToolsOpened()) mainWindow.webContents.closeDevTools();
+  else mainWindow.webContents.openDevTools({ mode: 'detach' });
+}
+
+function installDeveloperAccess() {
+  if (!mainWindow) return;
+
+  // F12 y Ctrl+Shift+I abren/cierra la consola de Chromium.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const key = String(input.key || '').toLowerCase();
+    const shortcut = input.key === 'F12' || (input.control && input.shift && key === 'i');
+    if (!shortcut) return;
+    event.preventDefault();
+    toggleDevTools();
+  });
+
+  // Clic derecho permite abrir la consola o inspeccionar el elemento señalado.
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const template = [
+      {
+        label: 'Inspeccionar elemento',
+        click: () => {
+          mainWindow.webContents.inspectElement(params.x, params.y);
+          if (!mainWindow.webContents.isDevToolsOpened()) {
+            mainWindow.webContents.openDevTools({ mode: 'detach' });
+          }
+        },
+      },
+      { type: 'separator' },
+      { label: 'Abrir/Cerrar consola', accelerator: 'F12', click: toggleDevTools },
+      { label: 'Recargar interfaz', accelerator: 'Ctrl+R', click: () => mainWindow.webContents.reload() },
+    ];
+    Menu.buildFromTemplate(template).popup({ window: mainWindow });
+  });
+}
+
 function createWindow() {
   if (!appUrl) throw new Error('El backend local no está disponible.');
 
@@ -199,9 +235,11 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      devTools: true,
     },
   });
 
+  installDeveloperAccess();
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.loadURL(appUrl);
 
