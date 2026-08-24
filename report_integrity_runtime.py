@@ -18,6 +18,7 @@ import report_integrity_core as integrity
 import report_integrity_hooks as hooks
 import report_integrity_overrides as overrides
 import report_integrity_pdf as integrity_pdf
+import report_integrity_rules as rules
 import report_pdf_polish as polish
 import report_quality
 
@@ -69,15 +70,20 @@ def install() -> None:
     nuclei_excel_import.import_nuclei_excel = hooks.import_nuclei_audited
     nuclei_routes.import_nuclei_excel = hooks.import_nuclei_audited
 
-    # El resumen, las acciones y las conclusiones consumen el mismo objeto de métricas.
+    # El resumen ejecutivo y las acciones automáticas consumen reportMetrics.
     report_completion._executive_data = hooks.executive_data_integrity
     report_completion._automatic_actions = hooks.automatic_actions_integrity
-    full._conclusions = hooks.conclusions_integrity
+
+    # Conclusiones, críticos y recomendaciones se generan desde las mismas
+    # métricas, sin carreras codificadas a mano ni relleno narrativo inventado.
+    full._conclusions = rules.conclusions
+    full._recommendations = rules.recommendations
+    full._strengths_criticals_actions = rules.strengths_criticals_actions
 
     # Estado documental dinámico: BORRADOR / APTO PARA EMITIR / SIN POBLACIÓN.
     polish._display_report = integrity_pdf.display_report_integrity
-    report_quality.base.header_title = integrity_pdf.header_title
-    report_quality.base.cover_pdf = integrity_pdf.cover_pdf_integrity
+    report_quality.base.header_title = rules.header_title
+    report_quality.base.cover_pdf = rules.cover_pdf
     report_quality._pdf_body = integrity_pdf.pdf_body_integrity
     report_quality._pdf_bullet = integrity_pdf.pdf_bullet_integrity
     report_quality._pdf_methodology = integrity_pdf.pdf_methodology_integrity
