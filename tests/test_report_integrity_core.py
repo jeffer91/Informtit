@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 
 import report_integrity_core as integrity
+import report_integrity_final_fixes as final_fixes
+import report_integrity_requirements as integrity_requirements
 
 
 class ReportIntegrityCoreTests(unittest.TestCase):
@@ -74,6 +76,31 @@ class ReportIntegrityCoreTests(unittest.TestCase):
         entries = integrity.nuclei_duplicate_entries([base, exact, probable])
         self.assertEqual(entries[0]["duplicate_type"], "DUPLICADO EXACTO")
         self.assertTrue(any(item["duplicate_type"] == "DUPLICADO PROBABLE" for item in entries))
+
+    def test_dense_ranking_keeps_ties_in_same_position(self):
+        self.assertEqual(
+            final_fixes.dense_ranks([100.0, 100.0, 97.37, 97.37, 90.0]),
+            [1, 1, 2, 2, 3],
+        )
+
+    def test_requirement_dedupe_preserves_more_critical_state(self):
+        students = [
+            {
+                "identification": "0101",
+                "full_name": "ESTUDIANTE UNO",
+                "career_name": "CARRERA",
+                "documentation_status": "CUMPLE",
+            },
+            {
+                "identification": "0101",
+                "full_name": "ESTUDIANTE UNO",
+                "career_name": "CARRERA",
+                "documentation_status": "REQUIERE CORRECCIÓN",
+            },
+        ]
+        merged = integrity_requirements._dedupe(students)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["documentation_status"], "REQUIERE CORRECCIÓN")
 
 
 if __name__ == "__main__":
