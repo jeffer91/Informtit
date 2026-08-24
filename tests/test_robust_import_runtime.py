@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import unittest
 
+import robust_import_context
 import robust_import_fixes
 import robust_import_policy
 import robust_import_runtime as robust
@@ -14,6 +15,7 @@ class RobustImportRuntimeTests(unittest.TestCase):
         robust.install()
         robust_import_fixes.install()
         robust_import_policy.install()
+        robust_import_context.install()
 
     def test_html_cp1252_detects_presencial_and_online(self) -> None:
         html = """<table>
@@ -83,10 +85,23 @@ class RobustImportRuntimeTests(unittest.TestCase):
         self.assertEqual(parsed["preview"]["en_linea"], 1)
         self.assertEqual(parsed["preview"]["missing_institutional_email"], 2)
 
-    def test_ambiguous_modality_is_visible(self) -> None:
+    def test_context_resolves_base_career_as_presencial(self) -> None:
         html = """<table>
-        <tr><td>numeroIdentificacion</td><td>Nombres</td><td>CodigoCarrera</td><td>NombreCarrera</td><td>CorreoInstitucional</td></tr>
-        <tr><td>0101</td><td>Ana</td><td>550613A01</td><td>DESARROLLO DE SOFTWARE</td><td>ana@itsqmet.edu.ec</td></tr>
+        <tr><td>numeroIdentificacion</td><td>Nombres</td><td>CodigoCarrera</td><td>NombreCarrera</td></tr>
+        <tr><td>0101</td><td>Ana</td><td>550613A01</td><td>DESARROLLO DE SOFTWARE</td></tr>
+        <tr><td>0102</td><td>Luis</td><td>550613A01-L-1701</td><td>DESARROLLO DE SOFTWARE ONLINE</td></tr>
+        </table>""".encode("utf-8")
+
+        parsed = robust.parse_roster_bytes(html, "reporte.xls")
+        self.assertEqual(parsed["preview"]["ambiguous_modality"], 0)
+        first = parsed["records"][0]
+        self.assertEqual(first["modality"], "presencial")
+        self.assertEqual(first["modality_confidence"], "media")
+
+    def test_ambiguous_modality_is_visible_when_context_cannot_resolve_it(self) -> None:
+        html = """<table>
+        <tr><td>numeroIdentificacion</td><td>Nombres</td><td>CodigoCarrera</td><td>NombreCarrera</td></tr>
+        <tr><td>0101</td><td>Ana</td><td>550613A01</td><td>DESARROLLO DE SOFTWARE</td></tr>
         </table>""".encode("utf-8")
 
         parsed = robust.parse_roster_bytes(html, "reporte.xls")
