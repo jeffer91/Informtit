@@ -48,6 +48,7 @@ import report_schedule_truth
 import report_structure
 import report_table_style
 import report_visual_extensions
+import robust_import_context
 import robust_import_fixes
 import robust_import_policy
 import robust_import_runtime
@@ -123,6 +124,7 @@ def prepare() -> None:
     robust_import_runtime.install()
     robust_import_fixes.install()
     robust_import_policy.install()
+    robust_import_context.install()
 
     dual_modality_runtime.install()
     modality_classifier_runtime.install()
