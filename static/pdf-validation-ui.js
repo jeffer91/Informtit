@@ -1,6 +1,4 @@
-// La validación previa del PDF se gestiona en pdf-progress.js.
-// Este archivo añade el selector de modalidad y ajusta el flujo visible de
-// importación para reflejar que una sola base genera Presencial y Online.
+// Selector de modalidad, estado documental y ajustes visibles de importación.
 (function () {
   const normalize = value => String(value || '').trim().toLocaleLowerCase('es');
 
@@ -77,11 +75,69 @@
     if (info) info.insertBefore(switcher, info.firstChild);
   }
 
+  function ensureAuditBadge() {
+    const banner = document.querySelector('.report-banner');
+    if (!banner) return null;
+    let badge = document.getElementById('report-audit-state-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.id = 'report-audit-state-badge';
+      badge.style.display = 'inline-flex';
+      badge.style.alignItems = 'center';
+      badge.style.width = 'fit-content';
+      badge.style.padding = '5px 9px';
+      badge.style.marginTop = '7px';
+      badge.style.borderRadius = '999px';
+      badge.style.fontSize = '11px';
+      badge.style.fontWeight = '800';
+      badge.style.letterSpacing = '.03em';
+      const info = banner.firstElementChild;
+      if (info) info.appendChild(badge);
+    }
+    return badge;
+  }
+
+  function paintAuditBadge(badge, audit) {
+    if (!badge) return;
+    badge.textContent = audit.state || 'BORRADOR';
+    if (audit.state === 'APTO PARA EMITIR' || audit.state === 'SIN POBLACIÓN') {
+      badge.style.background = '#dff2e7';
+      badge.style.color = '#245f43';
+    } else if (audit.state === 'ERROR DE CARGA') {
+      badge.style.background = '#f7dddd';
+      badge.style.color = '#8f3131';
+    } else {
+      badge.style.background = '#fff0ca';
+      badge.style.color = '#745415';
+    }
+  }
+
+  async function refreshAuditState() {
+    const reportId = Number(state?.activeReport?.id || 0);
+    if (!reportId) return;
+    try {
+      const data = await api(`/api/reports/${reportId}/audit`);
+      if (Number(state?.activeReport?.id || 0) !== reportId) return;
+      const audit = data.audit || {};
+      setTextIfChanged(document.getElementById('report-name'), audit.document_title || state.activeReport.name || 'Informe de Titulación');
+      paintAuditBadge(ensureAuditBadge(), audit);
+    } catch (error) {
+      const badge = ensureAuditBadge();
+      if (badge) {
+        badge.textContent = 'VALIDACIÓN PENDIENTE';
+        badge.style.background = '#eef2f5';
+        badge.style.color = '#526779';
+        badge.title = error.message || 'No se pudo consultar la auditoría.';
+      }
+    }
+  }
+
   if (typeof renderReport === 'function') {
     const previousRenderReport = renderReport;
     renderReport = function () {
       previousRenderReport();
       renderModalitySwitcher();
+      void refreshAuditState();
     };
   }
 
@@ -124,20 +180,23 @@
     }
   }
 
-  // El diálogo ya fue creado por forms-hotfix.js. Observar únicamente ese nodo
-  // evita procesar cada cambio de toda la aplicación y, sobre todo, evita el
-  // bucle de mutaciones que bloqueaba completamente el renderer de Electron.
-  const importDialog = document.getElementById('active-report-import-dialog');
-  if (importDialog) {
+  // El diálogo se crea bajo demanda. Cuando aparezca, se observan solo sus cambios.
+  const bodyObserver = new MutationObserver(() => {
+    const dialog = document.getElementById('active-report-import-dialog');
+    if (!dialog || dialog.dataset.integrityObserved === '1') return;
+    dialog.dataset.integrityObserved = '1';
     const observer = new MutationObserver(() => updateImportDialogText());
-    observer.observe(importDialog, {
+    observer.observe(dialog, {
       childList: true,
       subtree: true,
       attributes: true,
       attributeFilter: ['hidden', 'disabled'],
     });
-  }
+    updateImportDialogText();
+  });
+  bodyObserver.observe(document.body, { childList: true, subtree: true });
 
   updateImportDialogText();
   renderModalitySwitcher();
+  void refreshAuditState();
 })();
