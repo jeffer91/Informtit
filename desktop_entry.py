@@ -47,6 +47,7 @@ import report_schedule_truth
 import report_structure
 import report_table_style
 import report_visual_extensions
+import robust_import_runtime
 import storage_migration
 import thesis_parser_flex
 from completion_service import ensure_completion_schema
@@ -113,6 +114,11 @@ def prepare() -> None:
 
     # Períodos normales: una sola fuente con datasets Presencial + Online.
     period_policy_runtime.prepare_dual_policy()
+
+    # Detecta el contenido real del archivo (HTML antiguo, XLS, XLSX, XML, CSV/TSV)
+    # y normaliza encabezados antes de clasificar las modalidades.
+    robust_import_runtime.install()
+
     dual_modality_runtime.install()
     period_policy_runtime.install()
     firebase_catalog_runtime.install()
@@ -129,9 +135,8 @@ def prepare() -> None:
     # Vuelve a clasificar NombreCarrera/CodigoCarrera justo antes de confirmar.
     period_import_guard.install()
 
-    # Se instala de último para que el análisis del .xls no atraviese toda la
-    # cadena de wrappers de escritura. Esto evita que el diálogo quede en
-    # "Analizando..." aunque el archivo sea pequeño y válido.
+    # Se instala de último para que el análisis no atraviese toda la cadena de
+    # wrappers de escritura y para mostrar errores reales de forma inmediata.
     import_preview_runtime.install()
 
 
