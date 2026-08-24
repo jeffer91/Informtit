@@ -16,6 +16,7 @@ import report_final_overhaul as final
 import report_full_detail as full
 import report_integrity_core as integrity
 import report_integrity_hooks as hooks
+import report_integrity_overrides as overrides
 import report_integrity_pdf as integrity_pdf
 import report_pdf_polish as polish
 import report_quality
@@ -28,6 +29,8 @@ def install() -> None:
     raw_nuclei_provider = consistency._ORIGINAL_NUCLEI_CONSOLIDATED or final._nuclei_consolidated
     integrity.set_raw_nuclei_provider(raw_nuclei_provider)
     integrity.ensure_integrity_schema()
+    integrity._course_signature = overrides.safe_course_signature
+    integrity.schedule_summary = overrides.schedule_summary
 
     hooks.configure(
         validate=full.validate_pdf_report,
@@ -56,7 +59,6 @@ def install() -> None:
 
     # El cronograma usa un identificador normalizado de actividad y elimina
     # duplicados antiguos o nuevos antes de llegar al análisis/PDF.
-    integrity.schedule_summary = hooks.schedule_summary_strict
     hooks.cleanup_existing_schedule_duplicates()
     process_service.replace_schedule = hooks.replace_schedule_deduped
     process_routes.replace_schedule = hooks.replace_schedule_deduped
