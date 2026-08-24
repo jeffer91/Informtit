@@ -18,6 +18,7 @@ import report_integrity_core as integrity
 import report_integrity_hooks as hooks
 import report_integrity_overrides as overrides
 import report_integrity_pdf as integrity_pdf
+import report_integrity_requirements as integrity_requirements
 import report_integrity_rules as rules
 import report_pdf_polish as polish
 import report_quality
@@ -50,6 +51,11 @@ def install() -> None:
         pdf_methodology=report_quality._pdf_methodology,
         pdf_post_sections=report_quality._pdf_post_sections,
     )
+
+    # El catálogo ampliado distingue CUMPLE, NO CUMPLE, SIN INFORMACIÓN,
+    # NO EVALUADO, NO APLICA, EN REVISIÓN, REQUIERE CORRECCIÓN, RETIRADO,
+    # AUSENTE y PENDIENTE DE CLASIFICAR.
+    report_completion.corrected_requirement_analysis = integrity_requirements.corrected_requirement_analysis
 
     # No evaluado se conserva en el total, pero jamás se usa como nota estadística.
     consistency._master_nuclei = integrity.strict_nuclei
