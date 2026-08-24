@@ -46,6 +46,7 @@ jobs:
       - run: node --check static/thesis-full-ui.js
       - run: node --check static/pdf-validation-ui.js
       - run: node --check static/period-unified-ui.js
+      - run: node --check static/import-modality-guard-ui.js
       - run: node --check static/pdf-progress.js
       - run: node --check static/firebase-ui.js
       - run: node -e "const p=require('./package.json'); if(p.main!=='electron/main.cjs') process.exit(1)"
