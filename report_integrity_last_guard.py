@@ -9,6 +9,7 @@ import completion_routes
 import completion_service
 import institutional_export as institutional
 import nuclei_excel_import
+import period_policy_runtime
 import process_routes
 import process_service
 import report_integrity_core as integrity
@@ -97,6 +98,34 @@ def source_mode_strict(metrics: dict[str, Any], source: dict[str, Any]) -> str:
         return "normal"
 
     return "normal" if module_total else "import_error"
+
+
+def report_counts_strict(conn: Any, report_id: int) -> tuple[int, int]:
+    """Usa Requisitos como población oficial cuando existe una importación fuente."""
+    careers = int(
+        conn.execute("SELECT COUNT(*) FROM careers WHERE report_id=?", (report_id,)).fetchone()[0]
+    )
+    report = conn.execute(
+        "SELECT source_import_id FROM reports WHERE id=?",
+        (report_id,),
+    ).fetchone()
+    has_requirements = bool(
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='requirements_students'"
+        ).fetchone()
+    )
+    if report and report["source_import_id"] and has_requirements:
+        students = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM requirements_students WHERE report_id=?",
+                (report_id,),
+            ).fetchone()[0]
+        )
+        # El cero también es un dato válido: no se debe sustituir por estudiantes
+        # residuales de la estructura antigua.
+        return careers, students
+
+    return period_policy_runtime._report_counts_original(conn, report_id)
 
 
 def nuclei_duplicate_entries_strict(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -258,6 +287,9 @@ def install() -> None:
     # Ajustes finales que deben quedar activos después de todas las capas previas.
     integrity._source_mode = source_mode_strict
     integrity.nuclei_duplicate_entries = nuclei_duplicate_entries_strict
+    if not hasattr(period_policy_runtime, "_report_counts_original"):
+        period_policy_runtime._report_counts_original = period_policy_runtime._report_counts
+    period_policy_runtime._report_counts = report_counts_strict
     institutional.draw_header = draw_header_safe
     final_fixes.install()
     _INSTALLED = True
