@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 import import_service
@@ -20,25 +21,39 @@ def _cell_text(value: Any) -> str:
 
 
 def _decode_text_fixed(data: bytes) -> tuple[str, str]:
-    attempts = (
-        ("utf-8-sig", "UTF-8"),
-        ("utf-16", "UTF-16"),
-        ("utf-16-le", "UTF-16 LE"),
-        ("utf-16-be", "UTF-16 BE"),
-        ("cp1252", "Windows-1252"),
-        ("latin-1", "Latin-1"),
-    )
-    for encoding, label in attempts:
-        try:
-            text = data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-        # Evita aceptar UTF-16 incorrecto sin BOM cuando produce una cadena
-        # llena de caracteres NUL.
-        if text and text.count("\x00") > max(2, len(text) // 20):
-            continue
-        return text, label
-    raise ValueError("No se pudo determinar la codificación del archivo de origen.")
+    if data.startswith(b"\xef\xbb\xbf"):
+        return data.decode("utf-8-sig"), "UTF-8"
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16"), "UTF-16"
+
+    try:
+        return data.decode("utf-8"), "UTF-8"
+    except UnicodeDecodeError:
+        pass
+
+    # Algunos exportadores de Excel guardan texto UTF-16 sin BOM. Solo se
+    # intenta si la distribución de bytes NUL realmente parece UTF-16.
+    sample = data[:8192]
+    if sample:
+        even_nulls = sum(sample[index] == 0 for index in range(0, len(sample), 2))
+        odd_nulls = sum(sample[index] == 0 for index in range(1, len(sample), 2))
+        even_slots = max(1, (len(sample) + 1) // 2)
+        odd_slots = max(1, len(sample) // 2)
+        if odd_nulls / odd_slots > 0.25:
+            try:
+                return data.decode("utf-16-le"), "UTF-16 LE"
+            except UnicodeDecodeError:
+                pass
+        if even_nulls / even_slots > 0.25:
+            try:
+                return data.decode("utf-16-be"), "UTF-16 BE"
+            except UnicodeDecodeError:
+                pass
+
+    try:
+        return data.decode("cp1252"), "Windows-1252"
+    except UnicodeDecodeError:
+        return data.decode("latin-1"), "Latin-1"
 
 
 def _records_from_rows_fixed(rows: list[list[Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -114,6 +129,88 @@ def _records_from_rows_fixed(rows: list[list[Any]]) -> tuple[list[dict[str, Any]
     }
 
 
+def _build_parsed(
+    rows: list[list[Any]],
+    *,
+    filename: str,
+    file_type: str,
+    encoding: str,
+) -> dict[str, Any]:
+    if not rows:
+        raise ValueError("No se encontraron filas tabulares en el archivo.")
+
+    records, meta = _records_from_rows_fixed(rows)
+    identification_counts = Counter(row["identification"] for row in records if row["identification"])
+    email_counts = Counter(row["email"] for row in records if row["email"])
+    career_counts: dict[str, Counter[str]] = {"presencial": Counter(), "en_linea": Counter()}
+    for row in records:
+        career_counts[row["modality"]][row["career_name"]] += 1
+
+    preview = {
+        "filename": filename,
+        "file_type": file_type,
+        "encoding": encoding,
+        "period": import_service._extract_period(filename),
+        "total": len(records),
+        "presencial": sum(row["modality"] == "presencial" for row in records),
+        "en_linea": sum(row["modality"] == "en_linea" for row in records),
+        "careers_total": len({row["career_name"] for row in records}),
+        "careers": {
+            modality: [
+                {"name": name, "students": count}
+                for name, count in sorted(career_counts[modality].items())
+            ]
+            for modality in ("presencial", "en_linea")
+        },
+        "campuses": dict(sorted(Counter(row["campus"] for row in records if row["campus"]).items())),
+        "schedules": dict(sorted(Counter(row["schedule"] for row in records if row["schedule"]).items())),
+        "duplicate_identifications": [key for key, count in identification_counts.items() if count > 1],
+        "duplicate_emails": [key for key, count in email_counts.items() if count > 1],
+        "missing_institutional_email": sum(not row["email"] for row in records),
+        **meta,
+    }
+    return {"records": records, "preview": preview}
+
+
+def _parse_roster_bytes_fixed(data: bytes, filename: str = "requisitos") -> dict[str, Any]:
+    if not data:
+        raise ValueError("El archivo está vacío.")
+    if len(data) > robust.MAX_IMPORT_BYTES:
+        raise ValueError("El archivo supera el límite permitido de 20 MB.")
+
+    if data.startswith(robust.OLE_SIGNATURE):
+        return _build_parsed(
+            robust._rows_from_xls_binary(data),
+            filename=filename,
+            file_type="Excel 97-2003 binario (.xls)",
+            encoding="Binario",
+        )
+
+    if data.startswith(robust.ZIP_SIGNATURE):
+        return _build_parsed(
+            robust._rows_from_xlsx(data),
+            filename=filename,
+            file_type="Excel moderno (.xlsx)",
+            encoding="Binario",
+        )
+
+    text, encoding = _decode_text_fixed(data)
+    probe = text.lstrip().lower()
+
+    if "<table" in probe[:1024 * 1024]:
+        parser = robust._HtmlRowsParser()
+        parser.feed(text)
+        rows = parser.rows
+        file_type = "HTML antiguo compatible con Excel"
+    elif probe.startswith("<") and any(marker in probe[:20000] for marker in ("<workbook", ":workbook", "<worksheet", ":worksheet")):
+        rows = robust._rows_from_spreadsheetml(text)
+        file_type = "Excel XML / SpreadsheetML"
+    else:
+        rows, file_type = robust._rows_from_delimited(text)
+
+    return _build_parsed(rows, filename=filename, file_type=file_type, encoding=encoding)
+
+
 def install() -> None:
     global _INSTALLED
     if _INSTALLED:
@@ -127,4 +224,6 @@ def install() -> None:
     }
     robust._decode_text = _decode_text_fixed
     robust._records_from_rows = _records_from_rows_fixed
+    robust.parse_roster_bytes = _parse_roster_bytes_fixed
+    import_service.parse_roster_bytes = _parse_roster_bytes_fixed
     _INSTALLED = True
