@@ -23,6 +23,7 @@ def _percent_value(value: Any) -> float | None:
 
 
 def dense_ranks(values: list[float | None]) -> list[int]:
+    """Asigna el mismo puesto a valores empatados respetando el orden de la tabla."""
     ranks: list[int] = []
     current_rank = 0
     previous: float | None = None
@@ -36,22 +37,30 @@ def dense_ranks(values: list[float | None]) -> list[int]:
     return ranks
 
 
+def _ranking_value_column(headers: list[str], rows: list[list[Any]]) -> int | None:
+    """Encuentra la primera columna numérica de un ranking después de Carrera/Nombre."""
+    if not rows:
+        return None
+    for index in range(2, len(headers)):
+        values = [_percent_value(row[index]) if len(row) > index else None for row in rows]
+        if values and all(value is not None for value in values):
+            return index
+    return None
+
+
 def table_tie_aware(headers: list[str], rows: list[list[Any]], widths: list[float], styles: Any, font_size: float = 7.2) -> Any:
     adjusted = rows
-    if (
-        len(headers) >= 3
-        and str(headers[0]).strip().casefold() == "puesto"
-        and str(headers[1]).strip().casefold() == "carrera"
-        and "aprob" in str(headers[2]).casefold()
-    ):
-        values = [_percent_value(row[2]) if len(row) > 2 else None for row in rows]
-        ranks = dense_ranks(values)
-        adjusted = []
-        for row, rank in zip(rows, ranks):
-            current = list(row)
-            if current:
-                current[0] = rank
-            adjusted.append(current)
+    if len(headers) >= 3 and str(headers[0]).strip().casefold() in {"puesto", "posición", "posicion"}:
+        value_column = _ranking_value_column(headers, rows)
+        if value_column is not None:
+            values = [_percent_value(row[value_column]) for row in rows]
+            ranks = dense_ranks(values)
+            adjusted = []
+            for row, rank in zip(rows, ranks):
+                current = list(row)
+                if current:
+                    current[0] = rank
+                adjusted.append(current)
     return _BASE_TABLE(headers, adjusted, widths, styles, font_size)
 
 
