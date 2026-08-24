@@ -33,6 +33,7 @@ import report_decoupled
 import report_enhancements
 import report_final_overhaul
 import report_full_detail
+import report_integrity_runtime
 import report_pdf_guard
 import report_pdf_polish
 import report_quality
@@ -161,6 +162,10 @@ def prepare() -> None:
     # Salvaguardas posteriores: recupera correctamente duplicados PVC históricos,
     # separa los IDs de Núcleos por grupo y evita clasificaciones ambiguas.
     firebase_integrity_runtime.install()
+
+    # Capa definitiva de integridad: estadísticas, denominadores, conciliación,
+    # deduplicación, auditoría, estado documental y bloqueo previo al PDF.
+    report_integrity_runtime.install()
 
 
 def main() -> None:
