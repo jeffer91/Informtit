@@ -4,7 +4,9 @@ import json
 from typing import Any
 
 import nuclei_service
+from coordinator_registry import normalize
 from db import connection, rows_to_dicts
+from parser import canonical_name_key, clean_moodle_name
 from student_domain_service import (
     MATCH_OK,
     ROUTE_COMPLEXIVE,
@@ -58,6 +60,23 @@ def _nucleus_student_table(conn: Any, course_id: int) -> str | None:
     return None
 
 
+def _stable_source_key(source_module: str, source: dict[str, Any], context: str = "") -> str:
+    identification = "".join(ch for ch in str(source.get("identification") or "") if ch.isdigit())
+    email = str(source.get("email") or "").strip().casefold()
+    name = canonical_name_key(clean_moodle_name(str(source.get("full_name") or "")))
+    career = normalize(source.get("career_name"))
+    prefix = source_module.lower()
+    if identification:
+        identity = f"id:{identification}"
+    elif email:
+        identity = f"email:{email}"
+    elif name:
+        identity = f"name:{career}|{name}"
+    else:
+        identity = "unknown"
+    return f"{prefix}:{context}:{identity}" if context else f"{prefix}:{identity}"
+
+
 def _manual_match(report_id: int, source_module: str, source_key: str) -> dict[str, Any] | None:
     """Las decisiones humanas prevalecen sobre cualquier nuevo cálculo automático."""
     with connection() as conn:
@@ -85,10 +104,59 @@ def _manual_match(report_id: int, source_module: str, source_key: str) -> dict[s
     }
 
 
+def _legacy_nucleus_manual_match(report_id: int, source: dict[str, Any]) -> dict[str, Any] | None:
+    """Migra en lectura las asociaciones manuales del sistema anterior de Núcleos."""
+    email = str(source.get("email") or "").strip().casefold()
+    name = canonical_name_key(clean_moodle_name(str(source.get("full_name") or "")))
+    career = normalize(source.get("career_name"))
+    keys: list[str] = []
+    if email:
+        keys.append(f"email:{email}")
+    if name:
+        keys.append(f"name:{career}|{name}")
+    if not keys:
+        return None
+    with connection() as conn:
+        if not _table_exists(conn, "nucleus_manual_matches"):
+            return None
+        placeholders = ",".join("?" for _ in keys)
+        legacy = conn.execute(
+            f"""
+            SELECT student_id FROM nucleus_manual_matches
+            WHERE report_id=? AND source_key IN ({placeholders})
+            ORDER BY id DESC LIMIT 1
+            """,
+            (report_id, *keys),
+        ).fetchone()
+        if not legacy:
+            return None
+        master = conn.execute(
+            """
+            SELECT id FROM period_students
+            WHERE report_id=? AND requirements_student_id=?
+            """,
+            (report_id, int(legacy["student_id"])),
+        ).fetchone()
+    if not master:
+        return None
+    return {
+        "status": MATCH_OK,
+        "method": "MANUAL",
+        "confidence": 100.0,
+        "period_student_id": int(master["id"]),
+        "candidates": [],
+    }
+
+
 def _match(report_id: int, source_module: str, source_key: str, source: dict[str, Any]) -> dict[str, Any]:
     manual = _manual_match(report_id, source_module, source_key)
     if manual:
         return manual
+    if source_module == "NUCLEI":
+        legacy = _legacy_nucleus_manual_match(report_id, source)
+        if legacy:
+            save_source_link(report_id, source_module, source_key, source, legacy)
+            return legacy
     return match_source_record(report_id, source_module, source_key, source)
 
 
@@ -106,13 +174,15 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
             if not course_id:
                 continue
             table = _nucleus_student_table(conn, course_id)
-            for index, source in enumerate(course.get("students", []), start=1):
-                source_key = f"course:{course_id}:student:{source.get('id') or source.get('email') or index}"
+            context = f"course:{course_id}"
+            for source in course.get("students", []):
                 candidate = {
+                    "identification": source.get("identification") or "",
                     "full_name": source.get("full_name") or "",
                     "email": source.get("email") or "",
                     "career_name": course.get("career_name") or "",
                 }
+                source_key = _stable_source_key("NUCLEI", candidate, context)
                 result = _match(report_id, "NUCLEI", source_key, candidate)
                 sid = result.get("period_student_id")
                 status = result.get("status") or "UNMATCHED"
@@ -167,7 +237,7 @@ def reconcile_complexive(report_id: int) -> dict[str, Any]:
     masters = {int(row["id"]): row for row in get_period_students(report_id).get("students", [])}
     with connection() as conn:
         for row in rows:
-            source_key = f"complexive:{int(row['id'])}"
+            source_key = _stable_source_key("COMPLEXIVE", row)
             result = _match(report_id, "COMPLEXIVE", source_key, row)
             sid = result.get("period_student_id")
             status = result.get("status") or "UNMATCHED"
@@ -202,7 +272,7 @@ def reconcile_thesis(report_id: int) -> dict[str, Any]:
     masters = {int(row["id"]): row for row in get_period_students(report_id).get("students", [])}
     with connection() as conn:
         for row in rows:
-            source_key = f"thesis:{int(row['id'])}"
+            source_key = _stable_source_key("THESIS", row)
             result = _match(report_id, "THESIS", source_key, row)
             sid = result.get("period_student_id")
             status = result.get("status") or "UNMATCHED"
