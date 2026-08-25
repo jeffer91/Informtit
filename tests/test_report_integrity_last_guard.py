@@ -36,7 +36,7 @@ class ReportIntegrityLastGuardTests(unittest.TestCase):
         source = {"exists": True, "source_modality_count": 0}
         self.assertEqual(guard.source_mode_strict(metrics, source), "import_error")
 
-    def test_source_zero_without_population_is_no_population(self):
+    def test_source_zero_without_population_is_import_error_for_regular_period(self):
         metrics = {
             "requirements": {"registered": 0},
             "nuclei": {"records": 0},
@@ -44,7 +44,7 @@ class ReportIntegrityLastGuardTests(unittest.TestCase):
             "thesis": {"total": 0},
         }
         source = {"exists": True, "source_modality_count": 0}
-        self.assertEqual(guard.source_mode_strict(metrics, source), "no_population")
+        self.assertEqual(guard.source_mode_strict(metrics, source), "import_error")
 
     def test_source_with_population_but_empty_requirements_is_import_error(self):
         metrics = {
