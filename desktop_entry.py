@@ -8,6 +8,7 @@ import desktop_stability_runtime
 import dual_modality_runtime
 import firebase_catalog_runtime
 import firebase_integrity_runtime
+import firebase_nuclei_bridge
 import firebase_sync_runtime
 import import_preview_runtime
 import layout_v3
@@ -26,6 +27,7 @@ import pdf_progress_runtime
 import pdf_validation_runtime
 import period_import_guard
 import period_policy_runtime
+import period_readonly_runtime
 import period_unified_runtime
 import process_export
 import process_routes
@@ -135,12 +137,20 @@ def prepare() -> None:
     firebase_sync_runtime.install()
     firebase_integrity_runtime.install()
 
+    # Firebase trabaja con la entidad multicampus actual de Núcleos. Las tablas
+    # legacy quedan únicamente como fuente de migración de instalaciones antiguas.
+    firebase_nuclei_bridge.install()
+
     report_integrity_runtime.install()
     report_integrity_last_guard.install()
     report_integrity_ishikawa.install()
 
     # Un proyecto visible por período con dos salidas PDF filtradas.
     period_unified_runtime.install()
+
+    # Después de la conciliación inicial, consultar un período no vuelve a
+    # reescribir proyectos ni cronogramas. Las conciliaciones quedan en writes.
+    period_readonly_runtime.install()
 
     # Vuelve a clasificar NombreCarrera/CodigoCarrera justo antes de confirmar.
     period_import_guard.install()
