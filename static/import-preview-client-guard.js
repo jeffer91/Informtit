@@ -205,12 +205,7 @@
   installConsoleButton();
   window.__informtitPreviewTimeoutInstalled = true;
 
-  // La interfaz robusta se carga al final para reemplazar el flujo antiguo
-  // "solo modalidad activa" sin depender de la caché del index principal.
-  if (!document.querySelector('script[data-robust-import-ui]')) {
-    const script = document.createElement('script');
-    script.src = '/robust-import-ui.js?v=4.2';
-    script.dataset.robustImportUi = '1';
-    document.head.appendChild(script);
-  }
+  // robust-import-ui.js forma parte de index.html y se carga una sola vez en un
+  // orden determinista. No se inyecta de nuevo aquí: una segunda carga podía
+  // competir con period-unified-ui.js y complicar el arranque de Electron.
 })();
