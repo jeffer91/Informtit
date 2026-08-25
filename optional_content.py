@@ -73,6 +73,7 @@ def ensure_optional_schema() -> None:
 
 
 def set_presence(report_id: int, content_key: str, included: bool) -> None:
+    ensure_optional_schema()
     with connection() as conn:
         conn.execute(
             """
