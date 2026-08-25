@@ -7,6 +7,7 @@ import desktop_launcher
 import desktop_stability_runtime
 import dual_modality_runtime
 import firebase_catalog_runtime
+import firebase_incremental_runtime
 import firebase_integrity_runtime
 import firebase_nuclei_bridge
 import firebase_sync_runtime
@@ -140,6 +141,10 @@ def prepare() -> None:
     # Firebase trabaja con la entidad multicampus actual de Núcleos. Las tablas
     # legacy quedan únicamente como fuente de migración de instalaciones antiguas.
     firebase_nuclei_bridge.install()
+
+    # Solo se escriben documentos cuyo contenido académico cambió. updatedAt no
+    # forma parte del hash para evitar escrituras falsas en cada sincronización.
+    firebase_incremental_runtime.install()
 
     report_integrity_runtime.install()
     report_integrity_last_guard.install()
