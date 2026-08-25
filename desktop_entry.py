@@ -3,6 +3,7 @@ from __future__ import annotations
 import app as core
 import completion_routes
 import desktop_launcher
+import desktop_stability_runtime
 import dual_modality_runtime
 import firebase_catalog_runtime
 import firebase_integrity_runtime
@@ -143,9 +144,13 @@ def prepare() -> None:
     # Vuelve a clasificar NombreCarrera/CodigoCarrera justo antes de confirmar.
     period_import_guard.install()
 
-    # Se instala de último para que el análisis no atraviese toda la cadena de
+    # Se instala al final para que el análisis no atraviese toda la cadena de
     # wrappers de escritura y para mostrar errores reales de forma inmediata.
     import_preview_runtime.install()
+
+    # Última capa: sirve siempre la interfaz actual sin caché y expone diagnóstico
+    # del archivo SQLite realmente abierto por el proceso de escritorio.
+    desktop_stability_runtime.install()
 
 
 def main() -> None:
