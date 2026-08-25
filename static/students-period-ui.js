@@ -47,7 +47,7 @@
       <div class="student-metric"><strong>${summary.thesis || 0}</strong><span>Trabajo titulación</span></div>
       <div class="student-metric"><strong>${summary.graduated || 0}</strong><span>Graduados oficiales</span></div>
       <div class="student-metric"><strong>${summary.retired || 0}</strong><span>Retirados</span></div>
-      <div class="student-metric"><strong>${summary.review || 0}</strong><span>Revisión</span></div>
+      <div class="student-metric"><strong>${summary.review || 0}</strong><span>Alertas / revisión</span></div>
     </div>`;
   }
 
@@ -65,12 +65,45 @@
       <td><select class="student-route-select period-route-select" data-student-id="${Number(row.id)}">
         <option value="COMPLEXIVO" ${row.route === 'COMPLEXIVO' ? 'selected' : ''}>Examen Complexivo</option>
         <option value="TRABAJO_TITULACION" ${row.route === 'TRABAJO_TITULACION' ? 'selected' : ''}>Trabajo de Titulación</option>
-      </select><small>${row.route_source === 'MANUAL' ? 'Definido manualmente' : 'Por defecto'}</small></td>
-      <td>${missingBadge(row)}<small>${escapeValue(row.process_status === 'RETIRADO' ? 'Retirado' : row.process_status === 'NO_APROBADO_REQUISITO' ? 'No aprobado por requisito' : 'Continúa proceso')}</small></td>
+      </select><small>${row.route_source === 'MANUAL' ? 'Definido manualmente' : 'Complexivo por defecto'}</small></td>
+      <td>${missingBadge(row)}
+        <select class="student-route-select period-process-select" data-student-id="${Number(row.id)}" title="Permite una corrección manual excepcional del estado">
+          <option value="ACTIVO" ${row.process_status === 'ACTIVO' ? 'selected' : ''}>Continúa proceso</option>
+          <option value="NO_APROBADO_REQUISITO" ${row.process_status === 'NO_APROBADO_REQUISITO' ? 'selected' : ''}>No aprobado por requisito</option>
+          <option value="RETIRADO" ${row.process_status === 'RETIRADO' ? 'selected' : ''}>Retirado</option>
+        </select><small>${row.process_status_source === 'MANUAL' ? 'Estado corregido manualmente' : 'Calculado desde Requisitos'}</small>
+      </td>
       <td>${badge(row.has_nuclei ? 'Núcleos cargados' : 'Sin Núcleos', row.has_nuclei ? 'ok' : 'muted')}<small>${row.has_complexive ? 'Complexivo cargado' : ''}${row.has_thesis ? `${row.has_complexive ? ' · ' : ''}Trabajo cargado` : ''}</small></td>
       <td>${official}<small>${Number(row.official_titulation_completed) === 1 ? 'Titulación: CUMPLE' : 'Titulación pendiente'}</small></td>
       <td>${reconciliation}<small>${escapeValue(row.reconciliation_detail || '')}</small></td>
     </tr>`;
+  }
+
+  function moduleLabel(module) {
+    return ({NUCLEI:'Núcleos', COMPLEXIVE:'Examen Complexivo', THESIS:'Trabajo de Titulación'}[module] || module || 'Fuente');
+  }
+
+  function openLinkHtml(link) {
+    const candidates = Array.isArray(link.candidates) ? link.candidates : [];
+    const canConfirm = ['REVIEW_REQUIRED', 'AMBIGUOUS', 'UNMATCHED'].includes(String(link.match_status || ''));
+    const candidateHtml = canConfirm && candidates.length
+      ? `<div class="student-match-candidates">${candidates.slice(0, 5).map(candidate => `
+          <button type="button" class="button secondary compact period-match-confirm"
+            data-link-id="${Number(link.id)}" data-student-id="${Number(candidate.student_id)}">
+            ${escapeValue(candidate.full_name)} · ${escapeValue(candidate.identification || 'sin cédula')} · ${escapeValue(candidate.similarity || 0)}%
+          </button>`).join('')}</div>`
+      : '';
+    const guidance = link.match_status === 'ROUTE_CONFLICT'
+      ? '<small>La identidad ya está vinculada. Corrija la ruta del estudiante en la tabla superior.</small>'
+      : link.match_status === 'GRADE_CONFLICT'
+        ? '<small>Revise el conflicto de notas en el módulo correspondiente.</small>'
+        : !candidates.length ? '<small>No existen candidatos confiables. Revise los datos de origen.</small>' : '';
+    return `<article class="student-match-card">
+      <div><strong>${escapeValue(moduleLabel(link.source_module))}</strong> ${badge(link.match_status || 'REVIEW_REQUIRED', 'warn')}</div>
+      <p><strong>${escapeValue(link.source_name || 'Sin nombre')}</strong> · ${escapeValue(link.source_email || 'sin correo')} · ${link.dataset_modality === 'en_linea' ? 'Online' : 'Presencial'}</p>
+      ${link.detail ? `<p>${escapeValue(link.detail)}</p>` : ''}
+      ${candidateHtml}${guidance}
+    </article>`;
   }
 
   function applyFilters(view) {
@@ -110,6 +143,7 @@
     try {
       const data = await apiRequest(`/api/period-projects/${pid}/students-domain`);
       const students = data.students || [];
+      const openLinks = data.open_links || [];
       view.innerHTML = `<div class="panel">
         <div class="panel-head"><div><h2>Estudiantes del período</h2><p>Vista global. Requisitos conserva la identidad oficial; todos parten por Complexivo y los casos excepcionales se cambian aquí a Trabajo de Titulación.</p></div>
           <button class="button secondary" id="period-student-refresh" type="button">Reconciliar</button></div>
@@ -121,7 +155,11 @@
           <select id="period-student-process"><option value="">Todos los estados</option><option value="ACTIVO">Continúa proceso</option><option value="NO_APROBADO_REQUISITO">Falta un requisito</option><option value="RETIRADO">Retirado</option></select>
           <select id="period-student-reconciliation"><option value="">Toda conciliación</option><option value="OK">Correctos</option><option value="ROUTE_CONFLICT">Conflicto de ruta</option><option value="OFFICIAL_DATA_CONFLICT">Conflicto oficial</option><option value="REVIEW_REQUIRED">Requiere revisión</option><option value="UNMATCHED">Sin coincidencia</option></select>
         </div>
-        <div class="table-scroll"><table class="student-table"><thead><tr><th>Estudiante</th><th>Carrera</th><th>Ruta</th><th>Requisitos</th><th>Evidencia</th><th>Oficial</th><th>Conciliación</th></tr></thead><tbody>${students.map(rowHtml).join('')}</tbody></table></div>
+        <div class="table-scroll"><table class="student-table"><thead><tr><th>Estudiante</th><th>Carrera</th><th>Ruta</th><th>Requisitos / estado</th><th>Evidencia</th><th>Oficial</th><th>Conciliación</th></tr></thead><tbody>${students.map(rowHtml).join('')}</tbody></table></div>
+      </div>
+      <div class="panel student-match-panel">
+        <div class="panel-head"><div><h2>Discrepancias por subsanar</h2><p>Solo se muestran registros de Núcleos, Complexivo o Trabajo de Titulación que requieren una decisión. Confirmar una coincidencia queda guardado y prevalece en futuras conciliaciones.</p></div><strong>${openLinks.length}</strong></div>
+        ${openLinks.length ? `<div class="student-match-list">${openLinks.map(openLinkHtml).join('')}</div>` : '<div class="empty-mini">No existen discrepancias de matching pendientes.</div>'}
       </div>`;
 
       view.querySelectorAll('#period-student-search,#period-student-modality,#period-student-route,#period-student-process,#period-student-reconciliation').forEach(control => {
@@ -141,6 +179,35 @@
           } catch (error) {
             if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
             await renderGlobalStudents();
+          }
+        });
+      });
+      view.querySelectorAll('.period-process-select').forEach(select => {
+        select.addEventListener('change', async event => {
+          const studentId = Number(event.target.dataset.studentId);
+          event.target.disabled = true;
+          try {
+            await apiRequest(`/api/period-projects/${pid}/students-domain/${studentId}/process-status`, {
+              method: 'PUT', body: JSON.stringify({process_status: event.target.value}),
+            });
+            await renderGlobalStudents();
+          } catch (error) {
+            if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
+            await renderGlobalStudents();
+          }
+        });
+      });
+      view.querySelectorAll('.period-match-confirm').forEach(button => {
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await apiRequest(`/api/period-projects/${pid}/students-domain/matches/${Number(button.dataset.linkId)}/confirm`, {
+              method: 'POST', body: JSON.stringify({student_id: Number(button.dataset.studentId)}),
+            });
+            await renderGlobalStudents();
+          } catch (error) {
+            if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
+            button.disabled = false;
           }
         });
       });
