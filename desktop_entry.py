@@ -60,6 +60,7 @@ import robust_import_policy
 import robust_import_runtime
 import schedule_defaults_runtime
 import storage_migration
+import student_domain_runtime
 import thesis_parser_flex
 from completion_service import ensure_completion_schema
 from db import connection
@@ -67,6 +68,7 @@ from import_service import ensure_schema
 from institutional_defaults import apply_defaults
 from nuclei_service import ensure_nuclei_schema
 from process_service import ensure_process_schema
+from student_domain_service import ensure_student_domain_schema
 from thesis_followup import ensure_thesis_followup_schema
 
 
@@ -84,6 +86,7 @@ def prepare() -> None:
     ensure_nuclei_schema()
     ensure_completion_schema()
     ensure_thesis_followup_schema()
+    ensure_student_domain_schema()
 
     # Las antiguas fechas semilla de 2025/2026 se eliminan únicamente cuando
     # permanecen intactas. Los cronogramas editados o con ejecución se conservan.
@@ -174,6 +177,10 @@ def prepare() -> None:
 
     # CRUD persistente para nombre, Telegram y carreras de cada coordinador.
     coordinator_admin_runtime.install()
+
+    # Dominio maestro local: Requisitos crea la identidad; Núcleos, Complexivo y
+    # Trabajo de Titulación solo aportan evidencia. No modifica Firebase compartida.
+    student_domain_runtime.install()
 
     # Última capa: sirve siempre la interfaz actual sin caché y expone diagnóstico
     # del archivo SQLite realmente abierto por el proceso de escritorio.
