@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -10,11 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 class PeriodUnifiedFrontendTests(unittest.TestCase):
     def test_unified_script_is_loaded_last(self):
         html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-        self.assertIn('/period-unified-ui.js?v=4.0', html)
-        self.assertGreater(
-            html.index('/period-unified-ui.js?v=4.0'),
-            html.index('/pdf-validation-ui.js?v=4.0'),
-        )
+        scripts = re.findall(r'<script\s+src="([^"]+)"', html)
+        self.assertTrue(scripts)
+        self.assertTrue(any(path.startswith('/period-unified-ui.js?') for path in scripts))
+        self.assertTrue(any(path.startswith('/robust-import-ui.js?') for path in scripts))
+        self.assertTrue(any(path.startswith('/pdf-validation-ui.js?') for path in scripts))
+        self.assertTrue(scripts[-1].startswith('/period-unified-ui.js?'))
 
     def test_normal_period_has_three_views_and_two_pdf_buttons(self):
         script = (ROOT / "static" / "period-unified-ui.js").read_text(encoding="utf-8")
