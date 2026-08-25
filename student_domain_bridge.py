@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import nuclei_service
@@ -57,6 +58,40 @@ def _nucleus_student_table(conn: Any, course_id: int) -> str | None:
     return None
 
 
+def _manual_match(report_id: int, source_module: str, source_key: str) -> dict[str, Any] | None:
+    """Las decisiones humanas prevalecen sobre cualquier nuevo cálculo automático."""
+    with connection() as conn:
+        row = conn.execute(
+            """
+            SELECT period_student_id, match_confidence, candidates_json
+            FROM student_source_links
+            WHERE report_id=? AND source_module=? AND source_key=?
+              AND match_method='MANUAL' AND period_student_id IS NOT NULL
+            """,
+            (report_id, source_module, source_key),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        candidates = json.loads(row["candidates_json"] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        candidates = []
+    return {
+        "status": MATCH_OK,
+        "method": "MANUAL",
+        "confidence": float(row["match_confidence"] or 100.0),
+        "period_student_id": int(row["period_student_id"]),
+        "candidates": candidates,
+    }
+
+
+def _match(report_id: int, source_module: str, source_key: str, source: dict[str, Any]) -> dict[str, Any]:
+    manual = _manual_match(report_id, source_module, source_key)
+    if manual:
+        return manual
+    return match_source_record(report_id, source_module, source_key, source)
+
+
 def reconcile_nuclei(report_id: int) -> dict[str, Any]:
     ensure_bridge_schema()
     courses = nuclei_service.get_nuclei(report_id).get("courses", [])
@@ -78,7 +113,7 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
                     "email": source.get("email") or "",
                     "career_name": course.get("career_name") or "",
                 }
-                result = match_source_record(report_id, "NUCLEI", source_key, candidate)
+                result = _match(report_id, "NUCLEI", source_key, candidate)
                 sid = result.get("period_student_id")
                 status = result.get("status") or "UNMATCHED"
                 detail = ""
@@ -91,6 +126,8 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
                         save_source_link(report_id, "NUCLEI", source_key, candidate, {**result, "status": status, "detail": detail})
                     else:
                         matched += 1
+                        if result.get("method") == "MANUAL":
+                            save_source_link(report_id, "NUCLEI", source_key, candidate, result)
                 elif status in {"REVIEW_REQUIRED", "AMBIGUOUS"}:
                     conflicts += 1
                 else:
@@ -131,7 +168,7 @@ def reconcile_complexive(report_id: int) -> dict[str, Any]:
     with connection() as conn:
         for row in rows:
             source_key = f"complexive:{int(row['id'])}"
-            result = match_source_record(report_id, "COMPLEXIVE", source_key, row)
+            result = _match(report_id, "COMPLEXIVE", source_key, row)
             sid = result.get("period_student_id")
             status = result.get("status") or "UNMATCHED"
             if status == MATCH_OK and sid:
@@ -143,6 +180,8 @@ def reconcile_complexive(report_id: int) -> dict[str, Any]:
                     save_source_link(report_id, "COMPLEXIVE", source_key, row, {**result, "status": status, "detail": detail})
                 else:
                     matched += 1
+                    if result.get("method") == "MANUAL":
+                        save_source_link(report_id, "COMPLEXIVE", source_key, row, result)
             else:
                 pending += 1
             conn.execute("UPDATE students SET period_student_id=? WHERE id=?", (sid, int(row["id"])))
@@ -164,7 +203,7 @@ def reconcile_thesis(report_id: int) -> dict[str, Any]:
     with connection() as conn:
         for row in rows:
             source_key = f"thesis:{int(row['id'])}"
-            result = match_source_record(report_id, "THESIS", source_key, row)
+            result = _match(report_id, "THESIS", source_key, row)
             sid = result.get("period_student_id")
             status = result.get("status") or "UNMATCHED"
             if status == MATCH_OK and sid:
@@ -176,6 +215,8 @@ def reconcile_thesis(report_id: int) -> dict[str, Any]:
                     save_source_link(report_id, "THESIS", source_key, row, {**result, "status": status, "detail": detail})
                 else:
                     matched += 1
+                    if result.get("method") == "MANUAL":
+                        save_source_link(report_id, "THESIS", source_key, row, result)
             else:
                 pending += 1
             conn.execute("UPDATE thesis_projects SET period_student_id=? WHERE id=?", (sid, int(row["id"])))
