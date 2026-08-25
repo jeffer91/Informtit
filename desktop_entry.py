@@ -60,6 +60,7 @@ import robust_import_policy
 import robust_import_runtime
 import schedule_defaults_runtime
 import storage_migration
+import student_domain_integrations
 import student_domain_runtime
 import thesis_parser_flex
 from completion_service import ensure_completion_schema
@@ -181,6 +182,7 @@ def prepare() -> None:
     # Dominio maestro local: Requisitos crea la identidad; Núcleos, Complexivo y
     # Trabajo de Titulación solo aportan evidencia. No modifica Firebase compartida.
     student_domain_runtime.install()
+    student_domain_integrations.install()
 
     # Última capa: sirve siempre la interfaz actual sin caché y expone diagnóstico
     # del archivo SQLite realmente abierto por el proceso de escritorio.
