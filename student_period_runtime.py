@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 import app as core
 from student_period_service import (
+    confirm_period_source_link,
     get_period_student_domain,
     set_period_student_process_status,
     set_period_student_route,
@@ -41,6 +42,14 @@ def install() -> None:
         if match and method in {"POST", "PUT"}:
             self._send_json(set_period_student_process_status(
                 int(match.group(1)), int(match.group(2)), str(payload.get("process_status") or "")
+            ))
+            return
+        match = re.fullmatch(r"/api/period-projects/(\d+)/students-domain/matches/(\d+)/confirm", path)
+        if match and method in {"POST", "PUT"}:
+            self._send_json(confirm_period_source_link(
+                int(match.group(1)),
+                int(match.group(2)),
+                int(payload.get("student_id") or 0),
             ))
             return
         assert _BASE_WRITE is not None
