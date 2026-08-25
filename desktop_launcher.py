@@ -116,11 +116,10 @@ def _handle_api_write(
         report_id = int(match.group(1))
         result = commit_preview_to_report(match.group(2), report_id, payload)
         with connection() as conn:
+            # Refrescar agrega únicamente secciones institucionales faltantes. No
+            # se cambia `visible`: una preferencia guardada debe sobrevivir a una
+            # nueva importación de Requisitos.
             refresh_report_sections(conn, report_id)
-            conn.execute(
-                "UPDATE institutional_sections SET visible = 1 WHERE report_id = ?",
-                (report_id,),
-            )
         self._send_json(result, 201)
         return
 
@@ -141,10 +140,6 @@ def _handle_api_write(
         if any(key in payload for key in ("period", "modality", "name")):
             with connection() as conn:
                 refresh_report_sections(conn, report_id)
-                conn.execute(
-                    "UPDATE institutional_sections SET visible = 1 WHERE report_id = ?",
-                    (report_id,),
-                )
         return
 
     section_match = re.fullmatch(r"/api/reports/(\d+)/sections/(\d+)", path)
@@ -209,8 +204,9 @@ def main() -> None:
             for row in conn.execute("SELECT id FROM reports").fetchall()
         ]
         for report_id in report_ids:
+            # Garantiza que existan las secciones nuevas sin reactivar secciones
+            # que el usuario haya ocultado previamente.
             refresh_report_sections(conn, report_id)
-        conn.execute("UPDATE institutional_sections SET visible = 1")
     core.main()
 
 
