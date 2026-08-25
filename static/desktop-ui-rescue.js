@@ -6,6 +6,7 @@
   if (window.__informtitDesktopUiRescueInstalled) return;
   window.__informtitDesktopUiRescueInstalled = true;
 
+  const CORE_VIEWS = new Set(['dashboard', 'report', 'ai']);
   const q = (selector, root = document) => root.querySelector(selector);
   const qa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -25,12 +26,16 @@
 
   function showStatus(message, error = false) {
     const node = statusNode();
-    if (!node) return;
-    node.hidden = false;
-    node.textContent = message;
-    node.style.background = error ? '#fff0ee' : '#edf8f1';
-    node.style.color = error ? '#91382f' : '#245f43';
-    node.style.borderColor = error ? '#efc7c1' : '#c7e5d2';
+    if (node) {
+      node.hidden = false;
+      node.textContent = message;
+      node.style.background = error ? '#fff0ee' : '#edf8f1';
+      node.style.color = error ? '#91382f' : '#245f43';
+      node.style.borderColor = error ? '#efc7c1' : '#c7e5d2';
+    }
+    if (error && typeof toast === 'function') {
+      try { toast(message, true); } catch (_error) { /* diagnóstico visual secundario */ }
+    }
   }
 
   function clearStatus() {
@@ -127,17 +132,28 @@
   }
 
   async function openReportSafe(id) {
-    if (!id) return;
+    if (!id) return false;
     try {
       if (typeof openReport === 'function') {
         await openReport(Number(id));
-        return;
+        return true;
       }
       showStatus('La función para abrir informes no terminó de inicializar. Abra Consola para ver el error de JavaScript.', true);
     } catch (error) {
       showStatus(`No se pudo abrir el informe: ${error?.message || error}`, true);
       console.error('[Informtit rescue] openReport:', error);
     }
+    return false;
+  }
+
+  async function refreshSafe() {
+    const activeId = Number(state?.activeReport?.id || 0);
+    showStatus('Actualizando información...');
+    await loadDashboard();
+    if (activeId) {
+      await openReportSafe(activeId);
+    }
+    clearStatus();
   }
 
   document.addEventListener('click', (event) => {
@@ -158,16 +174,18 @@
     if (refresh) {
       event.preventDefault();
       event.stopPropagation();
-      showStatus('Actualizando información...');
-      void loadDashboard();
+      void refreshSafe();
       return;
     }
 
     const nav = target.closest('.nav-item[data-view]');
     if (nav) {
+      const name = nav.dataset.view;
+      // Las vistas agregadas por módulos tienen controladores propios. No detener
+      // su evento ni pasarlas por showView(), porque el catálogo base no las conoce.
+      if (!CORE_VIEWS.has(name)) return;
       event.preventDefault();
       event.stopPropagation();
-      const name = nav.dataset.view;
       try {
         if (typeof showView === 'function') showView(name);
         else showViewFallback(name);
