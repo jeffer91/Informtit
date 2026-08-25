@@ -17,13 +17,18 @@ class StudentReportIntegrationTests(unittest.TestCase):
     @patch("student_report_integration.nuclei_multicampus.get_nuclei")
     def test_nuclei_report_only_uses_active_complexive_route(self, nuclei_mock, students_mock, _reconcile):
         students_mock.return_value = {"students": self.master_rows}
-        nuclei_mock.return_value = {"courses": [{"id": 1, "students": [
+        nuclei_mock.return_value = {"courses": [{"id": 1, "graded_students": 3, "approved_count": 3, "course_average": 8.0, "students": [
             {"id": 1, "period_student_id": 101, "full_name": "ANA", "final_grade": 8},
             {"id": 2, "period_student_id": 102, "full_name": "BEA", "final_grade": 9},
             {"id": 3, "period_student_id": 103, "full_name": "CARLA", "final_grade": 7},
         ]}]}
         result = integration.filtered_nuclei(1)
-        self.assertEqual([row["full_name"] for row in result["courses"][0]["students"]], ["ANA"])
+        course = result["courses"][0]
+        self.assertEqual([row["full_name"] for row in course["students"]], ["ANA"])
+        self.assertEqual(course["graded_students"], 1)
+        self.assertEqual(course["approved_count"], 1)
+        self.assertEqual(course["failed_count"], 0)
+        self.assertEqual(course["course_average"], 8.0)
 
     @patch("student_report_integration.reconcile_all", return_value={"ok": True})
     @patch("student_report_integration.get_period_students")
@@ -31,12 +36,14 @@ class StudentReportIntegrationTests(unittest.TestCase):
     def test_thesis_report_only_uses_active_manual_thesis_route(self, projects_mock, students_mock, _reconcile):
         students_mock.return_value = {"students": self.master_rows}
         projects_mock.return_value = {"projects": [
-            {"id": 1, "period_student_id": 101, "full_name": "ANA"},
-            {"id": 2, "period_student_id": 102, "full_name": "BEA"},
+            {"id": 1, "period_student_id": 101, "full_name": "ANA", "final_grade": 9},
+            {"id": 2, "period_student_id": 102, "full_name": "BEA", "final_grade": ""},
         ]}
         result = integration.filtered_projects(1)
         self.assertEqual([row["full_name"] for row in result["projects"]], ["BEA"])
         self.assertEqual(result["omitted_route_conflicts"], 1)
+        self.assertEqual(result["summary"]["total"], 1)
+        self.assertEqual(result["summary"]["incomplete"], 1)
 
     @patch("student_report_integration.reconcile_all", return_value={"ok": True})
     @patch("student_report_integration.get_period_students")
