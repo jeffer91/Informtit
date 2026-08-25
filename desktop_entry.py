@@ -3,6 +3,7 @@ from __future__ import annotations
 import app as core
 import completion_routes
 import coordinator_admin_runtime
+import database_hardening
 import desktop_launcher
 import desktop_stability_runtime
 import dual_modality_runtime
@@ -76,6 +77,7 @@ def prepare() -> None:
     period_policy_runtime.configure_storage()
 
     core.init_db()
+    database_hardening.install()
     ensure_schema()
     period_policy_runtime.ensure_schema()
     ensure_process_schema()
