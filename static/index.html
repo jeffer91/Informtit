@@ -1,172 +1,143 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Informtit</title>
-  <link rel="stylesheet" href="/styles.css?v=4.3">
-  <link rel="stylesheet" href="/assets-ui.css?v=4.3">
-  <link rel="stylesheet" href="/process-ui.css?v=4.3">
+  <link rel="stylesheet" href="/style.css?v=4.3">
+  <link rel="stylesheet" href="/assets-ui.css?v=1.0">
 </head>
 <body>
-  <div id="toast" class="toast" hidden></div>
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-mark">IT</div>
-      <div><strong>Informtit</strong><small>Informes de titulación</small></div>
-    </div>
-    <nav>
-      <button class="nav-item active" data-view="dashboard">Inicio</button>
-      <button class="nav-item" data-view="report">Informe activo</button>
-      <button class="nav-item" data-view="ai">Inteligencias artificiales</button>
-    </nav>
-    <div class="sidebar-footer">
-      <span class="status-dot"></span>
-      <span>SQLite local</span>
-    </div>
-  </aside>
-
-  <main class="main">
-    <header class="topbar">
-      <div>
-        <h1 id="page-title">Panel de informes</h1>
-        <p id="page-subtitle">Cree, procese y exporte informes institucionales en PDF.</p>
-      </div>
-      <div class="top-actions">
-        <button class="button secondary" id="refresh-btn">Actualizar</button>
-        <button class="button primary" id="new-report-btn">Nuevo informe</button>
-      </div>
-    </header>
-
-    <section id="view-dashboard" class="view active">
-      <div class="metrics" id="dashboard-metrics"></div>
-      <div class="panel">
-        <div class="panel-head">
-          <div><h2>Informes</h2><p>Cada período académico se gestiona como un único proyecto con datos Presencial y Online.</p></div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">IT</div>
+        <div>
+          <strong>Informtit</strong>
+          <span>Informes de titulación</span>
         </div>
-        <div id="reports-grid" class="reports-grid"></div>
       </div>
-    </section>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">Inicio</button>
+        <button class="nav-item" data-view="reports">Informes</button>
+      </nav>
+      <div class="sidebar-footer">
+        <span>ITSQMET</span>
+        <small>Unidad de Titulación</small>
+      </div>
+    </aside>
 
-    <section id="view-report" class="view">
-      <div id="empty-report" class="empty-state">
-        <h2>No hay un informe seleccionado</h2>
-        <p>Abra un proyecto desde el inicio o cree uno nuevo.</p>
-      </div>
-      <div id="report-workspace" hidden>
-        <div class="report-banner">
-          <div><span class="eyebrow" id="report-modality"></span><h2 id="report-name"></h2><p id="report-period"></p></div>
-          <div class="report-actions">
-            <a id="export-docx" href="#" style="display:none" aria-hidden="true" tabindex="-1"></a>
-            <a class="button secondary" id="export-pdf" href="#">PDF</a>
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="page-title">Inicio</h1>
+          <p id="page-subtitle">Gestione períodos, módulos y documentos institucionales.</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="button secondary" id="refresh-app" type="button">Actualizar</button>
+        </div>
+      </header>
+
+      <section id="view-dashboard" class="view active">
+        <div class="metrics" id="dashboard-metrics"></div>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Períodos académicos</h2>
+              <p>Abra un período para trabajar con sus datos.</p>
+            </div>
+            <button class="button primary" id="new-report">Nuevo período</button>
           </div>
+          <div id="reports-grid" class="reports-grid"></div>
+        </section>
+      </section>
+
+      <section id="view-reports" class="view">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Todos los informes</h2>
+              <p>Listado general de períodos registrados.</p>
+            </div>
+            <button class="button primary" id="new-report-list">Nuevo período</button>
+          </div>
+          <div id="reports-list"></div>
+        </section>
+      </section>
+
+      <section id="view-report" class="view">
+        <div id="report-workspace">
+          <div class="report-banner">
+            <div>
+              <span class="eyebrow" id="report-modality"></span>
+              <h2 id="report-name"></h2>
+              <p id="report-period"></p>
+            </div>
+            <div class="report-actions">
+              <a class="button secondary" id="export-pdf" target="_blank">Generar PDF</a>
+            </div>
+          </div>
+
+          <div id="report-tabs" class="tabs">
+            <button class="tab active" data-tab="general">Datos generales</button>
+            <button class="tab" data-tab="careers">Complexivo</button>
+            <button class="tab" data-tab="nuclei">Núcleos</button>
+            <button class="tab" data-tab="schedules">Cronogramas</button>
+            <button class="tab" data-tab="projects">Trabajo de Titulación</button>
+            <button class="tab" data-tab="completion">Cierre</button>
+            <button class="tab" data-tab="assets">Recursos</button>
+            <button class="tab" data-tab="sections">Secciones</button>
+          </div>
+
+          <div id="tab-general" class="tab-content active"></div>
+          <div id="tab-careers" class="tab-content"></div>
+          <div id="tab-nuclei" class="tab-content"></div>
+          <div id="tab-schedules" class="tab-content"></div>
+          <div id="tab-projects" class="tab-content"></div>
+          <div id="tab-completion" class="tab-content"></div>
+          <div id="tab-assets" class="tab-content"></div>
+          <div id="tab-sections" class="tab-content"></div>
         </div>
-        <div class="tabs" id="report-tabs">
-          <button class="tab active" data-tab="roster">Requisitos</button>
-          <button class="tab" data-tab="general">Datos generales</button>
-          <button class="tab" data-tab="schedules">Cronogramas</button>
-          <button class="tab" data-tab="nuclei">Núcleos</button>
-          <button class="tab" data-tab="careers">Examen Complexivo</button>
-          <button class="tab" data-tab="projects">Trabajo de Titulación</button>
-          <button class="tab" data-tab="images">Imágenes</button>
-        </div>
+      </section>
+    </main>
+  </div>
 
-        <div id="tab-roster" class="tab-content active"></div>
-        <div id="tab-general" class="tab-content"></div>
-        <div id="tab-schedules" class="tab-content"></div>
-        <div id="tab-nuclei" class="tab-content"></div>
-        <div id="tab-careers" class="tab-content"></div>
-        <div id="tab-projects" class="tab-content"></div>
-        <div id="tab-images" class="tab-content"></div>
-      </div>
-    </section>
-
-    <section id="view-ai" class="view">
-      <div class="panel">
-        <div class="panel-head"><div><h2>Proveedores de inteligencia artificial</h2><p>Configure la redacción automática antes y después de las tablas.</p></div></div>
-        <div id="ai-grid" class="ai-grid"></div>
-      </div>
-    </section>
-  </main>
-
-  <dialog id="report-dialog">
-    <form method="dialog" id="report-form" class="dialog-form">
-      <div class="dialog-head"><div><h2>Crear informe</h2><p>Defina la información básica del nuevo período académico.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
-      <label>Nombre del informe<input name="name" required placeholder="Informe final del proceso de titulación"></label>
-      <div class="form-grid">
-        <label>Periodo académico<input name="period" required placeholder="Octubre 2025 - Marzo 2026"></label>
-        <label>Modalidades<div class="fixed-responsibles-note">Presencial + Online</div></label>
-        <label>Código<input name="code" placeholder="UTET-INF-..."></label>
-        <label>Versión<input name="version" value="1.0"></label>
-        <label>Fecha de elaboración<input type="date" name="elaboration_date"></label>
-      </div>
-      <div class="dialog-actions"><button class="button secondary" value="cancel">Cancelar</button><button class="button primary" id="create-report-submit" value="default">Crear informe</button></div>
-    </form>
-  </dialog>
-
-  <dialog id="career-dialog">
-    <form method="dialog" id="career-form" class="dialog-form">
-      <div class="dialog-head"><div><h2>Agregar carrera</h2><p>La carrera se utilizará únicamente en Examen Complexivo.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
-      <label>Nombre de la carrera<input name="name" required placeholder="Mecánica Automotriz"></label>
-      <div class="dialog-actions"><button class="button secondary" value="cancel">Cancelar</button><button class="button primary" value="default">Agregar</button></div>
-    </form>
-  </dialog>
-
-  <dialog id="notes-dialog" class="wide-dialog">
-    <form method="dialog" id="notes-form" class="dialog-form">
-      <div class="dialog-head"><div><h2 id="notes-title">Cargar notas</h2><p>Pegue las notas propias del Examen Complexivo.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
-      <input type="hidden" name="career_id">
-      <label>Contenido de notas<textarea name="text" rows="18" required placeholder="Nombre / Apellido(s)&#10;Dirección de correo&#10;..."></textarea></label>
-      <label class="check"><input type="checkbox" name="replace" checked> Reemplazar los registros existentes de esta carrera en Examen Complexivo</label>
-      <div class="dialog-actions"><button class="button secondary" value="cancel">Cancelar</button><button class="button primary" value="default">Procesar notas</button></div>
-    </form>
-  </dialog>
-
-  <dialog id="image-dialog">
-    <form method="dialog" id="image-form" class="dialog-form">
-      <div class="dialog-head"><div><h2>Subir imagen del informe</h2><p>La imagen se ubicará automáticamente según el espacio seleccionado.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
-      <label>Archivo<input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/gif" required></label>
-      <label>Título<input name="title" placeholder="Nombre de la imagen"></label>
-      <label>Descripción<textarea name="description" rows="3"></textarea></label>
-      <label>Fuente<input name="source" placeholder="Elaboración propia"></label>
-      <label>Carrera<select name="career_id"><option value="">Imagen general</option></select></label>
-      <input type="hidden" name="section" value="evidencia_general">
-      <div class="dialog-actions"><button class="button secondary" value="cancel">Cancelar</button><button class="button primary" value="default">Guardar imagen</button></div>
-    </form>
-  </dialog>
-
-  <dialog id="analysis-dialog" class="wide-dialog">
-    <form method="dialog" id="analysis-form" class="dialog-form">
-      <div class="dialog-head"><div><h2 id="analysis-title">Análisis de tabla</h2><p>Genere el texto antes y después de la tabla.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
-      <input type="hidden" name="career_id"><input type="hidden" name="phase">
-      <div class="form-grid"><label>Modo<select name="mode"><option value="single">Una IA disponible</option><option value="cascade">Revisión con hasta 3 IA</option></select></label><label>Estado<select name="status"><option value="borrador">Borrador</option><option value="aprobado">Aprobado</option></select></label></div>
-      <div class="analysis-actions"><button type="button" class="button secondary" id="generate-ai-btn">Generar con IA</button><span id="ai-progress"></span></div>
-      <label>Texto antes de la tabla<textarea name="text_before" rows="6"></textarea></label>
-      <label>Texto después de la tabla<textarea name="text_after" rows="8"></textarea></label>
-      <div class="dialog-actions"><button class="button secondary" value="cancel">Cancelar</button><button class="button primary" value="default">Guardar texto</button></div>
-    </form>
-  </dialog>
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-root"></div>
 
   <script src="/app.js?v=4.3"></script>
-  <script src="/startup-guard.js?v=4.3"></script>
   <script src="/forms-hotfix.js?v=4.3"></script>
-  <script src="/no-sections.js?v=4.3"></script>
-  <script src="/assets-ui.js?v=4.3"></script>
+  <script src="/process-ui.js?v=4.3"></script>
   <script src="/process-independent-ui.js?v=4.3"></script>
   <script src="/process-ui-fixes.js?v=4.3"></script>
   <script src="/project-search.js?v=4.3"></script>
   <script src="/report-structure-ui.js?v=4.3"></script>
-  <script src="/nuclei-ui.js?v=4.3"></script>
-  <script src="/completion-ui.js?v=4.3"></script>
-  <script src="/thesis-followup-ui.js?v=4.3"></script>
   <script src="/independent-modules-ui.js?v=4.3"></script>
+  <script src="/nuclei-ui.js?v=4.3"></script>
+  <script src="/nuclei-course-editor.js?v=4.3"></script>
+  <script src="/nuclei-matching-ui.js?v=4.3"></script>
+  <script src="/nuclei-minimal-guard.js?v=4.3"></script>
+  <script src="/nuclei-catalog-ui.js?v=4.3"></script>
+  <script src="/nuclei-organization.js?v=4.3"></script>
+  <script src="/nuclei-clarity.js?v=4.3"></script>
+  <script src="/nuclei-campus-ui.js?v=4.3"></script>
+  <script src="/workflow-ui.js?v=4.3"></script>
+  <script src="/workflow-ui-fixes.js?v=4.3"></script>
+  <script src="/completion-ui.js?v=4.3"></script>
+  <script src="/completion-ui-v2.js?v=4.3"></script>
+  <script src="/thesis-followup-ui.js?v=4.3"></script>
   <script src="/thesis-full-ui.js?v=4.3"></script>
   <script src="/pdf-validation-ui.js?v=4.3"></script>
+  <script src="/period-unified-ui.js?v=4.3"></script>
   <script src="/import-modality-guard-ui.js?v=4.3"></script>
   <script src="/import-preview-client-guard.js?v=4.3"></script>
   <script src="/robust-import-ui.js?v=4.3"></script>
-  <script src="/period-unified-ui.js?v=4.3"></script>
+  <script src="/pdf-progress.js?v=4.3"></script>
   <script src="/coordinator-admin-ui.js?v=4.3"></script>
+  <script src="/assets-ui.js?v=1.0"></script>
+  <script src="/no-sections.js?v=4.3"></script>
+  <script src="/firebase-ui.js?v=1.0"></script>
+  <script src="/startup-guard.js?v=4.3"></script>
   <script src="/desktop-ui-rescue.js?v=4.3"></script>
 </body>
 </html>
