@@ -20,6 +20,16 @@
     return !!project && String(project.report_type || '').toLowerCase() !== 'pvc';
   }
 
+  function setTextIfChanged(node, value) {
+    const text = String(value ?? '');
+    if (node && node.textContent !== text) node.textContent = text;
+  }
+
+  function setHtmlIfChanged(node, value) {
+    const html = String(value ?? '');
+    if (node && node.innerHTML !== html) node.innerHTML = html;
+  }
+
   function metric(label, value, hint = '') {
     return `<article class="metric roster-metric"><span>${escapeHtml(label)}</span><strong>${value}</strong>${hint ? `<small>${escapeHtml(hint)}</small>` : ''}</article>`;
   }
@@ -34,32 +44,50 @@
 
     const title = dialog.querySelector('.dialog-head h2');
     const subtitle = dialog.querySelector('.dialog-head p');
-    if (title) title.textContent = 'Cargar base de requisitos';
-    if (subtitle) subtitle.textContent = 'Una sola carga detectará el formato y separará automáticamente Presencial y Online.';
+    setTextIfChanged(title, 'Cargar base de requisitos');
+    setTextIfChanged(
+      subtitle,
+      'Una sola carga detectará el formato y separará automáticamente Presencial y Online.'
+    );
 
     const context = document.getElementById('active-report-context');
     const project = projectSummary();
     if (context && isUnifiedPeriod()) {
-      context.innerHTML = `<strong>${escapeHtml(project?.name || state.activeReport?.name || 'Informe del proceso de titulación')}</strong><span>Período académico · Presencial + Online</span>`;
+      setHtmlIfChanged(
+        context,
+        `<strong>${escapeHtml(project?.name || state.activeReport?.name || 'Informe del proceso de titulación')}</strong><span>Período académico · Presencial + Online</span>`
+      );
     }
 
     const input = document.getElementById('active-roster-file');
-    if (input) input.accept = supported;
+    if (input && input.accept !== supported) input.accept = supported;
 
     const drop = dialog.querySelector('label.file-drop');
     if (drop) {
-      const strong = drop.querySelector('strong');
-      const span = drop.querySelector('span');
-      if (strong) strong.textContent = 'Seleccione el archivo de requisitos';
-      if (span) span.textContent = '.xls, .xlsx, .csv, .tsv, .html, .htm o .xml';
+      setTextIfChanged(drop.querySelector('strong'), 'Seleccione el archivo de requisitos');
+      setTextIfChanged(drop.querySelector('span'), '.xls, .xlsx, .csv, .tsv, .html, .htm o .xml');
     }
 
     const warning = dialog.querySelector('.replace-warning');
     if (warning && isUnifiedPeriod()) {
-      warning.innerHTML = `
+      setHtmlIfChanged(
+        warning,
+        `
         <strong>La carga actualizará la base del período completo.</strong>
-        <span>Informtit conservará una sola fuente y separará internamente los registros Presencial y Online.</span>`;
+        <span>Informtit conservará una sola fuente y separará internamente los registros Presencial y Online.</span>`
+      );
     }
+  }
+
+  function installDialogObserver() {
+    const dialog = document.getElementById('active-report-import-dialog');
+    if (!dialog || dialog.dataset.robustImportObserved === '1') return;
+    dialog.dataset.robustImportObserved = '1';
+    const observer = new MutationObserver(() => enhanceDialog());
+    // Solo interesa saber cuándo se abre/cierra el diálogo. Vigilar document.body
+    // y reescribir innerHTML dentro del callback generaba un ciclo de microtareas
+    // que podía dejar la interfaz de Electron sin respuesta.
+    observer.observe(dialog, { attributes: true, attributeFilter: ['open'] });
   }
 
   function renderCareers(preview) {
@@ -255,7 +283,14 @@
     enhanceDialog();
   });
 
-  const observer = new MutationObserver(() => enhanceDialog());
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
+  document.addEventListener('click', event => {
+    if (!event.target?.closest?.('#report-import-roster, #roster-upload-btn, #roster-empty-upload')) return;
+    queueMicrotask(() => {
+      installDialogObserver();
+      enhanceDialog();
+    });
+  }, true);
+
+  installDialogObserver();
   enhanceDialog();
 })();
