@@ -62,6 +62,7 @@ import schedule_defaults_runtime
 import storage_migration
 import student_domain_integrations
 import student_domain_runtime
+import student_period_runtime
 import thesis_parser_flex
 from completion_service import ensure_completion_schema
 from db import connection
@@ -183,6 +184,7 @@ def prepare() -> None:
     # Trabajo de Titulación solo aportan evidencia. No modifica Firebase compartida.
     student_domain_runtime.install()
     student_domain_integrations.install()
+    student_period_runtime.install()
 
     # Última capa: sirve siempre la interfaz actual sin caché y expone diagnóstico
     # del archivo SQLite realmente abierto por el proceso de escritorio.
