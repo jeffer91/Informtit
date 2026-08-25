@@ -21,25 +21,33 @@ class StartupUiGuardTests(unittest.TestCase):
         html = (STATIC / "index.html").read_text(encoding="utf-8")
         self.assertIn('/robust-import-ui.js?', html)
         self.assertIn('/period-unified-ui.js?', html)
+        self.assertIn('/desktop-ui-rescue.js?', html)
 
     def test_import_helpers_do_not_observe_document_body(self) -> None:
         for filename in ("pdf-validation-ui.js", "import-modality-guard-ui.js"):
             source = (STATIC / filename).read_text(encoding="utf-8")
             self.assertNotIn('observe(document.body', source, filename)
 
-    def test_core_controls_have_base_and_backup_handlers(self) -> None:
+    def test_core_controls_have_base_backup_and_final_handlers(self) -> None:
         app = (STATIC / "app.js").read_text(encoding="utf-8")
         guard = (STATIC / "startup-guard.js").read_text(encoding="utf-8")
+        rescue = (STATIC / "desktop-ui-rescue.js").read_text(encoding="utf-8")
         self.assertIn("#new-report-btn", app)
         self.assertIn("#refresh-btn", app)
         self.assertIn("new-report-btn", guard)
         self.assertIn("refresh-btn", guard)
         self.assertIn("/api/health", guard)
+        self.assertIn("#new-report-btn", rescue)
+        self.assertIn("#refresh-btn", rescue)
+        self.assertIn("/api/reports", rescue)
 
-    def test_period_unified_layer_is_last(self) -> None:
+    def test_desktop_rescue_is_last_after_unified_layer(self) -> None:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
         scripts = re.findall(r'<script\s+src="([^"]+)"', html)
-        self.assertTrue(scripts[-1].startswith('/period-unified-ui.js?'))
+        unified_index = next(i for i, item in enumerate(scripts) if item.startswith('/period-unified-ui.js?'))
+        rescue_index = next(i for i, item in enumerate(scripts) if item.startswith('/desktop-ui-rescue.js?'))
+        self.assertGreater(rescue_index, unified_index)
+        self.assertTrue(scripts[-1].startswith('/desktop-ui-rescue.js?'))
 
 
 if __name__ == "__main__":
