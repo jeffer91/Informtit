@@ -29,6 +29,15 @@ def _active_for_route(row: dict[str, Any] | None, route: str) -> bool:
     )
 
 
+def _grade(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
 def filtered_nuclei(report_id: int) -> dict[str, Any]:
     """Filtra solo para reportes; la pantalla de carga conserva todos los registros crudos."""
     reconcile_all(report_id)
@@ -73,16 +82,15 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
     result = dict(data)
     result["projects"] = projects
     # Recalcula el resumen sobre la población realmente válida para el informe.
-    approved = sum(
-        str(item.get("final_status") or "").upper() == "APROBADO"
-        or (item.get("final_grade") is not None and float(item["final_grade"]) >= 7)
-        for item in projects
-    )
-    failed = sum(
-        str(item.get("final_status") or "").upper() == "REPROBADO"
-        or (item.get("final_grade") is not None and float(item["final_grade"]) < 7)
-        for item in projects
-    )
+    approved = 0
+    failed = 0
+    for item in projects:
+        status = str(item.get("final_status") or "").upper()
+        grade = _grade(item.get("final_grade"))
+        if status == "APROBADO" or (grade is not None and grade >= 7):
+            approved += 1
+        elif status == "REPROBADO" or (grade is not None and grade < 7):
+            failed += 1
     result["summary"] = {
         **(data.get("summary") or {}),
         "total": len(projects),
