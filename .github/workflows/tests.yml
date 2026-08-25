@@ -53,6 +53,8 @@ jobs:
       - run: node --check static/pdf-progress.js
       - run: node --check static/firebase-ui.js
       - run: node -e "const p=require('./package.json'); if(p.main!=='electron/main.cjs') process.exit(1)"
+      - name: Smoke test backend startup and dashboard source
+        run: python -c "import desktop_entry; desktop_entry.prepare(); import period_unified_runtime as u; projects=u.visible_projects(); print('Informtit backend OK; visible projects:', len(projects))"
       - run: python -m unittest discover -s tests -v
 
 # Verificación directa de integridad sobre main.
