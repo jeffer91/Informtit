@@ -1,18 +1,11 @@
 module.exports = {
   packagerConfig: {
-    asar: true,
+    // Informtit ejecuta el backend Python como un proceso externo. Mantener la
+    // aplicación fuera de ASAR garantiza que desktop_entry.py y todos sus
+    // módulos estén disponibles como archivos reales para el intérprete.
+    asar: false,
     name: 'Informtit',
     executableName: 'Informtit',
-    extraResource: [
-      'app.py',
-      'ai_service.py',
-      'analytics.py',
-      'db.py',
-      'parser.py',
-      'report_service.py',
-      'requirements.txt',
-      'static',
-    ],
   },
   rebuildConfig: {},
   makers: [
