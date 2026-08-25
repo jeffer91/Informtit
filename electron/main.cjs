@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, shell, Menu, ipcMain, session } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -15,6 +15,13 @@ let mainWindow = null;
 
 function backendRoot() {
   return app.isPackaged ? process.resourcesPath : path.resolve(__dirname, '..');
+}
+
+function storageRoot() {
+  const root = backendRoot();
+  // Durante `npm start` se usa de forma explícita la base del repositorio.
+  // En la aplicación instalada se conserva AppData/userData para persistencia.
+  return app.isPackaged ? app.getPath('userData') : path.join(root, 'data');
 }
 
 function pythonCandidates() {
@@ -105,6 +112,7 @@ async function waitForBackend(url, maxAttempts = 100) {
 function spawnPython(candidate, port) {
   const root = backendRoot();
   const script = path.join(root, 'desktop_entry.py');
+  const storage = storageRoot();
   const args = [
     ...candidate.prefix,
     script,
@@ -113,13 +121,17 @@ function spawnPython(candidate, port) {
     '--no-browser',
   ];
 
+  console.log(`[Informtit] Código: ${root}`);
+  console.log(`[Informtit] Almacenamiento: ${storage}`);
+
   return spawn(candidate.command, args, {
     cwd: root,
     windowsHide: true,
     env: {
       ...process.env,
       PYTHONUNBUFFERED: '1',
-      INFORMTIT_STORAGE_DIR: app.getPath('userData'),
+      INFORMTIT_STORAGE_DIR: storage,
+      INFORMTIT_DESKTOP_MODE: app.isPackaged ? 'packaged' : 'development',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -267,8 +279,16 @@ function installDeveloperAccess() {
   });
 }
 
-function createWindow() {
+async function createWindow() {
   if (!appUrl) throw new Error('El backend local no está disponible.');
+
+  // El HTML y los scripts cambian con frecuencia durante desarrollo. Limpiar la
+  // caché impide que Electron mezcle una interfaz vieja con un backend nuevo.
+  try {
+    await session.defaultSession.clearCache();
+  } catch (_error) {
+    // La ausencia de caché no debe impedir el arranque.
+  }
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -276,6 +296,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 720,
     show: false,
+    title: app.isPackaged ? 'Informtit' : 'Informtit · desarrollo',
     backgroundColor: '#f4f7fb',
     autoHideMenuBar: false,
     webPreferences: {
@@ -292,7 +313,7 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(true);
   installDeveloperAccess();
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.loadURL(appUrl);
+  await mainWindow.loadURL(`${appUrl}/?build=${Date.now()}`);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -309,7 +330,7 @@ ipcMain.handle('informtit:reload', () => reloadInterface());
 async function boot() {
   try {
     await startBackend();
-    createWindow();
+    await createWindow();
   } catch (error) {
     dialog.showErrorBox(
       'No se pudo iniciar Informtit',
@@ -322,7 +343,7 @@ async function boot() {
 app.whenReady().then(boot);
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0 && backendProcess) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0 && backendProcess) void createWindow();
 });
 
 app.on('window-all-closed', () => {
