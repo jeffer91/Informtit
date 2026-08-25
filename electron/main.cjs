@@ -18,10 +18,10 @@ function backendRoot() {
 }
 
 function storageRoot() {
-  const root = backendRoot();
-  // Durante `npm start` se usa de forma explícita la base del repositorio.
-  // En la aplicación instalada se conserva AppData/userData para persistencia.
-  return app.isPackaged ? app.getPath('userData') : path.join(root, 'data');
+  // La base de escritorio siempre es persistente en userData. Durante desarrollo,
+  // storage_migration.py recupera automáticamente data/informtit.db si userData
+  // todavía no contiene trabajo real. Esto evita alternar entre dos SQLite.
+  return app.getPath('userData');
 }
 
 function pythonCandidates() {
@@ -122,7 +122,7 @@ function spawnPython(candidate, port) {
   ];
 
   console.log(`[Informtit] Código: ${root}`);
-  console.log(`[Informtit] Almacenamiento: ${storage}`);
+  console.log(`[Informtit] Almacenamiento persistente: ${storage}`);
 
   return spawn(candidate.command, args, {
     cwd: root,
@@ -231,10 +231,7 @@ function installApplicationMenu() {
         { label: 'Abrir consola', accelerator: 'F12', click: openDevTools },
         { label: 'Abrir / cerrar consola', accelerator: 'Ctrl+Shift+I', click: toggleDevTools },
         { type: 'separator' },
-        {
-          label: 'Recargar sin caché',
-          click: reloadInterface,
-        },
+        { label: 'Recargar sin caché', click: reloadInterface },
       ],
     },
     {
@@ -277,13 +274,21 @@ function installDeveloperAccess() {
     ];
     Menu.buildFromTemplate(template).popup({ window: mainWindow });
   });
+
+  // Duplica los errores del renderer en PowerShell para que un fallo de interfaz
+  // no vuelva a quedar oculto detrás de una ventana sin respuesta.
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const prefix = level >= 2 ? '[Informtit renderer ERROR]' : '[Informtit renderer]';
+    console.log(`${prefix} ${message} (${sourceId || 'interfaz'}:${line || 0})`);
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[Informtit] El proceso de interfaz terminó: ${details.reason} (${details.exitCode})`);
+  });
 }
 
 async function createWindow() {
   if (!appUrl) throw new Error('El backend local no está disponible.');
 
-  // El HTML y los scripts cambian con frecuencia durante desarrollo. Limpiar la
-  // caché impide que Electron mezcle una interfaz vieja con un backend nuevo.
   try {
     await session.defaultSession.clearCache();
   } catch (_error) {
