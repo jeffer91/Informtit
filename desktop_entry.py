@@ -63,6 +63,7 @@ import storage_migration
 import student_domain_integrations
 import student_domain_runtime
 import student_period_runtime
+import student_report_integration
 import thesis_parser_flex
 from completion_service import ensure_completion_schema
 from db import connection
@@ -185,6 +186,11 @@ def prepare() -> None:
     student_domain_runtime.install()
     student_domain_integrations.install()
     student_period_runtime.install()
+
+    # Los reportes consumen la misma población maestra que la pantalla Estudiantes:
+    # Complexivo/Núcleos solo para ruta Complexivo activa y proyectos solo para
+    # Trabajo de Titulación activo. Las fuentes crudas de carga permanecen intactas.
+    student_report_integration.install()
 
     # Última capa: sirve siempre la interfaz actual sin caché y expone diagnóstico
     # del archivo SQLite realmente abierto por el proceso de escritorio.
