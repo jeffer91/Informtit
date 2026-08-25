@@ -1,6 +1,12 @@
-// Validación visible de la población Presencial + Online antes de confirmar Requisitos.
+// Guarda ligera para importaciones heredadas. Los periodos unificados son
+// gestionados por robust-import-ui.js y no deben tener observadores duplicados.
 (function () {
   'use strict';
+
+  function isUnifiedPeriod() {
+    const project = state?.activeReport?.project_summary;
+    return !!project && String(project.report_type || '').toLowerCase() !== 'pvc';
+  }
 
   function metricValue(label) {
     const cards = [...document.querySelectorAll('#active-import-metrics .metric')];
@@ -10,91 +16,42 @@
     return Number.isFinite(value) ? value : null;
   }
 
-  function setText(node, value) {
-    if (node && node.textContent !== value) node.textContent = value;
-  }
-
-  function setHtml(node, value) {
-    if (node && node.innerHTML !== value) node.innerHTML = value;
-  }
-
-  function setStyle(node, property, value) {
-    if (node && node.style[property] !== value) node.style[property] = value;
-  }
-
   function refresh() {
-    const dialog = document.getElementById('active-report-import-dialog');
+    if (isUnifiedPeriod()) return;
+    const importDialog = document.getElementById('active-report-import-dialog');
     const confirmStep = document.getElementById('active-import-confirm-step');
-    if (!dialog || !confirmStep || confirmStep.hidden) return;
+    if (!importDialog || !importDialog.open || !confirmStep || confirmStep.hidden) return;
 
     const presencial = metricValue('Presencial');
     const online = metricValue('Online');
     if (presencial === null || online === null) return;
 
-    const ambiguous = metricValue('Modalidad ambigua') || 0;
     const button = document.getElementById('commit-active-roster');
-    const note = document.getElementById('active-modality-note');
-    const invalid = presencial <= 0 || online <= 0;
-
-    if (button) {
-      if (button.disabled !== invalid) button.disabled = invalid;
-      setText(
-        button,
-        invalid ? 'Corrija la clasificación antes de importar' : 'Importar Presencial + Online'
-      );
-    }
-
-    if (note) {
-      if (invalid) {
-        const missing = [
-          presencial <= 0 ? 'Presencial' : '',
-          online <= 0 ? 'Online' : '',
-        ].filter(Boolean).join(' y ');
-        setHtml(
-          note,
-          `<strong>Error de clasificación:</strong> la fuente presenta 0 registros ${missing}. Informtit no permitirá guardar la importación hasta que ambas modalidades sean reconocidas.`
-        );
-        setStyle(note, 'background', '#fff0ee');
-        setStyle(note, 'color', '#91382f');
-      } else if (ambiguous > 0) {
-        setHtml(
-          note,
-          `<strong>Clasificación válida con advertencias:</strong> ${presencial} estudiantes Presencial + ${online} estudiantes Online. Hay ${ambiguous} registro(s) sin marca explícita P/L u Online; revise la clasificación inferida antes de emitir el informe.`
-        );
-        setStyle(note, 'background', '#fff8e8');
-        setStyle(note, 'color', '#76551f');
-      } else {
-        setHtml(
-          note,
-          `<strong>Clasificación verificada:</strong> ${presencial} estudiantes Presencial + ${online} estudiantes Online = ${presencial + online} registros que se guardarán en el mismo período.`
-        );
-        setStyle(note, 'background', '#edf8f1');
-        setStyle(note, 'color', '#245f43');
-      }
-    }
+    if (button) button.disabled = presencial <= 0 || online <= 0;
   }
 
-  let queued = false;
-  function scheduleRefresh() {
-    if (queued) return;
-    queued = true;
-    queueMicrotask(() => {
-      queued = false;
-      refresh();
+  function install() {
+    const importDialog = document.getElementById('active-report-import-dialog');
+    if (!importDialog || importDialog.dataset.modalityGuardObserved === '1') return;
+    importDialog.dataset.modalityGuardObserved = '1';
+    const observer = new MutationObserver(refresh);
+    observer.observe(importDialog, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'disabled', 'open'],
     });
+    refresh();
   }
 
-  const observer = new MutationObserver(scheduleRefresh);
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['hidden', 'disabled'],
-  });
+  document.addEventListener('click', event => {
+    if (!event.target?.closest?.('#report-import-roster, #roster-upload-btn, #roster-empty-upload')) return;
+    queueMicrotask(install);
+  }, true);
 
   document.addEventListener('change', event => {
-    if (event.target?.id === 'active-roster-file') scheduleRefresh();
+    if (event.target?.id === 'active-roster-file') queueMicrotask(refresh);
   });
 
-  refresh();
+  install();
 })();
