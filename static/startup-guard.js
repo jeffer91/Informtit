@@ -6,6 +6,11 @@
   if (window.__informtitStartupGuardInstalled) return;
   window.__informtitStartupGuardInstalled = true;
 
+  // La guardia solo es dueña de las vistas estructurales que conoce app.js.
+  // Vistas agregadas por módulos (por ejemplo Coordinadores) conservan sus
+  // propios controladores y no deben pasar por showView(), cuyo catálogo es fijo.
+  const CORE_VIEWS = new Set(['dashboard', 'report', 'ai']);
+
   function ensureStatus() {
     let node = document.getElementById('startup-status');
     if (node) return node;
@@ -67,10 +72,11 @@
 
   function ensureNavigation() {
     document.querySelectorAll('.nav-item[data-view]').forEach(button => {
+      const name = button.dataset.view;
+      if (!CORE_VIEWS.has(name)) return;
       if (button.dataset.startupGuard === '1') return;
       button.dataset.startupGuard = '1';
       button.addEventListener('click', () => {
-        const name = button.dataset.view;
         if (typeof showView === 'function') {
           showView(name);
           return;
