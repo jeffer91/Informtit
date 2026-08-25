@@ -14,7 +14,12 @@ let appUrl = null;
 let mainWindow = null;
 
 function backendRoot() {
-  return app.isPackaged ? process.resourcesPath : path.resolve(__dirname, '..');
+  // Con `asar: false`, Electron Forge instala el código de la aplicación en
+  // resources/app. Python necesita archivos reales (no contenidos dentro de
+  // app.asar), por lo que esta ruta debe apuntar exactamente a ese directorio.
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'app')
+    : path.resolve(__dirname, '..');
 }
 
 function storageRoot() {
@@ -123,6 +128,10 @@ function spawnPython(candidate, port) {
 
   console.log(`[Informtit] Código: ${root}`);
   console.log(`[Informtit] Almacenamiento persistente: ${storage}`);
+
+  if (!fs.existsSync(script)) {
+    throw new Error(`No se encontró el backend de Informtit en ${script}.`);
+  }
 
   return spawn(candidate.command, args, {
     cwd: root,
