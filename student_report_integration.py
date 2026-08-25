@@ -6,6 +6,7 @@ import nuclei_export
 import nuclei_multicampus
 import report_final_overhaul
 import report_full_detail
+import report_integrity_core
 import report_quality
 from process_service import get_projects as raw_get_projects
 from student_domain_bridge import reconcile_all
@@ -13,6 +14,7 @@ from student_domain_service import ROUTE_COMPLEXIVE, ROUTE_THESIS, get_period_st
 
 _INSTALLED = False
 _BASE_REPORT_DATA = report_quality._report_data
+_BASE_INTEGRITY_PROCESS_SERVICE = report_integrity_core.process_service
 
 
 def _master(report_id: int) -> dict[int, dict[str, Any]]:
@@ -70,6 +72,24 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
             omitted_route_conflicts += 1
     result = dict(data)
     result["projects"] = projects
+    # Recalcula el resumen sobre la población realmente válida para el informe.
+    approved = sum(
+        str(item.get("final_status") or "").upper() == "APROBADO"
+        or (item.get("final_grade") is not None and float(item["final_grade"]) >= 7)
+        for item in projects
+    )
+    failed = sum(
+        str(item.get("final_status") or "").upper() == "REPROBADO"
+        or (item.get("final_grade") is not None and float(item["final_grade"]) < 7)
+        for item in projects
+    )
+    result["summary"] = {
+        **(data.get("summary") or {}),
+        "total": len(projects),
+        "approved": approved,
+        "failed": failed,
+        "incomplete": max(0, len(projects) - approved - failed),
+    }
     result["omitted_route_conflicts"] = omitted_route_conflicts
     return result
 
@@ -95,17 +115,29 @@ def filtered_report_data(report_id: int) -> dict[str, Any]:
     return report
 
 
+class _IntegrityProcessProxy:
+    """Evita alterar process_service global; solo cambia la lectura usada por integridad."""
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "get_projects":
+            return filtered_projects
+        return getattr(_BASE_INTEGRITY_PROCESS_SERVICE, name)
+
+
 def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
     # Los servicios de carga/UI siguen usando sus fuentes crudas. Solo las capas
-    # de construcción del informe reciben la población reconciliada.
+    # de construcción y validación del informe reciben la población reconciliada.
     report_quality._report_data = filtered_report_data
     report_quality.get_nuclei = filtered_nuclei
+    report_quality.get_projects = filtered_projects
     nuclei_export.get_nuclei = filtered_nuclei
     report_final_overhaul.get_nuclei = filtered_nuclei
     report_final_overhaul.get_projects = filtered_projects
     report_full_detail.get_nuclei = filtered_nuclei
     report_full_detail.get_projects = filtered_projects
+    report_integrity_core.set_raw_nuclei_provider(filtered_nuclei)
+    report_integrity_core.process_service = _IntegrityProcessProxy()
     _INSTALLED = True
