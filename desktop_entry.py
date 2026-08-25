@@ -57,6 +57,7 @@ import robust_import_context
 import robust_import_fixes
 import robust_import_policy
 import robust_import_runtime
+import schedule_defaults_runtime
 import storage_migration
 import thesis_parser_flex
 from completion_service import ensure_completion_schema
@@ -81,6 +82,11 @@ def prepare() -> None:
     ensure_nuclei_schema()
     ensure_completion_schema()
     ensure_thesis_followup_schema()
+
+    # Las antiguas fechas semilla de 2025/2026 se eliminan únicamente cuando
+    # permanecen intactas. Los cronogramas editados o con ejecución se conservan.
+    schedule_defaults_runtime.install()
+
     nuclei_fixes.install()
     nuclei_multicampus.install()
     with connection() as conn:
