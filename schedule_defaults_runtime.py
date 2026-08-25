@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import process_routes
 import process_service
 from db import connection, utcnow
 
@@ -126,14 +127,20 @@ def seed_schedules_without_legacy_defaults(
     force: bool = False,
 ) -> None:
     """Los períodos nuevos nacen sin fechas heredadas de 2025/2026."""
-    if not force:
-        return
-    # "Restaurar" deja el módulo vacío para que el usuario cargue el cronograma
-    # vigente del período; nunca vuelve a introducir fechas históricas.
-    conn.execute(
-        "DELETE FROM schedule_items WHERE report_id=?",
-        (int(report_id),),
-    )
+    # La creación/lectura normal ya no inserta fechas históricas. Los reinicios
+    # se gestionan por tipo en reset_schedule_empty().
+    return
+
+
+def reset_schedule_empty(report_id: int, schedule_type: str) -> dict[str, Any]:
+    if schedule_type not in {"complexive", "thesis"}:
+        raise ValueError("Tipo de cronograma no válido.")
+    with connection() as conn:
+        conn.execute(
+            "DELETE FROM schedule_items WHERE report_id=? AND schedule_type=?",
+            (int(report_id), schedule_type),
+        )
+    return {"ok": True, "count": 0}
 
 
 def install() -> None:
@@ -144,5 +151,7 @@ def install() -> None:
     _BASE_SEED = process_service.seed_schedules
     cleanup_untouched_defaults()
     process_service.seed_schedules = seed_schedules_without_legacy_defaults
+    process_service.reset_schedule = reset_schedule_empty
+    process_routes.reset_schedule = reset_schedule_empty
     process_service._legacy_schedule_defaults_disabled = True
     _INSTALLED = True
