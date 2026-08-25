@@ -34,6 +34,20 @@ class StudentBridgeTests(unittest.TestCase):
         self.assertEqual(result["method"], "MANUAL")
         automatic_mock.assert_not_called()
 
+    def test_source_key_is_stable_when_database_row_id_changes(self):
+        first = bridge._stable_source_key(
+            "NUCLEI",
+            {"id": 10, "email": "ANA@ITSQMET.EDU.EC", "full_name": "ANA PEREZ", "career_name": "Enfermería"},
+            "course:4",
+        )
+        second = bridge._stable_source_key(
+            "NUCLEI",
+            {"id": 999, "email": "ana@itsqmet.edu.ec", "full_name": "ANA PEREZ", "career_name": "Enfermería"},
+            "course:4",
+        )
+        self.assertEqual(first, second)
+        self.assertIn("email:ana@itsqmet.edu.ec", first)
+
 
 if __name__ == "__main__":
     unittest.main()
