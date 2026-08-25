@@ -1,7 +1,7 @@
 {
   "name": "informtit",
   "productName": "Informtit",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Aplicación de escritorio para generar informes del proceso de titulación.",
   "main": "electron/main.cjs",
   "author": "Jefferson Villarreal",
