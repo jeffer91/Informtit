@@ -23,6 +23,7 @@ jobs:
       - run: node --check electron/main2.cjs
       - run: node --check static/app.js
       - run: node --check static/startup-guard.js
+      - run: node --check static/desktop-ui-rescue.js
       - run: node --check static/assets-ui.js
       - run: node --check static/no-sections.js
       - run: node --check static/process-ui.js
