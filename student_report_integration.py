@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from statistics import mean
 from typing import Any
 
 import nuclei_export
@@ -38,6 +39,49 @@ def _grade(value: Any) -> float | None:
         return None
 
 
+def _recalculate_nucleus(course: dict[str, Any]) -> None:
+    students = list(course.get("students", []))
+    grades = [_grade(student.get("final_grade")) for student in students]
+    evaluated = [grade for grade in grades if grade is not None]
+    approved = sum(grade is not None and grade >= 7 for grade in grades)
+    failed = sum(grade is not None and grade < 7 for grade in grades)
+    unevaluated = len(students) - approved - failed
+    course["participant_students"] = len(students)
+    course["graded_students"] = len(evaluated)
+    course["matched_students"] = len(students)
+    course["missing_grades"] = unevaluated
+    course["extra_grades"] = 0
+    course["approved_count"] = approved
+    course["failed_count"] = failed
+    course["unevaluated_count"] = unevaluated
+    course["course_average"] = round(mean(evaluated), 2) if evaluated else None
+
+    recalculated: list[dict[str, Any]] = []
+    for assessment in course.get("assessments", []):
+        assessment_id = int(assessment.get("id") or 0)
+        name = str(assessment.get("name") or "")
+        values: list[float] = []
+        for student in students:
+            for score in student.get("scores", []):
+                same_id = assessment_id and int(score.get("assessment_id") or 0) == assessment_id
+                same_name = name and str(score.get("assessment_name") or "") == name
+                if not (same_id or same_name):
+                    continue
+                value = _grade(score.get("grade"))
+                if value is not None:
+                    values.append(value)
+                break
+        average = round(mean(values), 2) if values else None
+        assessment["average"] = average
+        recalculated.append({
+            "name": name,
+            "source_average": None,
+            "calculated_average": average,
+        })
+    if recalculated:
+        course["activity_averages"] = recalculated
+
+
 def filtered_nuclei(report_id: int) -> dict[str, Any]:
     """Filtra solo para reportes; la pantalla de carga conserva todos los registros crudos."""
     reconcile_all(report_id)
@@ -46,19 +90,22 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
     courses: list[dict[str, Any]] = []
     for source_course in data.get("courses", []):
         course = dict(source_course)
+        course["assessments"] = [dict(item) for item in source_course.get("assessments", [])]
         students: list[dict[str, Any]] = []
         for source_student in source_course.get("students", []):
             sid = source_student.get("period_student_id")
             master = masters.get(int(sid)) if sid else None
             if _active_for_route(master, ROUTE_COMPLEXIVE):
                 student = dict(source_student)
+                student["scores"] = [dict(score) for score in source_student.get("scores", [])]
                 student["master_identification"] = master.get("identification") or ""
                 student["master_name"] = master.get("full_name") or ""
                 student["official_graduated"] = bool(master.get("official_graduated"))
                 students.append(student)
         course["students"] = students
-        # Conservamos cursos cargados aunque queden sin población válida para que
-        # el reporte pueda evidenciar que existió una carga, pero sin contaminar métricas.
+        _recalculate_nucleus(course)
+        # El curso permanece como evidencia de carga incluso si queda sin población
+        # válida; sus métricas se recalculan a cero en lugar de contaminar el reporte.
         courses.append(course)
     return {"courses": courses}
 
