@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
+import analytics
 from db import connection, rows_to_dicts
 from student_domain_service import MATCH_OK, get_period_students
 
@@ -12,6 +14,15 @@ def _table_exists(conn: Any, table: str) -> bool:
 
 def _columns(conn: Any, table: str) -> set[str]:
     return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()} if _table_exists(conn, table) else set()
+
+
+def _number(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
 
 
 def _complexive_records(report_id: int) -> dict[int, list[dict[str, Any]]]:
@@ -78,24 +89,101 @@ def _nuclei_records(report_id: int) -> dict[int, list[dict[str, Any]]]:
     return grouped
 
 
+def _nucleus_grade_conflicts(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[int, set[float]] = defaultdict(set)
+    for record in records:
+        number = int(record.get("nucleus_number") or 0)
+        grade = _number(record.get("final_grade"))
+        if number and grade is not None:
+            grouped[number].add(round(grade, 4))
+    return [
+        {"nucleus_number": number, "grades": sorted(grades)}
+        for number, grades in sorted(grouped.items())
+        if len(grades) > 1
+    ]
+
+
+def _has_complexive_grade(records: list[dict[str, Any]]) -> bool:
+    return any(analytics.final_grade(record) is not None for record in records)
+
+
+def _complexive_approved(records: list[dict[str, Any]]) -> bool:
+    return any(analytics.enrich_student(record).get("final_status") == "Aprobado" for record in records)
+
+
+def _has_thesis_grade(records: list[dict[str, Any]]) -> bool:
+    return any(_number(record.get("final_grade")) is not None for record in records)
+
+
+def _thesis_approved(records: list[dict[str, Any]]) -> bool:
+    for record in records:
+        status = str(record.get("final_status") or "").strip().upper()
+        grade = _number(record.get("final_grade"))
+        if status == "APROBADO" or (grade is not None and grade >= 7):
+            return True
+    return False
+
+
+def _academic_consistency(row: dict[str, Any]) -> list[tuple[str, str]]:
+    issues: list[tuple[str, str]] = []
+    nucleus_conflicts = _nucleus_grade_conflicts(row.get("nuclei_records", []))
+    row["nucleus_grade_conflicts"] = nucleus_conflicts
+    if nucleus_conflicts:
+        detail = "; ".join(
+            f"Núcleo {item['nucleus_number']}: {', '.join(str(value) for value in item['grades'])}"
+            for item in nucleus_conflicts
+        )
+        issues.append(("GRADE_CONFLICT", f"Se encontraron notas distintas para el mismo núcleo. {detail}."))
+
+    route = str(row.get("route") or "COMPLEXIVO")
+    official_graduated = bool(row.get("official_graduated"))
+    titulation_completed = bool(row.get("official_titulation_completed"))
+    if route == "COMPLEXIVO":
+        has_grade = _has_complexive_grade(row.get("complexive_records", []))
+        approved = _complexive_approved(row.get("complexive_records", []))
+        if official_graduated and not has_grade:
+            issues.append(("REVIEW_REQUIRED", "Requisitos confirma que el estudiante se graduó, pero no se encontró su nota final de Examen Complexivo."))
+        elif not official_graduated and approved:
+            issues.append(("OFFICIAL_DATA_CONFLICT", "Existe una nota aprobatoria de Examen Complexivo, pero Requisitos todavía no confirma la graduación oficial."))
+        if titulation_completed and not row.get("has_nuclei"):
+            issues.append(("REVIEW_REQUIRED", "Titulación consta CUMPLE en Requisitos, pero no se encontró evidencia de Núcleos para completar la trazabilidad."))
+    else:
+        has_grade = _has_thesis_grade(row.get("thesis_records", []))
+        approved = _thesis_approved(row.get("thesis_records", []))
+        if official_graduated and not has_grade:
+            issues.append(("REVIEW_REQUIRED", "Requisitos confirma que el estudiante se graduó, pero no se encontró su nota final de Trabajo de Titulación."))
+        elif not official_graduated and approved:
+            issues.append(("OFFICIAL_DATA_CONFLICT", "Existe una nota aprobatoria de Trabajo de Titulación, pero Requisitos todavía no confirma la graduación oficial."))
+        if titulation_completed and not row.get("has_thesis"):
+            issues.append(("REVIEW_REQUIRED", "Titulación consta CUMPLE en Requisitos, pero no se encontró el Trabajo de Titulación para completar la trazabilidad."))
+    return issues
+
+
 def _effective_reconciliation(row: dict[str, Any]) -> tuple[str, str]:
     current = str(row.get("reconciliation_status") or MATCH_OK)
     detail = str(row.get("reconciliation_detail") or "")
-    if current != MATCH_OK:
-        return current, detail
-    bad_links = [link for link in row.get("source_links", []) if str(link.get("match_status") or MATCH_OK) != MATCH_OK]
-    if not bad_links:
-        return MATCH_OK, detail
+    candidates: list[tuple[int, str, str]] = []
     priority = {
         "ROUTE_CONFLICT": 100,
         "GRADE_CONFLICT": 90,
+        "OFFICIAL_DATA_CONFLICT": 85,
         "AMBIGUOUS": 80,
         "REVIEW_REQUIRED": 70,
         "UNMATCHED": 60,
     }
-    selected = max(bad_links, key=lambda link: priority.get(str(link.get("match_status") or ""), 50))
-    selected_status = str(selected.get("match_status") or "REVIEW_REQUIRED")
-    selected_detail = str(selected.get("detail") or "") or f"Revise la conciliación del módulo {selected.get('source_module') or 'académico'}."
+    if current != MATCH_OK:
+        candidates.append((priority.get(current, 75), current, detail))
+    for link in row.get("source_links", []):
+        status = str(link.get("match_status") or MATCH_OK)
+        if status == MATCH_OK:
+            continue
+        link_detail = str(link.get("detail") or "") or f"Revise la conciliación del módulo {link.get('source_module') or 'académico'}."
+        candidates.append((priority.get(status, 50), status, link_detail))
+    for status, academic_detail in _academic_consistency(row):
+        candidates.append((priority.get(status, 50), status, academic_detail))
+    if not candidates:
+        return MATCH_OK, detail
+    _, selected_status, selected_detail = max(candidates, key=lambda item: item[0])
     return selected_status, selected_detail
 
 
@@ -124,4 +212,5 @@ def consolidated_students(report_id: int) -> dict[str, Any]:
     summary["with_nuclei"] = sum(bool(row.get("has_nuclei")) for row in rows)
     summary["with_complexive"] = sum(bool(row.get("has_complexive")) for row in rows)
     summary["with_thesis_data"] = sum(bool(row.get("has_thesis")) for row in rows)
+    summary["grade_conflicts"] = sum(bool(row.get("nucleus_grade_conflicts")) for row in rows)
     return {"ok": True, "summary": summary, "students": rows}
