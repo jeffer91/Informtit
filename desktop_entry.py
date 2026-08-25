@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import app as core
 import completion_routes
+import coordinator_admin_runtime
 import desktop_launcher
 import desktop_stability_runtime
 import dual_modality_runtime
@@ -147,6 +148,9 @@ def prepare() -> None:
     # Se instala al final para que el análisis no atraviese toda la cadena de
     # wrappers de escritura y para mostrar errores reales de forma inmediata.
     import_preview_runtime.install()
+
+    # CRUD persistente para nombre, Telegram y carreras de cada coordinador.
+    coordinator_admin_runtime.install()
 
     # Última capa: sirve siempre la interfaz actual sin caché y expone diagnóstico
     # del archivo SQLite realmente abierto por el proceso de escritorio.
