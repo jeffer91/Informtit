@@ -24,7 +24,7 @@ class StartupUiGuardTests(unittest.TestCase):
         self.assertIn('/desktop-ui-rescue.js?', html)
 
     def test_import_helpers_do_not_observe_document_body(self) -> None:
-        for filename in ("pdf-validation-ui.js", "import-modality-guard-ui.js"):
+        for filename in ("pdf-validation-ui.js", "import-modality-guard-ui.js", "robust-import-ui.js"):
             source = (STATIC / filename).read_text(encoding="utf-8")
             self.assertNotIn('observe(document.body', source, filename)
 
@@ -40,6 +40,23 @@ class StartupUiGuardTests(unittest.TestCase):
         self.assertIn("#new-report-btn", rescue)
         self.assertIn("#refresh-btn", rescue)
         self.assertIn("/api/reports", rescue)
+
+    def test_guards_do_not_hijack_module_navigation(self) -> None:
+        guard = (STATIC / "startup-guard.js").read_text(encoding="utf-8")
+        rescue = (STATIC / "desktop-ui-rescue.js").read_text(encoding="utf-8")
+        for source in (guard, rescue):
+            self.assertIn("const CORE_VIEWS = new Set(['dashboard', 'report', 'ai'])", source)
+            self.assertIn("if (!CORE_VIEWS.has(name)) return;", source)
+        # El rescate usa captura; por eso la salida para vistas modulares debe
+        # ocurrir antes de preventDefault/stopPropagation.
+        custom_guard = rescue.index("if (!CORE_VIEWS.has(name)) return;")
+        prevent = rescue.index("event.preventDefault();", custom_guard)
+        self.assertLess(custom_guard, prevent)
+
+    def test_refresh_rescue_reopens_active_report(self) -> None:
+        rescue = (STATIC / "desktop-ui-rescue.js").read_text(encoding="utf-8")
+        self.assertIn("const activeId = Number(state?.activeReport?.id || 0);", rescue)
+        self.assertIn("await openReportSafe(activeId);", rescue)
 
     def test_desktop_rescue_is_last_after_unified_layer(self) -> None:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
