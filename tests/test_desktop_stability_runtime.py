@@ -8,10 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DesktopStabilityRuntimeTests(unittest.TestCase):
-    def test_development_uses_repository_data_directory(self):
+    def test_desktop_always_uses_persistent_user_data(self):
         source = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
-        self.assertIn("app.isPackaged ? app.getPath('userData') : path.join(root, 'data')", source)
+        self.assertIn("return app.getPath('userData');", source)
         self.assertIn("INFORMTIT_STORAGE_DIR: storage", source)
+        self.assertIn("Almacenamiento persistente", source)
 
     def test_electron_clears_cache_and_cache_busts_root_document(self):
         source = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
@@ -34,6 +35,11 @@ class DesktopStabilityRuntimeTests(unittest.TestCase):
         self.assertIn("showView(name);", source)
         self.assertIn("/api/runtime-info", source)
         self.assertIn("Base activa:", source)
+
+    def test_renderer_errors_are_forwarded_to_terminal(self):
+        source = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("console-message", source)
+        self.assertIn("Informtit renderer ERROR", source)
 
 
 if __name__ == "__main__":
