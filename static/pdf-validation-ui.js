@@ -1,6 +1,7 @@
-// Selector de modalidad, estado documental y ajustes visibles de importación.
+// Estado documental y validacion visible sin observadores globales.
 (function () {
-  const normalize = value => String(value || '').trim().toLocaleLowerCase('es');
+  'use strict';
+
   let lastImportPreview = null;
 
   function setTextIfChanged(node, text) {
@@ -11,84 +12,24 @@
     if (node && node.innerHTML !== html) node.innerHTML = html;
   }
 
-  // Conserva la previsualización completa para que el diálogo muestre las dos
-  // modalidades y no solamente la del informe que estaba abierto al cargar.
-  if (typeof api === 'function' && !window.__informtitDualImportApiWrapped) {
+  function isUnifiedPeriod() {
+    const project = state?.activeReport?.project_summary;
+    return !!project && String(project.report_type || '').toLowerCase() !== 'pvc';
+  }
+
+  // Conserva la previsualizacion para periodos heredados. En los periodos
+  // unificados robust-import-ui.js es la unica capa que pinta la importacion.
+  if (typeof api === 'function' && !window.__informtitValidationApiWrapped) {
     const previousApi = api;
     api = async function (path, options = {}) {
       const result = await previousApi(path, options);
       if (path === '/api/imports/preview' && result?.preview) {
         lastImportPreview = result.preview;
-        queueMicrotask(() => updateImportDialogText());
+        queueMicrotask(updateImportDialogText);
       }
       return result;
     };
-    window.__informtitDualImportApiWrapped = true;
-  }
-
-  function relatedReports(report) {
-    if (!report) return [];
-    const reports = Array.isArray(state?.reports) ? state.reports : [];
-    let related = [];
-
-    if (report.source_import_id) {
-      related = reports.filter(item =>
-        item.source_import_id && Number(item.source_import_id) === Number(report.source_import_id)
-      );
-    }
-
-    if (related.length < 2) {
-      related = reports.filter(item =>
-        normalize(item.period) === normalize(report.period)
-        && normalize(item.name) === normalize(report.name)
-      );
-    }
-
-    const byModality = new Map();
-    related.forEach(item => {
-      if (item.modality === 'presencial' || item.modality === 'en_linea') {
-        if (!byModality.has(item.modality) || Number(item.id) === Number(report.id)) {
-          byModality.set(item.modality, item);
-        }
-      }
-    });
-    return ['presencial', 'en_linea'].map(key => byModality.get(key)).filter(Boolean);
-  }
-
-  function renderModalitySwitcher() {
-    const report = state?.activeReport;
-    const banner = document.querySelector('.report-banner');
-    if (!banner || !report) return;
-
-    document.getElementById('modality-report-switcher')?.remove();
-    const related = relatedReports(report);
-    if (related.length < 2) return;
-
-    const switcher = document.createElement('div');
-    switcher.id = 'modality-report-switcher';
-    switcher.style.display = 'flex';
-    switcher.style.gap = '8px';
-    switcher.style.marginBottom = '10px';
-    switcher.style.flexWrap = 'wrap';
-
-    related.forEach(item => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = Number(item.id) === Number(report.id)
-        ? 'button secondary small modality-switch-active'
-        : 'button small modality-switch';
-      button.textContent = item.modality === 'en_linea' ? 'Online' : 'Presencial';
-      button.style.fontWeight = Number(item.id) === Number(report.id) ? '700' : '600';
-      button.style.opacity = Number(item.id) === Number(report.id) ? '1' : '.86';
-      button.onclick = async () => {
-        if (Number(item.id) === Number(state.activeReport?.id)) return;
-        await openReport(Number(item.id));
-      };
-      switcher.appendChild(button);
-    });
-
-    const info = banner.firstElementChild;
-    if (info) info.insertBefore(switcher, info.firstChild);
+    window.__informtitValidationApiWrapped = true;
   }
 
   function ensureAuditBadge() {
@@ -107,8 +48,7 @@
       badge.style.fontSize = '11px';
       badge.style.fontWeight = '800';
       badge.style.letterSpacing = '.03em';
-      const info = banner.firstElementChild;
-      if (info) info.appendChild(badge);
+      banner.firstElementChild?.appendChild(badge);
     }
     return badge;
   }
@@ -116,7 +56,7 @@
   function paintAuditBadge(badge, audit) {
     if (!badge) return;
     badge.textContent = audit.state || 'BORRADOR';
-    if (audit.state === 'APTO PARA EMITIR' || audit.state === 'SIN POBLACIÓN') {
+    if (audit.state === 'APTO PARA EMITIR') {
       badge.style.background = '#dff2e7';
       badge.style.color = '#245f43';
     } else if (audit.state === 'ERROR DE CARGA') {
@@ -130,32 +70,25 @@
 
   async function refreshAuditState() {
     const reportId = Number(state?.activeReport?.id || 0);
-    if (!reportId) return;
+    if (!reportId || typeof api !== 'function') return;
     try {
       const data = await api(`/api/reports/${reportId}/audit`);
       if (Number(state?.activeReport?.id || 0) !== reportId) return;
       const audit = data.audit || {};
-      setTextIfChanged(document.getElementById('report-name'), audit.document_title || state.activeReport.name || 'Informe de Titulación');
+      setTextIfChanged(
+        document.getElementById('report-name'),
+        audit.document_title || state.activeReport.name || 'Informe de Titulacion'
+      );
       paintAuditBadge(ensureAuditBadge(), audit);
     } catch (error) {
       const badge = ensureAuditBadge();
       if (badge) {
-        badge.textContent = 'VALIDACIÓN PENDIENTE';
+        badge.textContent = 'VALIDACION PENDIENTE';
         badge.style.background = '#eef2f5';
         badge.style.color = '#526779';
-        badge.title = error.message || 'No se pudo consultar la auditoría.';
+        badge.title = error?.message || 'No se pudo consultar la auditoria.';
       }
     }
-  }
-
-  if (typeof renderReport === 'function') {
-    const previousRenderReport = renderReport;
-    renderReport = function () {
-      previousRenderReport();
-      renderModalitySwitcher();
-      void refreshAuditState();
-      queueMicrotask(() => updateRosterText());
-    };
   }
 
   function metricCard(label, value) {
@@ -170,8 +103,10 @@
     return `<section><strong>${title}</strong>${rows.map(item => `<div><span>${escapeHtml(item.name || '')}</span><strong>${Number(item.students || 0)}</strong></div>`).join('')}</section>`;
   }
 
-  function updateImportPreview() {
-    if (!lastImportPreview || document.getElementById('active-import-confirm-step')?.hidden) return;
+  function updateLegacyPreview() {
+    if (isUnifiedPeriod() || !lastImportPreview) return;
+    if (document.getElementById('active-import-confirm-step')?.hidden) return;
+
     const metrics = document.getElementById('active-import-metrics');
     if (metrics) {
       const presencialCareers = lastImportPreview.careers?.presencial || [];
@@ -181,7 +116,6 @@
         metricCard('Presencial', lastImportPreview.presencial),
         metricCard('Online', lastImportPreview.en_linea),
         metricCard('Carreras detectadas', presencialCareers.length + onlineCareers.length),
-        metricCard('Sedes detectadas', Object.keys(lastImportPreview.campuses || {}).length),
       ].join(''));
     }
 
@@ -190,72 +124,45 @@
       setHtmlIfChanged(
         careers,
         careerGroup('Presencial', lastImportPreview.careers?.presencial)
-        + careerGroup('Online', lastImportPreview.careers?.en_linea)
+          + careerGroup('Online', lastImportPreview.careers?.en_linea)
       );
     }
-  }
-
-  function updateRosterText() {
-    const modality = state?.activeReport?.modality === 'en_linea' ? 'Online' : 'Presencial';
-    const head = document.querySelector('#tab-roster .roster-head p');
-    setHtmlIfChanged(
-      head,
-      `La carga fuente se procesa para <strong>Presencial y Online</strong>. Esta vista muestra únicamente los registros <strong>${modality}</strong> del informe activo.`
-    );
-    const empty = document.querySelector('#tab-roster .roster-empty-state p');
-    setTextIfChanged(
-      empty,
-      `Informtit separará automáticamente Presencial y Online. Esta vista mostrará después únicamente la población ${modality} del informe activo.`
-    );
   }
 
   function updateImportDialogText() {
-    const dialog = document.getElementById('active-report-import-dialog');
-    if (!dialog) return;
+    const importDialog = document.getElementById('active-report-import-dialog');
+    if (!importDialog) return;
 
-    const intro = dialog.querySelector('.dialog-head p');
+    setTextIfChanged(importDialog.querySelector('.dialog-head h2'), 'Cargar base de requisitos');
+
+    // robust-import-ui.js es la fuente unica de texto para periodos normales.
+    if (isUnifiedPeriod()) return;
+
     setTextIfChanged(
-      intro,
-      'Una sola carga separará automáticamente los registros Presencial y Online.'
+      importDialog.querySelector('.dialog-head p'),
+      'Importe la base de Requisitos y revise la clasificacion antes de guardar.'
     );
 
-    const title = dialog.querySelector('.dialog-head h2');
-    setTextIfChanged(title, 'Cargar base de requisitos');
-
-    const note = document.getElementById('active-modality-note');
-    if (note && !document.getElementById('active-import-confirm-step')?.hidden) {
-      setHtmlIfChanged(
-        note,
-        '<strong>Informtit actualizará ambos informes.</strong> Si una modalidad tiene 0 registros, quedará registrada como población 0 y se limpiará su base de Requisitos anterior.'
-      );
-    }
-
-    const warning = dialog.querySelector('.replace-warning');
+    const warning = importDialog.querySelector('.replace-warning');
     if (warning) {
       setTextIfChanged(
         warning.querySelector('strong'),
-        'La importación reemplazará únicamente la base de Requisitos de Presencial y Online.'
+        'La importación reemplazará únicamente la base de Requisitos de cada modalidad.'
       );
       setTextIfChanged(
         warning.querySelector('span'),
-        'Núcleos, Examen Complexivo y Trabajo de Titulación se conservan de forma independiente y se validan por modalidad.'
+        'Núcleos, Examen Complexivo y Trabajo de Titulación se conservan de forma independiente.'
       );
     }
-
-    const commit = document.getElementById('commit-active-roster');
-    if (commit && !commit.disabled) {
-      setTextIfChanged(commit, 'Importar Presencial y Online');
-    }
-    updateImportPreview();
-    updateRosterText();
+    updateLegacyPreview();
   }
 
   function installDialogObserver() {
-    const dialog = document.getElementById('active-report-import-dialog');
-    if (!dialog || dialog.dataset.integrityObserved === '1') return;
-    dialog.dataset.integrityObserved = '1';
-    const observer = new MutationObserver(() => updateImportDialogText());
-    observer.observe(dialog, {
+    const importDialog = document.getElementById('active-report-import-dialog');
+    if (!importDialog || importDialog.dataset.validationObserved === '1') return;
+    importDialog.dataset.validationObserved = '1';
+    const observer = new MutationObserver(updateImportDialogText);
+    observer.observe(importDialog, {
       childList: true,
       subtree: true,
       attributes: true,
@@ -264,15 +171,22 @@
     updateImportDialogText();
   }
 
-  const bodyObserver = new MutationObserver(() => {
-    installDialogObserver();
-    updateRosterText();
-  });
-  bodyObserver.observe(document.body, { childList: true, subtree: true });
+  // El dialogo ya es creado por forms-hotfix.js. Este listener solo cubre el
+  // caso de una reconstruccion futura sin vigilar document.body permanentemente.
+  document.addEventListener('click', event => {
+    if (!event.target?.closest?.('#report-import-roster, #roster-upload-btn, #roster-empty-upload')) return;
+    queueMicrotask(installDialogObserver);
+  }, true);
+
+  if (typeof renderReport === 'function') {
+    const previousRenderReport = renderReport;
+    renderReport = function () {
+      previousRenderReport();
+      installDialogObserver();
+      void refreshAuditState();
+    };
+  }
 
   installDialogObserver();
-  updateImportDialogText();
-  updateRosterText();
-  renderModalitySwitcher();
   void refreshAuditState();
 })();
