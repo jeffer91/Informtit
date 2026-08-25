@@ -71,7 +71,10 @@
       button.dataset.startupGuard = '1';
       button.addEventListener('click', () => {
         const name = button.dataset.view;
-        if (typeof showView === 'function') return;
+        if (typeof showView === 'function') {
+          showView(name);
+          return;
+        }
         document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
         document.getElementById(`view-${name}`)?.classList.add('active');
         document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item === button));
@@ -93,6 +96,36 @@
     actions.insertBefore(button, actions.firstChild);
   }
 
+  function showRuntimeInfo(info) {
+    const footer = document.querySelector('.sidebar-footer');
+    if (!footer || !info) return;
+    let detail = document.getElementById('runtime-database-info');
+    if (!detail) {
+      detail = document.createElement('small');
+      detail.id = 'runtime-database-info';
+      detail.style.display = 'block';
+      detail.style.marginTop = '6px';
+      detail.style.fontSize = '10px';
+      detail.style.lineHeight = '1.35';
+      detail.style.opacity = '.78';
+      footer.appendChild(detail);
+    }
+    detail.textContent = `${info.build || 'build'} · ${Number(info.reports || 0)} informes`;
+    detail.title = `Base activa: ${info.database || 'desconocida'}`;
+  }
+
+  async function runtimeCheck() {
+    try {
+      const response = await fetch('/api/runtime-info', { cache: 'no-store' });
+      if (!response.ok) return null;
+      const info = await response.json();
+      showRuntimeInfo(info);
+      return info;
+    } catch (_error) {
+      return null;
+    }
+  }
+
   async function healthCheck() {
     try {
       const response = await fetch('/api/health', { cache: 'no-store' });
@@ -100,9 +133,21 @@
       const data = await response.json();
       if (!data?.ok) throw new Error(data?.error || 'Respuesta de salud invalida');
 
+      const runtime = await runtimeCheck();
+
       // Si app.js no alcanzo a llenar el tablero, fuerza un segundo intento.
       if (typeof loadReports === 'function' && !document.getElementById('dashboard-metrics')?.children.length) {
         await loadReports();
+      }
+
+      // Si SQLite tiene informes pero la cuadrícula sigue vacía, no ocultar el
+      // problema: deja un diagnóstico visible en vez de una pantalla silenciosa.
+      if (runtime && Number(runtime.reports || 0) > 0 && !document.getElementById('reports-grid')?.children.length) {
+        showStatus(
+          `SQLite contiene ${runtime.reports} informe(s), pero la interfaz no pudo mostrarlos. Base activa: ${runtime.database}`,
+          true
+        );
+        return;
       }
       hideStatus();
     } catch (error) {
