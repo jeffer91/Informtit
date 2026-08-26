@@ -48,6 +48,40 @@ class StudentBridgeTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertIn("email:ana@itsqmet.edu.ec", first)
 
+    def test_excel_generated_email_does_not_become_student_identity(self):
+        course_before = {
+            "id": 4,
+            "career_name": "Enfermería",
+            "nucleus_number": 1,
+            "course_title": "Fundamentos clínicos",
+            "teacher_name": "Docente Uno",
+        }
+        course_after = {**course_before, "id": 987}
+        context_before = bridge._nucleus_context(course_before)
+        context_after = bridge._nucleus_context(course_after)
+        first = bridge._stable_source_key(
+            "NUCLEI",
+            {
+                "email": "aaa111@excel.local",
+                "full_name": "PÉREZ LÓPEZ ANA MARÍA",
+                "career_name": "Enfermería",
+            },
+            context_before,
+        )
+        second = bridge._stable_source_key(
+            "NUCLEI",
+            {
+                "email": "bbb999@excel.local",
+                "full_name": "ANA MARÍA PÉREZ LÓPEZ",
+                "career_name": "Enfermería",
+            },
+            context_after,
+        )
+        self.assertEqual(context_before, context_after)
+        self.assertEqual(first, second)
+        self.assertIn("name:", first)
+        self.assertNotIn("excel.local", first)
+
 
 if __name__ == "__main__":
     unittest.main()
