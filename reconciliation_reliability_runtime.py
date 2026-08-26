@@ -1549,6 +1549,58 @@ def _unlink_project_case(period_project_id: int, link_id: int) -> dict[str, Any]
     }
 
 
+def _reset_manual_case(period_project_id: int, link_id: int) -> dict[str, Any]:
+    """Permite revertir explícitamente una desvinculación manual previa."""
+    link = _project_link(period_project_id, link_id)
+    siblings = _group_project_links(period_project_id, link)
+    identity = _identity_key_link(link)
+    module = str(link.get("source_module") or "")
+    ids = [int(row["id"]) for row in siblings]
+    now = utcnow()
+
+    with sqlite_guard._WRITE_LOCK:
+        _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
+        _delete_decisions(period_project_id, module, identity, DECISION_DO_NOT_MATCH)
+
+        with connection() as conn:
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(
+                f"""
+                UPDATE student_source_links
+                SET period_student_id=NULL,
+                    match_status='UNMATCHED',
+                    match_method='',
+                    match_confidence=NULL,
+                    detail='La decisión manual anterior fue restablecida. La evidencia puede volver a conciliarse o asociarse manualmente.',
+                    source_active=1,
+                    updated_at=?
+                WHERE id IN ({placeholders})
+                """,
+                (now, *ids),
+            )
+            conn.execute(
+                """
+                INSERT INTO student_audit_log
+                (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+                VALUES (?, NULL, 'RESET_MANUAL_MATCH_DECISION', 'source_link_group', ?, '',
+                        'Se restableció explícitamente la decisión manual; la evidencia vuelve a estar disponible para conciliación.',
+                        ?)
+                """,
+                (
+                    int(link["report_id"]),
+                    ",".join(str(item) for item in ids),
+                    now,
+                ),
+            )
+
+    return {
+        "ok": True,
+        "link_id": link_id,
+        "module": module,
+        "reset_links": len(ids),
+    }
+
+
 def _route_evidence(period_project_id: int) -> dict[int, set[str]]:
     report_ids = _project_report_ids(period_project_id)
     if not report_ids:
@@ -2632,6 +2684,19 @@ def _install_final_contract() -> None:
                         int(match.group(1)), int(match.group(2)),
                         str(payload.get("route") or ""),
                     )
+                )
+            except ValueError as exc:
+                self._send_error_json(str(exc), 400)
+            return
+
+        match = re.fullmatch(
+            r"/api/period-projects/(\d+)/students-domain/matches/(\d+)/reset-decision",
+            path,
+        )
+        if match and method in {"POST", "PUT"}:
+            try:
+                self._send_json(
+                    _reset_manual_case(int(match.group(1)), int(match.group(2)))
                 )
             except ValueError as exc:
                 self._send_error_json(str(exc), 400)
