@@ -1757,6 +1757,7 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
     report_ids = _project_report_ids(period_project_id)
     if not report_ids:
         return []
+    route_evidence = _route_evidence(period_project_id)
     placeholders = ",".join("?" for _ in report_ids)
     with connection() as conn:
         students = rows_to_dicts(
@@ -1835,6 +1836,14 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
         by_complexive[int(row["period_student_id"])].append(row)
     for student_id, rows in by_complexive.items():
         student = student_map.get(student_id, {})
+        modules = route_evidence.get(student_id, set())
+        if (
+            "COMPLEXIVE" in modules and "THESIS" in modules
+            and str(student.get("route_source") or "") != "MANUAL"
+        ):
+            # Primero se decide la ruta. Si el usuario elige Complexivo, recién
+            # entonces tiene sentido resolver una posible discrepancia de su nota.
+            continue
         if str(student.get("route") or domain.ROUTE_COMPLEXIVE) != domain.ROUTE_COMPLEXIVE:
             continue
         values = sorted({
@@ -1863,6 +1872,12 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
         by_thesis[int(row["period_student_id"])].append(row)
     for student_id, rows in by_thesis.items():
         student = student_map.get(student_id, {})
+        modules = route_evidence.get(student_id, set())
+        if (
+            "COMPLEXIVE" in modules and "THESIS" in modules
+            and str(student.get("route_source") or "") != "MANUAL"
+        ):
+            continue
         if str(student.get("route") or domain.ROUTE_COMPLEXIVE) != domain.ROUTE_THESIS:
             continue
         values = sorted({
@@ -1894,6 +1909,12 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
             by_nucleus[(sid, number)].append(row)
     for (student_id, number), rows in by_nucleus.items():
         student = student_map.get(student_id, {})
+        modules = route_evidence.get(student_id, set())
+        if (
+            "COMPLEXIVE" in modules and "THESIS" in modules
+            and str(student.get("route_source") or "") != "MANUAL"
+        ):
+            continue
         if str(student.get("route") or domain.ROUTE_COMPLEXIVE) != domain.ROUTE_COMPLEXIVE:
             continue
         values = sorted({
