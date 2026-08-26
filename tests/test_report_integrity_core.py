@@ -77,6 +77,57 @@ class ReportIntegrityCoreTests(unittest.TestCase):
         self.assertEqual(entries[0]["duplicate_type"], "DUPLICADO EXACTO")
         self.assertTrue(any(item["duplicate_type"] == "DUPLICADO PROBABLE" for item in entries))
 
+    def test_nuclei_integrity_uses_explicit_modality_before_career_text(self):
+        original_provider = integrity._RAW_NUCLEI_PROVIDER
+        original_report_data = integrity.report_quality._report_data
+        integrity._RAW_NUCLEI_PROVIDER = lambda _report_id: {
+            "courses": [{
+                "career_name": "ENFERMERÍA",
+                "nucleus_number": 1,
+                "course_title": "Núcleo 1",
+                "official_modality": "en_linea",
+                "students": [],
+            }]
+        }
+        integrity.report_quality._report_data = lambda _report_id: {
+            "modality": "en_linea",
+            "period": "Mayo - Noviembre 2026",
+        }
+        try:
+            courses, reasons = integrity.reconciled_courses(1)
+        finally:
+            integrity._RAW_NUCLEI_PROVIDER = original_provider
+            integrity.report_quality._report_data = original_report_data
+
+        self.assertEqual(len(courses), 1)
+        self.assertEqual(reasons["Otra modalidad"], 0)
+
+    def test_nuclei_integrity_rejects_explicit_other_modality_even_without_online_name(self):
+        original_provider = integrity._RAW_NUCLEI_PROVIDER
+        original_report_data = integrity.report_quality._report_data
+        integrity._RAW_NUCLEI_PROVIDER = lambda _report_id: {
+            "courses": [{
+                "career_name": "ENFERMERÍA",
+                "nucleus_number": 1,
+                "course_title": "Núcleo 1",
+                "official_modality": "presencial",
+                "students": [],
+            }]
+        }
+        integrity.report_quality._report_data = lambda _report_id: {
+            "modality": "en_linea",
+            "period": "Mayo - Noviembre 2026",
+        }
+        try:
+            courses, reasons = integrity.reconciled_courses(1)
+        finally:
+            integrity._RAW_NUCLEI_PROVIDER = original_provider
+            integrity.report_quality._report_data = original_report_data
+
+        self.assertEqual(courses, [])
+        self.assertEqual(reasons["Otra modalidad"], 1)
+
+
     def test_dense_ranking_keeps_ties_in_same_position(self):
         self.assertEqual(
             final_fixes.dense_ranks([100.0, 100.0, 97.37, 97.37, 90.0]),
