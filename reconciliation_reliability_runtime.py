@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
 import uuid
+from collections import Counter, defaultdict
 from typing import Any, Callable
 
+import analytics
 import app as core
+import project_wide_reconciliation_runtime as project_wide
+import smart_reconciliation_performance_runtime as perf
+import student_report_integration as report_integration
 import read_performance_runtime as fast_read
 import smart_reconciliation_runtime as smart
 import sqlite_concurrency_runtime as sqlite_guard
@@ -417,4 +423,5 @@ def install() -> None:
 
     core.InformtitHandler._handle_api_get = handle_get
     core.InformtitHandler._handle_api_write = handle_write
+    _install_final_contract()
     _INSTALLED = True
