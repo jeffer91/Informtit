@@ -35,6 +35,7 @@ import process_export
 import process_routes
 import project_wide_reconciliation_runtime
 import read_performance_runtime
+import reconciliation_reliability_runtime
 import report_catalog_independent
 import report_completion
 import report_completion_constants
@@ -227,6 +228,10 @@ def prepare() -> None:
     # modalidad Presencial/Online se toma después desde Requisitos, por lo que una
     # evidencia cargada en el dataset equivocado ya no queda fuera de población.
     project_wide_reconciliation_runtime.install()
+
+    # Última barrera del backend: los endpoints de conciliación siempre responden
+    # JSON y la desvinculación manual limpia el vínculo real sin borrar evidencia.
+    reconciliation_reliability_runtime.install()
 
 
 def main() -> None:
