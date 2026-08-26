@@ -60,9 +60,24 @@ def _nucleus_student_table(conn: Any, course_id: int) -> str | None:
     return None
 
 
+def _source_identification(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw or any(character.isalpha() for character in raw):
+        return ""
+    digits = "".join(character for character in raw if character.isdigit())
+    return digits if 8 <= len(digits) <= 13 else ""
+
+
+def _source_email(value: Any) -> str:
+    email = str(value or "").strip().casefold()
+    # El importador Excel genera correos técnicos que dependen del curso y no
+    # representan la identidad real del estudiante.
+    return "" if email.endswith("@excel.local") else email
+
+
 def _stable_source_key(source_module: str, source: dict[str, Any], context: str = "") -> str:
-    identification = "".join(ch for ch in str(source.get("identification") or "") if ch.isdigit())
-    email = str(source.get("email") or "").strip().casefold()
+    identification = _source_identification(source.get("identification"))
+    email = _source_email(source.get("email"))
     name = canonical_name_key(clean_moodle_name(str(source.get("full_name") or "")))
     career = normalize(source.get("career_name"))
     prefix = source_module.lower()
@@ -75,6 +90,22 @@ def _stable_source_key(source_module: str, source: dict[str, Any], context: str 
     else:
         identity = "unknown"
     return f"{prefix}:{context}:{identity}" if context else f"{prefix}:{identity}"
+
+
+def _nucleus_context(course: dict[str, Any]) -> str:
+    """Contexto estable del curso, independiente del id autoincremental SQLite."""
+    parts = (
+        normalize(course.get("career_name")),
+        str(int(course.get("nucleus_number") or 0)),
+        normalize(course.get("course_title")),
+        normalize(course.get("campus")),
+        normalize(course.get("module_code")),
+        normalize(course.get("period_label")),
+        normalize(course.get("group_code")),
+        normalize(course.get("schedule")),
+        normalize(course.get("teacher_name")),
+    )
+    return "course:" + "|".join(parts)
 
 
 def _manual_match(report_id: int, source_module: str, source_key: str) -> dict[str, Any] | None:
@@ -104,9 +135,74 @@ def _manual_match(report_id: int, source_module: str, source_key: str) -> dict[s
     }
 
 
+def _manual_match_by_identity(
+    report_id: int,
+    source_module: str,
+    source: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Recupera una decisión manual aunque el registro fuente haya sido recreado.
+
+    Solo reutiliza la asociación si todas las coincidencias manuales compatibles
+    apuntan al mismo estudiante; así no se fuerza un enlace en homónimos.
+    """
+    identification = _source_identification(source.get("identification"))
+    email = _source_email(source.get("email"))
+    name = canonical_name_key(clean_moodle_name(str(source.get("full_name") or "")))
+    career = normalize(source.get("career_name"))
+    if not any((identification, email, name)):
+        return None
+
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT period_student_id, source_name, source_email, source_identification,
+                       source_career, match_confidence, candidates_json
+                FROM student_source_links
+                WHERE report_id=? AND source_module=? AND match_method='MANUAL'
+                  AND period_student_id IS NOT NULL
+                ORDER BY id DESC
+                """,
+                (report_id, source_module),
+            ).fetchall()
+        )
+
+    matches: list[dict[str, Any]] = []
+    for row in rows:
+        row_id = _source_identification(row.get("source_identification"))
+        row_email = _source_email(row.get("source_email"))
+        row_name = canonical_name_key(clean_moodle_name(str(row.get("source_name") or "")))
+        row_career = normalize(row.get("source_career"))
+        compatible = False
+        if identification and row_id:
+            compatible = identification == row_id
+        elif email and row_email:
+            compatible = email == row_email
+        elif name and row_name:
+            compatible = name == row_name and (not career or not row_career or career == row_career)
+        if compatible:
+            matches.append(row)
+
+    student_ids = {int(row["period_student_id"]) for row in matches if row.get("period_student_id")}
+    if len(student_ids) != 1:
+        return None
+    selected = matches[0]
+    try:
+        candidates = json.loads(selected.get("candidates_json") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        candidates = []
+    return {
+        "status": MATCH_OK,
+        "method": "MANUAL",
+        "confidence": float(selected.get("match_confidence") or 100.0),
+        "period_student_id": next(iter(student_ids)),
+        "candidates": candidates,
+    }
+
+
 def _legacy_nucleus_manual_match(report_id: int, source: dict[str, Any]) -> dict[str, Any] | None:
     """Migra en lectura las asociaciones manuales del sistema anterior de Núcleos."""
-    email = str(source.get("email") or "").strip().casefold()
+    email = _source_email(source.get("email"))
     name = canonical_name_key(clean_moodle_name(str(source.get("full_name") or "")))
     career = normalize(source.get("career_name"))
     keys: list[str] = []
@@ -152,6 +248,12 @@ def _match(report_id: int, source_module: str, source_key: str, source: dict[str
     manual = _manual_match(report_id, source_module, source_key)
     if manual:
         return manual
+
+    recovered = _manual_match_by_identity(report_id, source_module, source)
+    if recovered:
+        save_source_link(report_id, source_module, source_key, source, recovered)
+        return recovered
+
     if source_module == "NUCLEI":
         legacy = _legacy_nucleus_manual_match(report_id, source)
         if legacy:
@@ -174,7 +276,7 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
             if not course_id:
                 continue
             table = _nucleus_student_table(conn, course_id)
-            context = f"course:{course_id}"
+            context = _nucleus_context(course)
             for source in course.get("students", []):
                 candidate = {
                     "identification": source.get("identification") or "",
@@ -193,7 +295,13 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
                         status = "ROUTE_CONFLICT"
                         detail = "El estudiante tiene ruta Trabajo de Titulación pero aparece en Núcleos."
                         route_conflicts += 1
-                        save_source_link(report_id, "NUCLEI", source_key, candidate, {**result, "status": status, "detail": detail})
+                        save_source_link(
+                            report_id,
+                            "NUCLEI",
+                            source_key,
+                            candidate,
+                            {**result, "status": status, "detail": detail},
+                        )
                     else:
                         matched += 1
                         if result.get("method") == "MANUAL":
@@ -209,7 +317,14 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
                         UPDATE {table} SET period_student_id=?, match_status=?, match_method=?, match_confidence=?
                         WHERE id=? AND course_id=?
                         """,
-                        (sid, status, result.get("method") or "", result.get("confidence"), int(source_id), course_id),
+                        (
+                            sid,
+                            status,
+                            result.get("method") or "",
+                            result.get("confidence"),
+                            int(source_id),
+                            course_id,
+                        ),
                     )
     return {
         "ok": True,
@@ -223,14 +338,16 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
 def reconcile_complexive(report_id: int) -> dict[str, Any]:
     ensure_bridge_schema()
     with connection() as conn:
-        rows = rows_to_dicts(conn.execute(
-            """
-            SELECT s.*, c.name AS career_name
-            FROM students s JOIN careers c ON c.id=s.career_id
-            WHERE c.report_id=? ORDER BY c.name, s.full_name, s.id
-            """,
-            (report_id,),
-        ).fetchall())
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT s.*, c.name AS career_name
+                FROM students s JOIN careers c ON c.id=s.career_id
+                WHERE c.report_id=? ORDER BY c.name, s.full_name, s.id
+                """,
+                (report_id,),
+            ).fetchall()
+        )
     matched = 0
     route_conflicts = 0
     pending = 0
@@ -247,7 +364,13 @@ def reconcile_complexive(report_id: int) -> dict[str, Any]:
                     status = "ROUTE_CONFLICT"
                     detail = "El estudiante tiene ruta Trabajo de Titulación pero existen notas de Complexivo."
                     route_conflicts += 1
-                    save_source_link(report_id, "COMPLEXIVE", source_key, row, {**result, "status": status, "detail": detail})
+                    save_source_link(
+                        report_id,
+                        "COMPLEXIVE",
+                        source_key,
+                        row,
+                        {**result, "status": status, "detail": detail},
+                    )
                 else:
                     matched += 1
                     if result.get("method") == "MANUAL":
@@ -263,9 +386,12 @@ def reconcile_thesis(report_id: int) -> dict[str, Any]:
     with connection() as conn:
         if not _table_exists(conn, "thesis_projects"):
             return {"ok": True, "matched": 0, "pending": 0, "route_conflicts": 0}
-        rows = rows_to_dicts(conn.execute(
-            "SELECT * FROM thesis_projects WHERE report_id=? ORDER BY full_name, id", (report_id,)
-        ).fetchall())
+        rows = rows_to_dicts(
+            conn.execute(
+                "SELECT * FROM thesis_projects WHERE report_id=? ORDER BY full_name, id",
+                (report_id,),
+            ).fetchall()
+        )
     matched = 0
     route_conflicts = 0
     pending = 0
@@ -282,7 +408,13 @@ def reconcile_thesis(report_id: int) -> dict[str, Any]:
                     status = "ROUTE_CONFLICT"
                     detail = "Existe Trabajo de Titulación para un estudiante cuya ruta sigue siendo Complexivo."
                     route_conflicts += 1
-                    save_source_link(report_id, "THESIS", source_key, row, {**result, "status": status, "detail": detail})
+                    save_source_link(
+                        report_id,
+                        "THESIS",
+                        source_key,
+                        row,
+                        {**result, "status": status, "detail": detail},
+                    )
                 else:
                     matched += 1
                     if result.get("method") == "MANUAL":
