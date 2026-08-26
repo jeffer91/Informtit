@@ -129,6 +129,31 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(job["progress"], 0)
 
 
+    def test_manual_unlink_can_be_explicitly_reset(self):
+        reliability._unlink_project_case(77, self.link_id)
+        link = reliability._project_link(77, self.link_id)
+        identity = reliability._identity_key_link(link)
+        self.assertIn(
+            self.student_id,
+            reliability._blocked_targets(77, "COMPLEXIVE", identity),
+        )
+
+        result = reliability._reset_manual_case(77, self.link_id)
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            reliability._blocked_targets(77, "COMPLEXIVE", identity),
+            set(),
+        )
+        with db.connection() as conn:
+            link = conn.execute(
+                "SELECT match_status, match_method, period_student_id FROM student_source_links WHERE id=?",
+                (self.link_id,),
+            ).fetchone()
+        self.assertEqual(link["match_status"], domain.MATCH_UNMATCHED)
+        self.assertEqual(link["match_method"], "")
+        self.assertIsNone(link["period_student_id"])
+
+
     def test_unlink_removes_positive_manual_decision_and_persists_veto(self):
         link = reliability._project_link(77, self.link_id)
         identity = reliability._identity_key_link(link)
