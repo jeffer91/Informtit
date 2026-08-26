@@ -622,6 +622,44 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(len(complexive_grades), 1)
 
 
+    def test_stale_manual_grade_reappears_as_conflict_after_new_import(self):
+        with db.connection() as conn:
+            conn.execute(
+                "UPDATE period_students SET route='COMPLEXIVO', route_source='MANUAL' WHERE id=?",
+                (self.student_id,),
+            )
+            conn.execute(
+                """
+                UPDATE students
+                SET ordinary_theory=80, ordinary_practical=80
+                WHERE period_student_id=?
+                """,
+                (self.student_id,),
+            )
+
+        reliability._resolve_grade_case(
+            77, "COMPLEXIVE", self.student_id, 80
+        )
+
+        with db.connection() as conn:
+            conn.execute(
+                """
+                UPDATE students
+                SET ordinary_theory=90, ordinary_practical=90
+                WHERE period_student_id=?
+                """,
+                (self.student_id,),
+            )
+
+        cases = [
+            case for case in reliability._grade_cases(77)
+            if case["source_module"] == "COMPLEXIVE"
+        ]
+        self.assertEqual(len(cases), 1)
+        self.assertIn("ya no existe", cases[0]["detail"])
+        self.assertEqual(cases[0]["grade_options"], [90.0])
+
+
     def test_grade_conflict_requires_manual_choice_and_then_disappears(self):
         with db.connection() as conn:
             conn.execute(
