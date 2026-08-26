@@ -144,6 +144,35 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         blocked = reliability._blocked_targets(77, "COMPLEXIVE", identity)
         self.assertIn(self.student_id, blocked)
 
+    def test_auto_route_returns_to_complexive_when_supporting_evidence_disappears(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                UPDATE period_students
+                SET route='TRABAJO_TITULACION', route_source='AUTO_EVIDENCE'
+                WHERE id=?
+                """,
+                (self.student_id,),
+            )
+            conn.execute(
+                """
+                UPDATE student_source_links
+                SET source_active=0
+                WHERE period_student_id=? AND source_module IN ('COMPLEXIVE','THESIS')
+                """,
+                (self.student_id,),
+            )
+
+        reliability._normalize_routes(77)
+        with db.connection() as conn:
+            row = conn.execute(
+                "SELECT route, route_source FROM period_students WHERE id=?",
+                (self.student_id,),
+            ).fetchone()
+        self.assertEqual(row["route"], domain.ROUTE_COMPLEXIVE)
+        self.assertEqual(row["route_source"], "DEFAULT")
+
+
     def test_double_route_becomes_one_manual_case_and_choice_resolves_it(self):
         with db.connection() as conn:
             conn.execute(
