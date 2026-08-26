@@ -415,6 +415,7 @@
                     body: JSON.stringify({student_id: Number(candidateButton.dataset.studentId)}),
                   });
                   if (typeof toast === 'function') toast('Asociación confirmada.');
+                  notifyProjectStatusChanged();
                   await renderGlobalStudents({silent: true, preserveState: true});
                 } catch (error) {
                   if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
