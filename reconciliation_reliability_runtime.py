@@ -1855,9 +1855,11 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
             for row in rows
             if _grade_value(analytics.final_grade(row)) is not None
         })
-        if len(values) > 1 and _grade_resolution(
+        selected = _grade_resolution(
             period_project_id, "COMPLEXIVE", f"student:{student_id}"
-        ) is None:
+        )
+        stale = selected is not None and bool(values) and selected not in values
+        if (len(values) > 1 and selected is None) or stale:
             cases.append({
                 "case_id": f"grade:complexive:{student_id}",
                 "case_type": "GRADE",
@@ -1866,7 +1868,11 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
                 "student_id": student_id,
                 "source_name": student.get("full_name") or "",
                 "source_identification": audit._public_identification(student.get("identification")),
-                "detail": "Existen notas finales distintas de Examen Complexivo para la misma persona.",
+                "detail": (
+                    f"La nota seleccionada anteriormente ({selected}) ya no existe en las evidencias actuales. Elija nuevamente."
+                    if stale
+                    else "Existen notas finales distintas de Examen Complexivo para la misma persona."
+                ),
                 "grade_options": values,
                 "suggestion": None,
             })
@@ -1889,9 +1895,11 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
             for row in rows
             if _grade_value(row.get("final_grade")) is not None
         })
-        if len(values) > 1 and _grade_resolution(
+        selected = _grade_resolution(
             period_project_id, "THESIS", f"student:{student_id}"
-        ) is None:
+        )
+        stale = selected is not None and bool(values) and selected not in values
+        if (len(values) > 1 and selected is None) or stale:
             cases.append({
                 "case_id": f"grade:thesis:{student_id}",
                 "case_type": "GRADE",
@@ -1900,7 +1908,11 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
                 "student_id": student_id,
                 "source_name": student.get("full_name") or "",
                 "source_identification": audit._public_identification(student.get("identification")),
-                "detail": "Existen notas finales distintas de Trabajo de Titulación para la misma persona.",
+                "detail": (
+                    f"La nota seleccionada anteriormente ({selected}) ya no existe en las evidencias actuales. Elija nuevamente."
+                    if stale
+                    else "Existen notas finales distintas de Trabajo de Titulación para la misma persona."
+                ),
                 "grade_options": values,
                 "suggestion": None,
             })
@@ -1927,9 +1939,9 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
             if _grade_value(row.get("final_grade")) is not None
         })
         key = f"student:{student_id}:nucleus:{number}"
-        if len(values) > 1 and _grade_resolution(
-            period_project_id, "NUCLEI", key
-        ) is None:
+        selected = _grade_resolution(period_project_id, "NUCLEI", key)
+        stale = selected is not None and bool(values) and selected not in values
+        if (len(values) > 1 and selected is None) or stale:
             cases.append({
                 "case_id": f"grade:nuclei:{student_id}:{number}",
                 "case_type": "GRADE",
@@ -1939,7 +1951,11 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
                 "nucleus_number": number,
                 "source_name": student.get("full_name") or "",
                 "source_identification": audit._public_identification(student.get("identification")),
-                "detail": f"Existen notas distintas para el Núcleo {number}.",
+                "detail": (
+                    f"La nota seleccionada anteriormente ({selected}) ya no existe en las evidencias actuales del Núcleo {number}. Elija nuevamente."
+                    if stale
+                    else f"Existen notas distintas para el Núcleo {number}."
+                ),
                 "grade_options": values,
                 "suggestion": None,
             })
