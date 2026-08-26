@@ -60,14 +60,14 @@
       .smart-reconcile-fill { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#244a73,#2f719f); transition: width .35s ease; }
       .smart-reconcile-meta { display: flex; justify-content: space-between; gap: 16px; margin-top: 9px; color: #627486; font-size: 13px; }
       .smart-reconcile-percent { color: #18364f; font-size: 20px; font-weight: 900; }
-      .smart-reconcile-stats { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-top: 20px; }
+      .smart-reconcile-stats { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 10px; margin-top: 20px; }
       .smart-reconcile-stat { padding: 12px; border: 1px solid #e1e8ee; border-radius: 12px; background: #f8fafc; }
       .smart-reconcile-stat strong { display: block; color: #18364f; font-size: 20px; }
       .smart-reconcile-stat span { display: block; margin-top: 3px; color: #657788; font-size: 11px; line-height: 1.25; }
       .smart-reconcile-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
       .smart-reconcile-card.done .smart-reconcile-fill { background: #2c7b55; }
       .smart-reconcile-card.error .smart-reconcile-fill { background: #b94b4b; }
-      .smart-reconciliation-summary { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 10px; margin: 14px 0 18px; }
+      .smart-reconciliation-summary { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 10px; margin: 14px 0 18px; }
       .smart-summary-chip { border: 1px solid #e1e8ee; border-radius: 12px; padding: 11px 12px; background: #f8fafc; }
       .smart-summary-chip strong { display: block; color: #18364f; font-size: 18px; }
       .smart-summary-chip span { display: block; margin-top: 2px; color: #657788; font-size: 11px; }
@@ -108,6 +108,7 @@
           <div class="smart-reconcile-stat"><strong id="smart-stat-cases">0</strong><span>casos por revisar</span></div>
           <div class="smart-reconcile-stat"><strong id="smart-stat-outside">0</strong><span>fuera de población</span></div>
           <div class="smart-reconcile-stat"><strong id="smart-stat-route">0</strong><span>conflictos de ruta</span></div>
+          <div class="smart-reconcile-stat"><strong id="smart-stat-grade">0</strong><span>conflictos de nota</span></div>
         </div>
         <div class="smart-reconcile-actions">
           <button type="button" class="button secondary" id="smart-reconcile-close" hidden>Cerrar</button>
@@ -137,6 +138,7 @@
     document.getElementById('smart-stat-cases').textContent = String(stats.cases || 0);
     document.getElementById('smart-stat-outside').textContent = String(stats.outside_population || 0);
     document.getElementById('smart-stat-route').textContent = String(stats.route_conflicts || 0);
+    document.getElementById('smart-stat-grade').textContent = String(stats.grade_conflicts || 0);
     document.getElementById('smart-reconcile-close').hidden = !['completed', 'error'].includes(job.status);
   }
 
@@ -200,7 +202,7 @@
         REVIEW_REQUIRED: 'REVISAR IDENTIDAD',
         AMBIGUOUS: 'IDENTIDAD AMBIGUA',
         IDENTITY_CONFLICT: 'CONFLICTO DE IDENTIDAD',
-        ROUTE_CONFLICT: 'SUGERENCIA DE RUTA',
+        ROUTE_CONFLICT: 'CONFLICTO DE RUTA',
         UNMATCHED: 'SIN COINCIDENCIA',
       };
       if (labels[raw]) badge.textContent = labels[raw];
@@ -236,7 +238,8 @@
         <div class="smart-summary-chip attention"><strong>${summary.total_cases || 0}</strong><span>casos únicos</span></div>
         <div class="smart-summary-chip outside"><strong>${summary.outside_population || 0}</strong><span>fuera de población</span></div>
         <div class="smart-summary-chip"><strong>${summary.identity_review || 0}</strong><span>revisar identidad</span></div>
-        <div class="smart-summary-chip"><strong>${summary.route_conflicts || 0}</strong><span>sugerencias de ruta</span></div>
+        <div class="smart-summary-chip"><strong>${summary.route_conflicts || 0}</strong><span>conflictos de ruta</span></div>
+        <div class="smart-summary-chip"><strong>${summary.grade_conflicts || 0}</strong><span>conflictos de nota</span></div>
         <div class="smart-summary-chip resolved"><strong>${summary.auto_resolved || 0}</strong><span>evidencias auto-resueltas</span></div>`;
       if (head) head.insertAdjacentElement('afterend', grid);
       panel.dataset.smartSummary = String(pid);
