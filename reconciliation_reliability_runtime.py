@@ -655,6 +655,172 @@ def _requirements_rows_project(period_project_id: int) -> list[dict[str, Any]]:
         )
 
 
+def _merge_student_decisions(conn: Any, keep_id: int, drop_id: int) -> None:
+    """Mueve también las decisiones cuyo identity_key contiene el id interno."""
+    prefix = f"student:{drop_id}"
+    rows = rows_to_dicts(
+        conn.execute(
+            """
+            SELECT * FROM student_manual_decisions
+            WHERE target_student_id=?
+               OR identity_key=?
+               OR identity_key LIKE ?
+            ORDER BY id
+            """,
+            (drop_id, prefix, prefix + ":%"),
+        ).fetchall()
+    )
+    for row in rows:
+        old_key = str(row.get("identity_key") or "")
+        new_key = (
+            f"student:{keep_id}" + old_key[len(prefix):]
+            if old_key == prefix or old_key.startswith(prefix + ":")
+            else old_key
+        )
+        new_target = (
+            keep_id
+            if row.get("target_student_id") is not None
+            and int(row["target_student_id"]) == drop_id
+            else row.get("target_student_id")
+        )
+        if new_key == old_key and new_target == row.get("target_student_id"):
+            continue
+
+        existing = conn.execute(
+            """
+            SELECT * FROM student_manual_decisions
+            WHERE period_project_id=? AND source_module=? AND identity_key=?
+              AND decision_type=? AND decision_scope=?
+            """,
+            (
+                int(row["period_project_id"]),
+                str(row["source_module"]),
+                new_key,
+                str(row["decision_type"]),
+                str(row.get("decision_scope") or ""),
+            ),
+        ).fetchone()
+        if existing and int(existing["id"]) != int(row["id"]):
+            # Si ambos maestros tenían una decisión equivalente, conserva la más
+            # reciente y elimina únicamente el duplicado lógico.
+            if str(row.get("updated_at") or "") >= str(existing["updated_at"] or ""):
+                conn.execute(
+                    """
+                    UPDATE student_manual_decisions
+                    SET target_student_id=?, decision_value=?, detail=?,
+                        created_at=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        new_target,
+                        row.get("decision_value") or "",
+                        row.get("detail") or "",
+                        row.get("created_at") or utcnow(),
+                        row.get("updated_at") or utcnow(),
+                        int(existing["id"]),
+                    ),
+                )
+            conn.execute(
+                "DELETE FROM student_manual_decisions WHERE id=?",
+                (int(row["id"]),),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE student_manual_decisions
+                SET identity_key=?, target_student_id=?
+                WHERE id=?
+                """,
+                (new_key, new_target, int(row["id"])),
+            )
+
+
+def _migration_identity(row: dict[str, Any]) -> tuple[str, str] | None:
+    sid = bridge._source_identification(row.get("identification"))
+    if sid:
+        return ("id", sid)
+    email = bridge._source_email(row.get("email"))
+    if email:
+        return ("email", email)
+    personal = bridge._source_email(row.get("personal_email"))
+    if personal:
+        return ("personal", personal)
+    name = project_wide._identity_fold(row.get("full_name"))
+    career = project_wide._identity_fold(row.get("career_name"))
+    if name and career:
+        return ("profile", f"{name}|{career}")
+    return None
+
+
+def _masters_for_requirement(
+    conn: Any,
+    report_ids: list[int],
+    requirement: dict[str, Any],
+) -> list[dict[str, Any]]:
+    identity = _migration_identity(requirement)
+    if not identity or not report_ids:
+        return []
+    kind, value = identity
+    placeholders = ",".join("?" for _ in report_ids)
+    if kind == "id":
+        return rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT * FROM period_students
+                WHERE report_id IN ({placeholders}) AND identification=?
+                ORDER BY id
+                """,
+                (*report_ids, value),
+            ).fetchall()
+        )
+    if kind == "email":
+        return rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT * FROM period_students
+                WHERE report_id IN ({placeholders}) AND lower(trim(email))=?
+                ORDER BY id
+                """,
+                (*report_ids, value),
+            ).fetchall()
+        )
+    if kind == "personal":
+        return rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT * FROM period_students
+                WHERE report_id IN ({placeholders}) AND lower(trim(personal_email))=?
+                ORDER BY id
+                """,
+                (*report_ids, value),
+            ).fetchall()
+        )
+
+    # Último recurso: nombre+carrera exactos y únicos en Requisitos.
+    rows = rows_to_dicts(
+        conn.execute(
+            f"""
+            SELECT * FROM period_students
+            WHERE report_id IN ({placeholders})
+            ORDER BY id
+            """,
+            tuple(report_ids),
+        ).fetchall()
+    )
+    return [
+        row
+        for row in rows
+        if _migration_identity(row) == identity
+        or (
+            project_wide._identity_fold(row.get("full_name"))
+            and project_wide._identity_fold(row.get("full_name"))
+            == project_wide._identity_fold(requirement.get("full_name"))
+            and project_wide._identity_fold(row.get("career_name"))
+            == project_wide._identity_fold(requirement.get("career_name"))
+        )
+    ]
+
+
 def _merge_master_rows(conn: Any, keep_id: int, drop_id: int) -> None:
     if keep_id == drop_id:
         return
@@ -696,49 +862,41 @@ def _merge_master_rows(conn: Any, keep_id: int, drop_id: int) -> None:
         "UPDATE student_audit_log SET period_student_id=? WHERE period_student_id=?",
         (keep_id, drop_id),
     )
-    conn.execute(
-        "UPDATE student_manual_decisions SET target_student_id=? WHERE target_student_id=?",
-        (keep_id, drop_id),
-    )
+    _merge_student_decisions(conn, keep_id, drop_id)
     conn.execute("DELETE FROM period_students WHERE id=?", (drop_id,))
 
 
 def _migrate_project_master(period_project_id: int) -> dict[str, int]:
-    """Mantiene un solo period_student_id aunque Requisitos cambie Presencial/Online."""
+    """Mantiene el mismo estudiante aunque Requisitos cambie de modalidad."""
     _ensure_final_schema()
     requirements = _requirements_rows_project(period_project_id)
-    official: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    official: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in requirements:
-        sid = bridge._source_identification(row.get("identification"))
-        if sid:
-            official[sid].append(row)
+        identity = _migration_identity(row)
+        if identity:
+            official[identity].append(row)
+
     report_ids = _project_report_ids(period_project_id)
     if not report_ids:
         return {"moved": 0, "merged": 0}
-    placeholders = ",".join("?" for _ in report_ids)
+
     moved = 0
     merged = 0
     with connection() as conn:
-        for sid, req_rows in official.items():
+        for _identity, req_rows in official.items():
+            # Cédula/correo/perfil deben identificar a una sola fila oficial. Si
+            # Requisitos trae duplicados, se conserva el conflicto para revisión.
             if len(req_rows) != 1:
                 continue
             target = req_rows[0]
             target_report_id = int(target["target_report_id"])
             target_modality = str(target.get("target_modality") or "")
-            masters = rows_to_dicts(
-                conn.execute(
-                    f"""
-                    SELECT * FROM period_students
-                    WHERE report_id IN ({placeholders}) AND identification=?
-                    ORDER BY id
-                    """,
-                    (*report_ids, sid),
-                ).fetchall()
-            )
+            masters = _masters_for_requirement(conn, report_ids, target)
             if not masters:
                 continue
+
             # Conserva la identidad interna más antigua. Si ya existe una copia en
-            # el dataset destino, primero la fusiona y solo después mueve el maestro.
+            # el dataset destino, fusiona sus evidencias y decisiones antes de mover.
             keep = masters[0]
             keep_id = int(keep["id"])
             for row in masters:
@@ -746,7 +904,11 @@ def _migrate_project_master(period_project_id: int) -> dict[str, int]:
                 if row_id != keep_id:
                     _merge_master_rows(conn, keep_id, row_id)
                     merged += 1
-            current = conn.execute("SELECT * FROM period_students WHERE id=?", (keep_id,)).fetchone()
+
+            current = conn.execute(
+                "SELECT * FROM period_students WHERE id=?",
+                (keep_id,),
+            ).fetchone()
             if current and int(current["report_id"]) != target_report_id:
                 old_report = int(current["report_id"])
                 conn.execute(
@@ -755,7 +917,13 @@ def _migrate_project_master(period_project_id: int) -> dict[str, int]:
                     SET report_id=?, period_project_id=?, modality=?, updated_at=?
                     WHERE id=?
                     """,
-                    (target_report_id, period_project_id, target_modality, utcnow(), keep_id),
+                    (
+                        target_report_id,
+                        period_project_id,
+                        target_modality,
+                        utcnow(),
+                        keep_id,
+                    ),
                 )
                 conn.execute(
                     """
@@ -765,9 +933,16 @@ def _migrate_project_master(period_project_id: int) -> dict[str, int]:
                             'Requisitos cambió la modalidad oficial; se conservó la misma identidad interna y todas sus evidencias.',
                             ?)
                     """,
-                    (target_report_id, keep_id, str(old_report), str(target_report_id), utcnow()),
+                    (
+                        target_report_id,
+                        keep_id,
+                        str(old_report),
+                        str(target_report_id),
+                        utcnow(),
+                    ),
                 )
                 moved += 1
+    _clear_decision_cache()
     return {"moved": moved, "merged": merged}
 
 
