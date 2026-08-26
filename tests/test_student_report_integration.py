@@ -62,6 +62,72 @@ class StudentReportIntegrationTests(unittest.TestCase):
         self.assertEqual([row["full_name"] for row in result["careers"][0]["students"]], ["ANA"])
         self.assertTrue(result["student_domain_applied"])
 
+    @patch("student_report_integration._project_report_ids", return_value=[1, 2])
+    @patch("student_report_integration._selected_grade", return_value=None)
+    @patch("student_report_integration.reconcile_all", return_value={"ok": True})
+    @patch("student_report_integration.get_period_students")
+    @patch("student_report_integration.nuclei_multicampus.get_nuclei")
+    def test_nuclei_same_student_and_grade_in_both_datasets_is_counted_once(
+        self, nuclei_mock, students_mock, _reconcile, _selected, _reports
+    ):
+        students_mock.return_value = {"students": self.master_rows}
+
+        def nuclei(report_id):
+            return {"courses": [{
+                "id": report_id,
+                "nucleus_number": 1,
+                "career_name": "CARRERA",
+                "students": [{
+                    "id": report_id,
+                    "period_student_id": 101,
+                    "full_name": "ANA",
+                    "final_grade": 8.0,
+                    "scores": [],
+                }],
+                "assessments": [],
+                "activity_averages": [],
+            }]}
+
+        nuclei_mock.side_effect = nuclei
+        result = integration.filtered_nuclei(1)
+        rows = [student for course in result["courses"] for student in course["students"]]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["full_name"], "ANA")
+        self.assertEqual(result["omitted_grade_conflicts"], 0)
+
+    @patch("student_report_integration._project_report_ids", return_value=[1, 2])
+    @patch("student_report_integration._selected_grade", return_value=None)
+    @patch("student_report_integration.reconcile_all", return_value={"ok": True})
+    @patch("student_report_integration.get_period_students")
+    @patch("student_report_integration.nuclei_multicampus.get_nuclei")
+    def test_nuclei_conflicting_grades_are_omitted_until_human_decision(
+        self, nuclei_mock, students_mock, _reconcile, _selected, _reports
+    ):
+        students_mock.return_value = {"students": self.master_rows}
+
+        def nuclei(report_id):
+            return {"courses": [{
+                "id": report_id,
+                "nucleus_number": 1,
+                "career_name": "CARRERA",
+                "students": [{
+                    "id": report_id,
+                    "period_student_id": 101,
+                    "full_name": "ANA",
+                    "final_grade": 8.0 if report_id == 1 else 9.0,
+                    "scores": [],
+                }],
+                "assessments": [],
+                "activity_averages": [],
+            }]}
+
+        nuclei_mock.side_effect = nuclei
+        result = integration.filtered_nuclei(1)
+        rows = [student for course in result["courses"] for student in course["students"]]
+        self.assertEqual(rows, [])
+        self.assertEqual(result["omitted_grade_conflicts"], 1)
+
+
     @patch("student_report_integration._project_report_ids", return_value=[1])
     @patch("student_report_integration._selected_grade", return_value=6.0)
     @patch("student_report_integration.reconcile_all", return_value={"ok": True})
