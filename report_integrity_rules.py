@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from statistics import mean
 from typing import Any
 
-import process_service
 import report_completion
 import report_integrity_core as integrity
 import report_integrity_pdf as integrity_pdf
@@ -132,9 +130,7 @@ def conclusions(report_id: int, report: dict[str, Any]) -> list[str]:
 
     thesis = metrics["thesis"]
     if thesis["total"]:
-        projects = list(process_service.get_projects(report_id).get("projects", []))
-        finals = [float(project["final_grade"]) for project in projects if project.get("final_grade") is not None]
-        average_final = round(mean(finals), 2) if finals else None
+        average_final = thesis.get("average_final")
         out.append(
             f"Trabajo de Titulación registró {thesis['total']} {'estudiante' if thesis['total'] == 1 else 'estudiantes'}, "
             f"{thesis['approved']} {'aprobado' if thesis['approved'] == 1 else 'aprobados'}, {thesis['failed']} reprobados y {thesis['incomplete']} casos incompletos; "
