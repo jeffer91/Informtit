@@ -1819,7 +1819,7 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
         students = rows_to_dicts(
             conn.execute(
                 """
-                SELECT id, report_id, full_name, identification, career_name, modality, route
+                SELECT id, report_id, full_name, identification, career_name, modality, route, route_source
                 FROM period_students
                 WHERE period_project_id=? AND COALESCE(requirements_present,1)=1
                 """,
