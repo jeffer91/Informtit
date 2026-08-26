@@ -801,13 +801,17 @@ def _audit_official_changes(report_id: int, before: dict[int, dict[str, Any]]) -
 
 def _sync_students_final(report_id: int) -> dict[str, Any]:
     assert _FINAL_BASE_SYNC is not None
-    project_id = _project_id_for_report(report_id)
-    if project_id:
-        _migrate_project_master(project_id)
-    before = _official_snapshot(report_id)
-    result = _FINAL_BASE_SYNC(report_id)
-    _audit_official_changes(report_id, before)
-    return result
+    # La migración de identidad, la sincronización de Requisitos y su auditoría
+    # forman una sola operación lógica. El candado es reentrante porque la capa
+    # SQLite ya envuelve la sincronización base con el mismo RLock.
+    with sqlite_guard._WRITE_LOCK:
+        project_id = _project_id_for_report(report_id)
+        if project_id:
+            _migrate_project_master(project_id)
+        before = _official_snapshot(report_id)
+        result = _FINAL_BASE_SYNC(report_id)
+        _audit_official_changes(report_id, before)
+        return result
 
 
 def _manual_match_target(period_project_id: int, module: str, identity: str) -> int | None:
@@ -2105,8 +2109,15 @@ def _install_final_contract() -> None:
     _FINAL_BASE_NUCLEI_RECORDS = read_model._nuclei_records
 
     # Requisitos gobierna identidad/nombre/carrera/modalidad y conserva la entidad
-    # aunque cambie de dataset en una carga posterior.
+    # aunque cambie de dataset en una carga posterior. Se actualizan también las
+    # referencias capturadas por capas antiguas para que ninguna lectura salte el
+    # contrato final y vuelva a usar la sincronización previa.
     audit.sync_report_students = _sync_students_final
+    domain.sync_report_students = _sync_students_final
+    import student_domain_runtime as domain_runtime
+    import student_period_service as period_service
+    domain_runtime.sync_report_students = _sync_students_final
+    period_service.sync_report_students = _sync_students_final
 
     # Las decisiones humanas positivas y negativas sobreviven a recargas.
     bridge._match = _final_match
