@@ -231,7 +231,8 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
     source_projects: list[dict[str, Any]] = []
     for source_report_id in _project_report_ids(report_id):
         source_projects.extend(raw_get_projects(source_report_id).get("projects", []))
-    projects: list[dict[str, Any]] = []
+
+    eligible: list[dict[str, Any]] = []
     omitted_route_conflicts = 0
     for source in source_projects:
         sid = source.get("period_student_id")
@@ -240,38 +241,80 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
             # La evidencia pertenece a un estudiante cuya modalidad oficial es el
             # otro dataset del mismo período; no es un conflicto de esta salida.
             continue
-        if _active_for_route(master, ROUTE_THESIS):
-            if not _grade_selected(report_id, "THESIS", int(sid), _grade(source.get("final_grade"))):
-                continue
-            item = dict(source)
-            item["full_name"] = master.get("full_name") or item.get("full_name") or ""
-            item["identification"] = master.get("identification") or item.get("identification") or ""
-            item["career_name"] = master.get("career_name") or item.get("career_name") or ""
-            item["modality"] = master.get("modality") or item.get("modality") or ""
-            item["official_graduated"] = bool(master.get("official_graduated"))
-            item["official_titulation_completed"] = bool(master.get("official_titulation_completed"))
-            projects.append(item)
-        else:
+        if not _active_for_route(master, ROUTE_THESIS):
             omitted_route_conflicts += 1
+            continue
+        item = dict(source)
+        item["full_name"] = master.get("full_name") or item.get("full_name") or ""
+        item["identification"] = master.get("identification") or item.get("identification") or ""
+        item["career_name"] = master.get("career_name") or item.get("career_name") or ""
+        item["modality"] = master.get("modality") or item.get("modality") or ""
+        item["official_graduated"] = bool(master.get("official_graduated"))
+        item["official_titulation_completed"] = bool(master.get("official_titulation_completed"))
+        eligible.append(item)
+
+    # Una persona debe aparecer una sola vez. Si dos fuentes traen notas finales
+    # distintas y todavía no existe una decisión manual, el reporte no elige una.
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for item in eligible:
+        sid = int(item.get("period_student_id") or 0)
+        if sid:
+            grouped.setdefault(sid, []).append(item)
+
+    projects: list[dict[str, Any]] = []
+    omitted_grade_conflicts = 0
+    for sid, items in grouped.items():
+        selected = _selected_grade(report_id, "THESIS", sid)
+        grades = {
+            _grade(item.get("final_grade"))
+            for item in items
+            if _grade(item.get("final_grade")) is not None
+        }
+        if selected is None and len(grades) > 1:
+            omitted_grade_conflicts += 1
+            continue
+        candidates = (
+            [item for item in items if _grade(item.get("final_grade")) == selected]
+            if selected is not None else items
+        )
+        if not candidates:
+            continue
+        candidates.sort(
+            key=lambda item: (
+                0 if int(item.get("report_id") or 0) == report_id else 1,
+                int(item.get("id") or 0),
+            )
+        )
+        projects.append(candidates[0])
+
     result = dict(data)
     result["projects"] = projects
     approved = 0
     failed = 0
+    finals: list[float] = []
     for item in projects:
         status = str(item.get("final_status") or "").upper()
         grade = _grade(item.get("final_grade"))
-        if status == "APROBADO" or (grade is not None and grade >= 7):
+        if grade is not None:
+            finals.append(grade)
+            if grade >= 7:
+                approved += 1
+            else:
+                failed += 1
+        elif status == "APROBADO":
             approved += 1
-        elif status == "REPROBADO" or (grade is not None and grade < 7):
+        elif status == "REPROBADO":
             failed += 1
     result["summary"] = {
         **(data.get("summary") or {}),
         "total": len(projects),
+        "average_final": round(mean(finals), 2) if finals else None,
         "approved": approved,
         "failed": failed,
         "incomplete": max(0, len(projects) - approved - failed),
     }
     result["omitted_route_conflicts"] = omitted_route_conflicts
+    result["omitted_grade_conflicts"] = omitted_grade_conflicts
     return result
 
 
@@ -286,48 +329,91 @@ def filtered_report_data(report_id: int) -> dict[str, Any]:
         str(career.get("name") or "").strip().casefold(): dict(career)
         for career in report.get("careers", [])
     }
+
     source_careers: list[dict[str, Any]] = []
     for source_report_id in _project_report_ids(report_id):
-        source_careers.extend(_BASE_REPORT_DATA(source_report_id).get("careers", []))
+        for raw_career in _BASE_REPORT_DATA(source_report_id).get("careers", []):
+            tagged = dict(raw_career)
+            tagged["_source_report_id"] = source_report_id
+            source_careers.append(tagged)
+
+    by_student: dict[int, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+    for source_career in source_careers:
+        for source in source_career.get("students", []):
+            sid = int(source.get("period_student_id") or 0)
+            master = masters.get(sid) if sid else None
+            if not _active_for_route(master, ROUTE_COMPLEXIVE):
+                continue
+            by_student.setdefault(sid, []).append((source_career, source))
+
+    effective: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+    omitted_grade_conflicts = 0
+    for sid, entries in by_student.items():
+        master = masters.get(sid)
+        if not master:
+            continue
+        selected = _selected_grade(report_id, "COMPLEXIVE", sid)
+        grades = {
+            _grade(analytics.final_grade(source))
+            for _career, source in entries
+            if _grade(analytics.final_grade(source)) is not None
+        }
+        if selected is None and len(grades) > 1:
+            omitted_grade_conflicts += 1
+            continue
+        candidates = (
+            [
+                (career, source)
+                for career, source in entries
+                if _grade(analytics.final_grade(source)) == selected
+            ]
+            if selected is not None else entries
+        )
+        if not candidates:
+            continue
+        candidates.sort(
+            key=lambda entry: (
+                0 if int(entry[0].get("_source_report_id") or 0) == report_id else 1,
+                int(entry[1].get("id") or 0),
+            )
+        )
+        career, source = candidates[0]
+        effective.append((career, source, master))
 
     grouped_careers: dict[str, dict[str, Any]] = {}
     synthetic_id = -1
-    for source_career in source_careers:
-        for source in source_career.get("students", []):
-            sid = source.get("period_student_id")
-            master = masters.get(int(sid)) if sid else None
-            if not _active_for_route(master, ROUTE_COMPLEXIVE):
-                continue
-            if not _grade_selected(report_id, "COMPLEXIVE", int(sid), analytics.final_grade(source)):
-                continue
-            official_career = str(master.get("career_name") or source_career.get("name") or "Sin carrera")
-            key = official_career.strip().casefold()
-            if key not in grouped_careers:
-                template = dict(target_templates.get(key) or source_career)
-                if key not in target_templates:
-                    template["id"] = synthetic_id
-                    synthetic_id -= 1
-                    template["images"] = []
-                    template["analyses"] = {}
-                template["name"] = official_career
-                template["students"] = []
-                grouped_careers[key] = template
+    for source_career, source, master in effective:
+        official_career = str(master.get("career_name") or source_career.get("name") or "Sin carrera")
+        key = official_career.strip().casefold()
+        if key not in grouped_careers:
+            template = dict(target_templates.get(key) or source_career)
+            if key not in target_templates:
+                template["id"] = synthetic_id
+                synthetic_id -= 1
+                template["images"] = []
+                template["analyses"] = {}
+            template.pop("_source_report_id", None)
+            template["name"] = official_career
+            template["students"] = []
+            grouped_careers[key] = template
 
-            item = dict(source)
-            item["identification"] = master.get("identification") or item.get("identification") or ""
-            item["full_name"] = master.get("full_name") or item.get("full_name") or ""
-            item["official_career_name"] = official_career
-            item["official_modality"] = master.get("modality") or ""
-            item["official_graduated"] = bool(master.get("official_graduated"))
-            item["official_titulation_completed"] = bool(master.get("official_titulation_completed"))
-            grouped_careers[key]["students"].append(item)
+        item = dict(source)
+        item["identification"] = master.get("identification") or item.get("identification") or ""
+        item["full_name"] = master.get("full_name") or item.get("full_name") or ""
+        item["official_career_name"] = official_career
+        item["official_modality"] = master.get("modality") or ""
+        item["official_graduated"] = bool(master.get("official_graduated"))
+        item["official_titulation_completed"] = bool(master.get("official_titulation_completed"))
+        grouped_careers[key]["students"].append(item)
 
     report["careers"] = sorted(
         grouped_careers.values(),
         key=lambda career: str(career.get("name") or "").casefold(),
     )
     report["student_domain_applied"] = True
+    report["omitted_grade_conflicts"] = omitted_grade_conflicts
     return report
+
 
 
 class _IntegrityProcessProxy:
