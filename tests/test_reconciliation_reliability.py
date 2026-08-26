@@ -512,6 +512,63 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(rows[0]["route_source"], "MANUAL")
 
 
+    def test_grade_conflict_waits_until_route_conflict_is_resolved(self):
+        with db.connection() as conn:
+            conn.execute(
+                "UPDATE period_students SET route='COMPLEXIVO', route_source='DEFAULT' WHERE id=?",
+                (self.student_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO student_source_links
+                (report_id, period_student_id, source_module, source_key, source_name,
+                 source_email, source_identification, source_career, match_status,
+                 match_method, match_confidence, candidates_json, detail, source_active,
+                 created_at, updated_at)
+                VALUES (?, ?, 'THESIS', 'thesis:route-grade-order',
+                        'ALOMOTO PAZMIÑO BAYRON JAVIER', '',
+                        '1752222404', 'DESARROLLO DE SOFTWARE', 'OK',
+                        'CEDULA', 100, '[]', '', 1, 'x', 'x')
+                """,
+                (self.report_id, self.student_id),
+            )
+            conn.execute(
+                """
+                UPDATE students
+                SET ordinary_theory=80, ordinary_practical=80
+                WHERE period_student_id=?
+                """,
+                (self.student_id,),
+            )
+            career_id = int(conn.execute("SELECT career_id FROM students LIMIT 1").fetchone()[0])
+            conn.execute(
+                """
+                INSERT INTO students
+                (career_id, full_name, email, ordinary_theory, ordinary_practical,
+                 created_at, updated_at, period_student_id)
+                VALUES (?, 'ALOMOTO PAZMIÑO BAYRON JAVIER',
+                        'bayron.otro@itsqmet.edu.ec', 90, 90, 'x', 'x', ?)
+                """,
+                (career_id, self.student_id),
+            )
+
+        self.assertEqual(len(reliability._route_cases(77)), 1)
+        complexive_grades = [
+            case for case in reliability._grade_cases(77)
+            if case["source_module"] == "COMPLEXIVE"
+        ]
+        self.assertEqual(complexive_grades, [])
+
+        reliability._set_route_manual_final(
+            77, self.student_id, domain.ROUTE_COMPLEXIVE
+        )
+        complexive_grades = [
+            case for case in reliability._grade_cases(77)
+            if case["source_module"] == "COMPLEXIVE"
+        ]
+        self.assertEqual(len(complexive_grades), 1)
+
+
     def test_grade_conflict_requires_manual_choice_and_then_disappears(self):
         with db.connection() as conn:
             conn.execute(
