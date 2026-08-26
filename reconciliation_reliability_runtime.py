@@ -1258,7 +1258,7 @@ def _normalize_routes(period_project_id: int) -> dict[str, int]:
                     UPDATE student_source_links
                     SET match_status='OK',
                         match_method=CASE
-                            WHEN source_module=? THEN match_method
+                            WHEN source_module=? THEN 'MANUAL_ROUTE_INCLUDED'
                             WHEN source_module=? THEN 'ROUTE_EXCLUDED_MANUAL'
                             ELSE match_method
                         END,
@@ -1762,7 +1762,7 @@ def _final_case_summary(period_project_id: int) -> dict[str, int]:
                     SELECT COUNT(*) FROM student_source_links
                     WHERE report_id IN ({placeholders})
                       AND COALESCE(source_active,1)=1 AND match_status='OK'
-                      AND COALESCE(match_method,'') NOT IN ('MANUAL','MANUAL_REVIEW','ROUTE_EXCLUDED_MANUAL')
+                      AND COALESCE(match_method,'') NOT IN ('MANUAL','MANUAL_REVIEW','MANUAL_ROUTE_INCLUDED','ROUTE_EXCLUDED_MANUAL')
                     """,
                     tuple(report_ids),
                 ).fetchone()[0]
