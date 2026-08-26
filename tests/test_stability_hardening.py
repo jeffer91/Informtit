@@ -58,6 +58,14 @@ class StabilityHardeningTests(unittest.TestCase):
         )
         self.assertNotEqual(first, second)
 
+    def test_requirements_import_uses_final_student_sync_contract(self):
+        source = (ROOT / "reconciliation_reliability_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("sqlite_guard._locked_sync = _sync_students_final", source)
+        self.assertIn(
+            "una nueva\n    # carga Presencial/Online también migre la identidad maestra inmediatamente",
+            source,
+        )
+
     def test_section_visibility_is_not_forced_on_startup(self):
         launcher = (ROOT / "desktop_launcher.py").read_text(encoding="utf-8")
         self.assertNotIn("UPDATE institutional_sections SET visible = 1", launcher)
