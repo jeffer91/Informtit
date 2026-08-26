@@ -60,6 +60,7 @@ import robust_import_fixes
 import robust_import_policy
 import robust_import_runtime
 import schedule_defaults_runtime
+import smart_reconciliation_runtime
 import sqlite_concurrency_runtime
 import storage_migration
 import student_domain_integrations
@@ -211,6 +212,10 @@ def prepare() -> None:
     # Navegar por Todos/Estudiantes debe ser lectura pura. La conciliación pesada
     # queda para cargas, cambios y el botón explícito Reconciliar.
     read_performance_runtime.install()
+
+    # Capa final de matching: identidad fuerte antes que similitud, agrupación de
+    # evidencias repetidas y conciliación en segundo plano con progreso observable.
+    smart_reconciliation_runtime.install()
 
 
 def main() -> None:
