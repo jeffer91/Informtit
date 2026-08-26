@@ -187,6 +187,47 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(methods["COMPLEXIVE"], "ROUTE_EXCLUDED_MANUAL")
         self.assertEqual(methods["THESIS"], "MANUAL_ROUTE_INCLUDED")
 
+    def test_cedula_and_email_pointing_to_different_students_never_auto_link(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO period_students
+                (period_project_id, report_id, identification, full_name, email,
+                 career_name, modality, route, route_source, process_status,
+                 requirements_present, created_at, updated_at)
+                VALUES (77, ?, '1758888888', 'OTRA PERSONA',
+                        'otra@itsqmet.edu.ec', 'DESARROLLO DE SOFTWARE',
+                        'presencial', 'COMPLEXIVO', 'DEFAULT', 'ACTIVO', 1, 'x', 'x')
+                """,
+                (self.report_id,),
+            )
+
+        source = {
+            "identification": "1752222404",
+            "email": "otra@itsqmet.edu.ec",
+            "full_name": "ALOMOTO PAZMIÑO BAYRON JAVIER",
+            "career_name": "DESARROLLO DE SOFTWARE",
+        }
+        guarded = reliability._guard_strong_identity_conflict(
+            self.report_id,
+            "COMPLEXIVE",
+            "complexive:test-conflict",
+            source,
+            {
+                "status": domain.MATCH_OK,
+                "method": "CEDULA",
+                "confidence": 100.0,
+                "period_student_id": self.student_id,
+                "candidates": [],
+                "detail": "",
+            },
+        )
+        self.assertEqual(guarded["status"], audit.MATCH_IDENTITY_CONFLICT)
+        self.assertIsNone(guarded["period_student_id"])
+        self.assertEqual(guarded["method"], "CEDULA_CORREO_CONFLICTO")
+        self.assertEqual(len(guarded["candidates"]), 2)
+
+
     def test_name_only_homonyms_are_not_grouped_into_one_manual_case(self):
         with db.connection() as conn:
             conn.execute(
