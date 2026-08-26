@@ -587,6 +587,30 @@ def _store_decision(
     _clear_decision_cache()
 
 
+def _delete_decisions(
+    period_project_id: int,
+    source_module: str,
+    identity_key: str,
+    decision_type: str,
+    *,
+    target_student_id: int | None = None,
+) -> None:
+    if not identity_key:
+        return
+    _ensure_final_schema()
+    sql = """
+        DELETE FROM student_manual_decisions
+        WHERE period_project_id=? AND source_module=? AND identity_key=? AND decision_type=?
+    """
+    args: list[Any] = [period_project_id, source_module, identity_key, decision_type]
+    if target_student_id is not None:
+        sql += " AND target_student_id=?"
+        args.append(int(target_student_id))
+    with connection() as conn:
+        conn.execute(sql, tuple(args))
+    _clear_decision_cache()
+
+
 def _requirements_rows_project(period_project_id: int) -> list[dict[str, Any]]:
     report_ids = _project_report_ids(period_project_id)
     if not report_ids:
@@ -693,10 +717,9 @@ def _migrate_project_master(period_project_id: int) -> dict[str, int]:
             )
             if not masters:
                 continue
-            keep = next(
-                (row for row in masters if int(row["report_id"]) == target_report_id),
-                masters[0],
-            )
+            # Conserva la identidad interna más antigua. Si ya existe una copia en
+            # el dataset destino, primero la fusiona y solo después mueve el maestro.
+            keep = masters[0]
             keep_id = int(keep["id"])
             for row in masters:
                 row_id = int(row["id"])
@@ -1070,6 +1093,13 @@ def _confirm_project_case(period_project_id: int, link_id: int, student_id: int)
                     now,
                 ),
             )
+        # Una nueva confirmación humana sustituye el descarte anterior del mismo
+        # destino y cualquier asociación manual previa para esa identidad.
+        _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
+        _delete_decisions(
+            period_project_id, module, identity, DECISION_DO_NOT_MATCH,
+            target_student_id=student_id,
+        )
         _store_decision(
             period_project_id, module, identity, DECISION_MATCH,
             target_student_id=student_id, decision_value=str(student_id),
@@ -1120,6 +1150,9 @@ def _unlink_project_case(period_project_id: int, link_id: int) -> dict[str, Any]
                     now,
                 ),
             )
+        # Desvincular invalida una confirmación positiva previa; de otro modo el
+        # siguiente Reconciliar volvería a enlazarla antes de mirar el veto.
+        _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
         for target_id in old_targets:
             _store_decision(
                 period_project_id, module, identity, DECISION_DO_NOT_MATCH,
@@ -1224,6 +1257,11 @@ def _normalize_routes(period_project_id: int) -> dict[str, int]:
                     """
                     UPDATE student_source_links
                     SET match_status='OK',
+                        match_method=CASE
+                            WHEN source_module=? THEN match_method
+                            WHEN source_module=? THEN 'ROUTE_EXCLUDED_MANUAL'
+                            ELSE match_method
+                        END,
                         detail=CASE
                             WHEN source_module=? THEN 'Identidad confirmada; evidencia válida para la ruta seleccionada manualmente.'
                             WHEN source_module=? THEN 'Identidad confirmada; evidencia conservada para auditoría pero excluida por la ruta seleccionada manualmente.'
@@ -1233,7 +1271,7 @@ def _normalize_routes(period_project_id: int) -> dict[str, int]:
                     WHERE period_student_id=? AND source_module IN ('COMPLEXIVE','THESIS')
                       AND COALESCE(source_active,1)=1
                     """,
-                    (selected, opposite, utcnow(), sid),
+                    (selected, opposite, selected, opposite, utcnow(), sid),
                 )
                 if has_complexive and has_thesis:
                     manual_resolved += 1
@@ -1724,7 +1762,7 @@ def _final_case_summary(period_project_id: int) -> dict[str, int]:
                     SELECT COUNT(*) FROM student_source_links
                     WHERE report_id IN ({placeholders})
                       AND COALESCE(source_active,1)=1 AND match_status='OK'
-                      AND COALESCE(match_method,'') NOT IN ('MANUAL','MANUAL_REVIEW')
+                      AND COALESCE(match_method,'') NOT IN ('MANUAL','MANUAL_REVIEW','ROUTE_EXCLUDED_MANUAL')
                     """,
                     tuple(report_ids),
                 ).fetchone()[0]
