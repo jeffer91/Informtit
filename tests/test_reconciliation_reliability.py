@@ -189,6 +189,10 @@ class ReconciliationReliabilityTests(unittest.TestCase):
     def test_grade_conflict_requires_manual_choice_and_then_disappears(self):
         with db.connection() as conn:
             conn.execute(
+                "UPDATE period_students SET route='COMPLEXIVO', route_source='MANUAL' WHERE id=?",
+                (self.student_id,),
+            )
+            conn.execute(
                 """
                 UPDATE students
                 SET ordinary_theory=80, ordinary_practical=80
