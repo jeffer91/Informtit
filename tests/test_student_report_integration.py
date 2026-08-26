@@ -12,6 +12,25 @@ class StudentReportIntegrationTests(unittest.TestCase):
             {"id": 103, "route": "COMPLEXIVO", "process_status": "RETIRADO", "identification": "333", "full_name": "CARLA", "official_graduated": 0, "official_titulation_completed": 0},
         ]
 
+    def test_report_admission_requires_current_requirements_and_no_master_conflict(self):
+        base = {
+            "route": integration.ROUTE_COMPLEXIVE,
+            "process_status": "ACTIVO",
+            "requirements_present": 1,
+            "modality_conflict": 0,
+            "reconciliation_status": "OK",
+        }
+        self.assertTrue(integration._active_for_route(base, integration.ROUTE_COMPLEXIVE))
+        self.assertFalse(integration._active_for_route(
+            {**base, "requirements_present": 0}, integration.ROUTE_COMPLEXIVE
+        ))
+        self.assertFalse(integration._active_for_route(
+            {**base, "modality_conflict": 1}, integration.ROUTE_COMPLEXIVE
+        ))
+        self.assertFalse(integration._active_for_route(
+            {**base, "reconciliation_status": "DUPLICATE"}, integration.ROUTE_COMPLEXIVE
+        ))
+
     @patch("student_report_integration.reconcile_all", return_value={"ok": True})
     @patch("student_report_integration.get_period_students")
     @patch("student_report_integration.nuclei_multicampus.get_nuclei")
