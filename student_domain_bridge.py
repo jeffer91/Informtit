@@ -64,8 +64,7 @@ def _source_identification(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw or any(character.isalpha() for character in raw):
         return ""
-    digits = "".join(character for character in raw if character.isdigit())
-    return digits if 8 <= len(digits) <= 13 else ""
+    return "".join(character for character in raw if character.isdigit())
 
 
 def _source_email(value: Any) -> str:
