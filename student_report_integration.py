@@ -41,10 +41,14 @@ def _master(report_id: int) -> dict[int, dict[str, Any]]:
 
 
 def _active_for_route(row: dict[str, Any] | None, route: str) -> bool:
+    """Única regla de admisión del maestro a reportes académicos."""
     return bool(
         row
         and row.get("route") == route
         and row.get("process_status") == "ACTIVO"
+        and int(row.get("requirements_present", 1) or 0) == 1
+        and int(row.get("modality_conflict", 0) or 0) == 0
+        and str(row.get("reconciliation_status") or "OK") != "DUPLICATE"
     )
 
 
