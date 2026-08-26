@@ -7,6 +7,7 @@ import reconciliation_reliability_runtime as reliability
 import student_domain_bridge as bridge
 import student_domain_service as domain
 import student_final_audit as audit
+import requirements_store
 
 
 class ReconciliationReliabilityTests(unittest.TestCase):
@@ -185,6 +186,145 @@ class ReconciliationReliabilityTests(unittest.TestCase):
             }
         self.assertEqual(methods["COMPLEXIVE"], "ROUTE_EXCLUDED_MANUAL")
         self.assertEqual(methods["THESIS"], "MANUAL_ROUTE_INCLUDED")
+
+    def test_name_only_homonyms_are_not_grouped_into_one_manual_case(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO period_students
+                (period_project_id, report_id, identification, full_name, email,
+                 career_name, modality, route, route_source, process_status,
+                 requirements_present, created_at, updated_at)
+                VALUES (77, ?, '1759999999', 'NOMBRE HOMONIMO',
+                        '', 'CARRERA B', 'presencial', 'COMPLEXIVO', 'DEFAULT',
+                        'ACTIVO', 1, 'x', 'x')
+                """,
+                (self.report_id,),
+            )
+            for key in ("nuclei:course:a:name:nombre homonimo", "nuclei:course:b:name:nombre homonimo"):
+                conn.execute(
+                    """
+                    INSERT INTO student_source_links
+                    (report_id, period_student_id, source_module, source_key, source_name,
+                     source_email, source_identification, source_career, match_status,
+                     match_method, match_confidence, candidates_json, detail, source_active,
+                     created_at, updated_at)
+                    VALUES (?, NULL, 'NUCLEI', ?, 'NOMBRE HOMONIMO', '', '', '',
+                            'AMBIGUOUS', 'HOMONIMO', 100, '[]', '', 1, 'x', 'x')
+                    """,
+                    (self.report_id, key),
+                )
+
+        cases = [
+            case for case in reliability._identity_cases(77)
+            if case["source_name"] == "NOMBRE HOMONIMO"
+        ]
+        self.assertEqual(len(cases), 2)
+        self.assertTrue(all(case["occurrences"] == 1 for case in cases))
+
+    def test_merge_master_rewrites_route_and_grade_decision_identity_keys(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO reports
+                (name, period, modality, period_project_id, created_at, updated_at)
+                VALUES ('Online', 'P', 'en_linea', 77, 'x', 'x')
+                """
+            )
+            online_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+            conn.execute(
+                """
+                INSERT INTO period_students
+                (period_project_id, report_id, identification, full_name, email,
+                 career_name, modality, route, route_source, process_status,
+                 requirements_present, created_at, updated_at)
+                VALUES (77, ?, '1753333333', 'OTRO ESTUDIANTE', '',
+                        'DESARROLLO DE SOFTWARE', 'en_linea', 'TRABAJO_TITULACION',
+                        'MANUAL', 'ACTIVO', 1, 'x', 'x')
+                """,
+                (online_id,),
+            )
+            drop_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+        reliability._store_decision(
+            77, "ROUTE", f"student:{drop_id}", reliability.DECISION_ROUTE,
+            decision_scope="route", target_student_id=drop_id,
+            decision_value="TRABAJO_TITULACION",
+        )
+        reliability._store_decision(
+            77, "GRADE_NUCLEI", f"student:{drop_id}:nucleus:2",
+            reliability.DECISION_GRADE, decision_scope="selected",
+            target_student_id=drop_id, decision_value="8.5",
+        )
+
+        with db.connection() as conn:
+            reliability._merge_master_rows(conn, self.student_id, drop_id)
+
+        with db.connection() as conn:
+            keys = {
+                row["identity_key"]: row["target_student_id"]
+                for row in conn.execute(
+                    """
+                    SELECT identity_key, target_student_id
+                    FROM student_manual_decisions
+                    WHERE period_project_id=77
+                    """
+                ).fetchall()
+            }
+        self.assertEqual(keys[f"student:{self.student_id}"], self.student_id)
+        self.assertEqual(
+            keys[f"student:{self.student_id}:nucleus:2"],
+            self.student_id,
+        )
+
+    def test_master_moves_to_online_when_cedula_is_added_to_previous_noid_student(self):
+        requirements_store.ensure_requirements_schema()
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO reports
+                (name, period, modality, period_project_id, created_at, updated_at)
+                VALUES ('Online', 'P', 'en_linea', 77, 'x', 'x')
+                """
+            )
+            online_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+            conn.execute(
+                """
+                INSERT INTO period_students
+                (period_project_id, report_id, identification, full_name, email,
+                 career_name, modality, route, route_source, process_status,
+                 requirements_present, created_at, updated_at)
+                VALUES (77, ?, 'NOID:EMAIL:sincedula@itsqmet.edu.ec',
+                        'ESTUDIANTE SIN CEDULA', 'sincedula@itsqmet.edu.ec',
+                        'DESARROLLO DE SOFTWARE', 'presencial', 'COMPLEXIVO',
+                        'DEFAULT', 'ACTIVO', 1, 'x', 'x')
+                """,
+                (self.report_id,),
+            )
+            noid_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+            conn.execute(
+                """
+                INSERT INTO requirements_students
+                (report_id, identification, full_name, career_name, modality,
+                 email, created_at, updated_at)
+                VALUES (?, '1754444444', 'ESTUDIANTE SIN CEDULA',
+                        'DESARROLLO DE SOFTWARE', 'en_linea',
+                        'sincedula@itsqmet.edu.ec', 'x', 'x')
+                """,
+                (online_id,),
+            )
+
+        result = reliability._migrate_project_master(77)
+        self.assertEqual(result["moved"], 1)
+        with db.connection() as conn:
+            row = conn.execute(
+                "SELECT id, report_id FROM period_students WHERE id=?",
+                (noid_id,),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(int(row["id"]), noid_id)
+        self.assertEqual(int(row["report_id"]), online_id)
+
 
     def test_grade_conflict_requires_manual_choice_and_then_disappears(self):
         with db.connection() as conn:
