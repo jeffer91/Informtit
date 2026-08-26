@@ -1636,26 +1636,30 @@ def _normalize_routes(period_project_id: int) -> dict[str, int]:
 
             if manual:
                 selected = "THESIS" if row.get("route") == domain.ROUTE_THESIS else "COMPLEXIVE"
-                opposite = "COMPLEXIVE" if selected == "THESIS" else "THESIS"
                 conn.execute(
                     """
                     UPDATE student_source_links
                     SET match_status='OK',
                         match_method=CASE
-                            WHEN source_module=? THEN 'MANUAL_ROUTE_INCLUDED'
-                            WHEN source_module=? THEN 'ROUTE_EXCLUDED_MANUAL'
-                            ELSE match_method
+                            WHEN ?='COMPLEXIVE' AND source_module IN ('NUCLEI','COMPLEXIVE')
+                                THEN 'MANUAL_ROUTE_INCLUDED'
+                            WHEN ?='THESIS' AND source_module='THESIS'
+                                THEN 'MANUAL_ROUTE_INCLUDED'
+                            ELSE 'ROUTE_EXCLUDED_MANUAL'
                         END,
                         detail=CASE
-                            WHEN source_module=? THEN 'Identidad confirmada; evidencia válida para la ruta seleccionada manualmente.'
-                            WHEN source_module=? THEN 'Identidad confirmada; evidencia conservada para auditoría pero excluida por la ruta seleccionada manualmente.'
-                            ELSE detail
+                            WHEN ?='COMPLEXIVE' AND source_module IN ('NUCLEI','COMPLEXIVE')
+                                THEN 'Identidad confirmada; evidencia válida para la ruta Complexivo seleccionada manualmente.'
+                            WHEN ?='THESIS' AND source_module='THESIS'
+                                THEN 'Identidad confirmada; evidencia válida para Trabajo de Titulación seleccionado manualmente.'
+                            ELSE 'Identidad confirmada; evidencia conservada para auditoría pero excluida por la ruta seleccionada manualmente.'
                         END,
                         updated_at=?
-                    WHERE period_student_id=? AND source_module IN ('COMPLEXIVE','THESIS')
+                    WHERE period_student_id=?
+                      AND source_module IN ('NUCLEI','COMPLEXIVE','THESIS')
                       AND COALESCE(source_active,1)=1
                     """,
-                    (selected, opposite, selected, opposite, utcnow(), sid),
+                    (selected, selected, selected, selected, utcnow(), sid),
                 )
                 if has_complexive and has_thesis:
                     manual_resolved += 1
