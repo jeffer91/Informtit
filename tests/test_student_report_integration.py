@@ -62,6 +62,32 @@ class StudentReportIntegrationTests(unittest.TestCase):
         self.assertEqual([row["full_name"] for row in result["careers"][0]["students"]], ["ANA"])
         self.assertTrue(result["student_domain_applied"])
 
+    def test_nuclei_modality_comes_from_dataset_not_career_name(self):
+        original = integration._BASE_NUCLEI_CONSOLIDATED
+        integration._BASE_NUCLEI_CONSOLIDATED = lambda _rid: {
+            "careers": [{"career": "Enfermería", "modality": "Presencial"}],
+            "course_rows": [{"career": "Enfermería", "modality": "Presencial"}],
+        }
+        try:
+            with patch("student_report_integration._dataset_modality_label", return_value="Online"):
+                data = integration._nuclei_consolidated_with_dataset_modality(1)
+        finally:
+            integration._BASE_NUCLEI_CONSOLIDATED = original
+        self.assertEqual(data["careers"][0]["modality"], "Online")
+        self.assertEqual(data["course_rows"][0]["modality"], "Online")
+
+    @patch("student_report_integration.filtered_projects", return_value={"summary": {"total": 2}})
+    @patch("student_report_integration.report_completion._complexive_data", return_value={"totals": {"registered": 8}})
+    @patch("student_report_integration.report_decoupled._nucleus_summary", return_value={"courses": 4})
+    @patch("student_report_integration.report_completion.corrected_requirement_analysis", return_value={"total": 10})
+    def test_methodology_describes_master_student_flow(self, _requirements, _nuclei, _complexive, _projects):
+        paragraphs = integration._integrated_methodology_paragraphs(1, {"period": "Mayo - Noviembre 2026"})
+        text = " ".join(paragraphs).casefold()
+        self.assertIn("población maestra", text)
+        self.assertIn("se concilian", text)
+        self.assertNotIn("no generan relaciones automáticas", text)
+        self.assertNotIn("cuatro componentes independientes", text)
+
 
 if __name__ == "__main__":
     unittest.main()
