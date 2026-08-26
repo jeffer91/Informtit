@@ -195,11 +195,48 @@
     return view;
   }
 
-  async function renderGlobalStudents() {
+  function captureViewState(view) {
+    return {
+      search: view.querySelector('#period-student-search')?.value || '',
+      modality: view.querySelector('#period-student-modality')?.value || '',
+      route: view.querySelector('#period-student-route')?.value || '',
+      process: view.querySelector('#period-student-process')?.value || '',
+      reconciliation: view.querySelector('#period-student-reconciliation')?.value || '',
+      scrollY: window.scrollY,
+    };
+  }
+
+  function restoreViewState(view, saved) {
+    if (!saved) return;
+    const values = {
+      '#period-student-search': saved.search,
+      '#period-student-modality': saved.modality,
+      '#period-student-route': saved.route,
+      '#period-student-process': saved.process,
+      '#period-student-reconciliation': saved.reconciliation,
+    };
+    Object.entries(values).forEach(([selector, value]) => {
+      const control = view.querySelector(selector);
+      if (control) control.value = value || '';
+    });
+    applyFilters(view);
+    requestAnimationFrame(() => window.scrollTo(0, Number(saved.scrollY || 0)));
+  }
+
+  function notifyProjectStatusChanged() {
+    document.dispatchEvent(new CustomEvent('informtit:students-domain-changed'));
+  }
+
+  async function renderGlobalStudents(options = {}) {
     const pid = projectId();
     const view = getView();
     if (!pid || !view) return;
-    view.innerHTML = '<div class="panel"><p>Cargando estudiantes Presencial + Online...</p></div>';
+    const preserveState = Boolean(options.preserveState);
+    const silent = Boolean(options.silent);
+    const saved = preserveState ? captureViewState(view) : null;
+    if (!silent || !view.innerHTML.trim()) {
+      view.innerHTML = '<div class="panel"><p>Cargando estudiantes Presencial + Online...</p></div>';
+    }
     try {
       const data = await apiRequest(`/api/period-projects/${pid}/students-domain`);
       const students = data.students || [];
@@ -226,6 +263,7 @@
         control.addEventListener('input', () => applyFilters(view));
         control.addEventListener('change', () => applyFilters(view));
       });
+      restoreViewState(view, saved);
       const reconcileButton = view.querySelector('#period-student-refresh');
       reconcileButton?.addEventListener('click', async () => {
         reconcileButton.disabled = true;
@@ -236,7 +274,7 @@
             method: 'POST', body: JSON.stringify({}),
           });
           if (typeof toast === 'function') toast('Conciliación actualizada.');
-          await renderGlobalStudents();
+          await renderGlobalStudents({silent: true, preserveState: true});
         } catch (error) {
           if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
           reconcileButton.disabled = false;
@@ -251,10 +289,11 @@
             await apiRequest(`/api/period-projects/${pid}/students-domain/${studentId}/route`, {
               method: 'PUT', body: JSON.stringify({route: event.target.value}),
             });
-            await renderGlobalStudents();
+            notifyProjectStatusChanged();
+            await renderGlobalStudents({silent: true, preserveState: true});
           } catch (error) {
             if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
-            await renderGlobalStudents();
+            await renderGlobalStudents({silent: true, preserveState: true});
           }
         });
       });
@@ -266,10 +305,11 @@
             await apiRequest(`/api/period-projects/${pid}/students-domain/${studentId}/process-status`, {
               method: 'PUT', body: JSON.stringify({process_status: event.target.value}),
             });
-            await renderGlobalStudents();
+            notifyProjectStatusChanged();
+            await renderGlobalStudents({silent: true, preserveState: true});
           } catch (error) {
             if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
-            await renderGlobalStudents();
+            await renderGlobalStudents({silent: true, preserveState: true});
           }
         });
       });
@@ -280,7 +320,8 @@
             await apiRequest(`/api/period-projects/${pid}/students-domain/matches/${Number(button.dataset.linkId)}/confirm`, {
               method: 'POST', body: JSON.stringify({student_id: Number(button.dataset.studentId)}),
             });
-            await renderGlobalStudents();
+            notifyProjectStatusChanged();
+            await renderGlobalStudents({silent: true, preserveState: true});
           } catch (error) {
             if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
             button.disabled = false;
@@ -297,7 +338,8 @@
               body: JSON.stringify({}),
             });
             if (typeof toast === 'function') toast('Decisión manual restablecida. Ya puede asociar nuevamente o reconciliar.');
-            await renderGlobalStudents();
+            notifyProjectStatusChanged();
+            await renderGlobalStudents({silent: true, preserveState: true});
           } catch (error) {
             if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
             button.disabled = false;
@@ -313,7 +355,8 @@
               method: 'PUT', body: JSON.stringify({route: button.dataset.route}),
             });
             if (typeof toast === 'function') toast('Ruta resuelta y guardada.');
-            await renderGlobalStudents();
+            notifyProjectStatusChanged();
+            await renderGlobalStudents({silent: true, preserveState: true});
           } catch (error) {
             if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
             button.disabled = false;
@@ -335,7 +378,8 @@
               }),
             });
             if (typeof toast === 'function') toast('Calificación seleccionada y auditada.');
-            await renderGlobalStudents();
+            notifyProjectStatusChanged();
+            await renderGlobalStudents({silent: true, preserveState: true});
           } catch (error) {
             if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
             button.disabled = false;
@@ -371,7 +415,7 @@
                     body: JSON.stringify({student_id: Number(candidateButton.dataset.studentId)}),
                   });
                   if (typeof toast === 'function') toast('Asociación confirmada.');
-                  await renderGlobalStudents();
+                  await renderGlobalStudents({silent: true, preserveState: true});
                 } catch (error) {
                   if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
                   candidateButton.disabled = false;
