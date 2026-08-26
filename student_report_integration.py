@@ -57,6 +57,49 @@ def _grade(value: Any) -> float | None:
         return None
 
 
+def _selected_grade(report_id: int, module: str, student_id: int, nucleus_number: int = 0) -> float | None:
+    """Lee una resolución manual de nota sin alterar las evidencias originales."""
+    with connection() as conn:
+        decision_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='student_manual_decisions'"
+        ).fetchone()
+        report_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(reports)").fetchall()}
+        if not decision_table or "period_project_id" not in report_columns:
+            return None
+        project = conn.execute(
+            "SELECT period_project_id FROM reports WHERE id=?", (report_id,)
+        ).fetchone()
+        if not project or project[0] is None:
+            return None
+        identity = (
+            f"student:{student_id}:nucleus:{int(nucleus_number)}"
+            if module == "NUCLEI" else f"student:{student_id}"
+        )
+        row = conn.execute(
+            """
+            SELECT decision_value FROM student_manual_decisions
+            WHERE period_project_id=? AND source_module=? AND identity_key=?
+              AND decision_type='GRADE'
+            ORDER BY id DESC LIMIT 1
+            """,
+            (int(project[0]), f"GRADE_{module}", identity),
+        ).fetchone()
+    return _grade(row[0]) if row else None
+
+
+def _grade_selected(
+    report_id: int,
+    module: str,
+    student_id: int,
+    grade: float | None,
+    nucleus_number: int = 0,
+) -> bool:
+    selected = _selected_grade(report_id, module, student_id, nucleus_number)
+    return selected is None or (
+        grade is not None and round(float(grade), 4) == round(float(selected), 4)
+    )
+
+
 def _recalculate_nucleus(course: dict[str, Any]) -> None:
     students = list(course.get("students", []))
     grades = [_grade(student.get("final_grade")) for student in students]
