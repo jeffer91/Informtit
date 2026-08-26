@@ -186,6 +186,59 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(cases[0]["match_status"], domain.MATCH_ROUTE_CONFLICT)
 
 
+    def test_manual_thesis_route_excludes_nuclei_without_leaving_route_conflict(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO student_source_links
+                (report_id, period_student_id, source_module, source_key, source_name,
+                 source_email, source_identification, source_career, match_status,
+                 match_method, match_confidence, candidates_json, detail, source_active,
+                 created_at, updated_at)
+                VALUES (?, ?, 'NUCLEI', 'nuclei:manual-route',
+                        'ALOMOTO PAZMIÑO BAYRON JAVIER', '',
+                        '1752222404', 'DESARROLLO DE SOFTWARE', 'ROUTE_CONFLICT',
+                        'CEDULA', 100, '[]', 'Conflicto de ruta', 1, 'x', 'x')
+                """,
+                (self.report_id, self.student_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO student_source_links
+                (report_id, period_student_id, source_module, source_key, source_name,
+                 source_email, source_identification, source_career, match_status,
+                 match_method, match_confidence, candidates_json, detail, source_active,
+                 created_at, updated_at)
+                VALUES (?, ?, 'THESIS', 'thesis:manual-route',
+                        'ALOMOTO PAZMIÑO BAYRON JAVIER', '',
+                        '1752222404', 'DESARROLLO DE SOFTWARE', 'OK',
+                        'CEDULA', 100, '[]', '', 1, 'x', 'x')
+                """,
+                (self.report_id, self.student_id),
+            )
+
+        reliability._set_route_manual_final(
+            77, self.student_id, domain.ROUTE_THESIS
+        )
+        with db.connection() as conn:
+            nuclei = conn.execute(
+                """
+                SELECT match_status, match_method FROM student_source_links
+                WHERE source_key='nuclei:manual-route'
+                """
+            ).fetchone()
+            thesis = conn.execute(
+                """
+                SELECT match_status, match_method FROM student_source_links
+                WHERE source_key='thesis:manual-route'
+                """
+            ).fetchone()
+        self.assertEqual(nuclei["match_status"], "OK")
+        self.assertEqual(nuclei["match_method"], "ROUTE_EXCLUDED_MANUAL")
+        self.assertEqual(thesis["match_status"], "OK")
+        self.assertEqual(thesis["match_method"], "MANUAL_ROUTE_INCLUDED")
+
+
     def test_auto_route_returns_to_complexive_when_supporting_evidence_disappears(self):
         with db.connection() as conn:
             conn.execute(
