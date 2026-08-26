@@ -1304,3 +1304,501 @@ def _set_route_manual_final(period_project_id: int, student_id: int, route: str)
         )
         _normalize_routes(period_project_id)
     return {"ok": True, "student_id": student_id, "route": route, "route_source": "MANUAL"}
+
+
+def _grade_value(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return round(float(str(value).replace(",", ".")), 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def _grade_resolution(period_project_id: int, module: str, identity_key: str) -> float | None:
+    rows = _manual_decisions(
+        period_project_id, f"GRADE_{module}", identity_key, DECISION_GRADE
+    )
+    return _grade_value(rows[0].get("decision_value")) if rows else None
+
+
+def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
+    report_ids = _project_report_ids(period_project_id)
+    if not report_ids:
+        return []
+    placeholders = ",".join("?" for _ in report_ids)
+    with connection() as conn:
+        students = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id, report_id, full_name, identification, career_name, modality
+                FROM period_students
+                WHERE period_project_id=? AND COALESCE(requirements_present,1)=1
+                """,
+                (period_project_id,),
+            ).fetchall()
+        )
+        student_map = {int(row["id"]): row for row in students}
+        complexive_rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT s.*, c.report_id AS source_report_id
+                FROM students s JOIN careers c ON c.id=s.career_id
+                WHERE c.report_id IN ({placeholders}) AND s.period_student_id IS NOT NULL
+                """,
+                tuple(report_ids),
+            ).fetchall()
+        )
+        thesis_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='thesis_projects'"
+        ).fetchone()
+        thesis_rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT * FROM thesis_projects
+                WHERE report_id IN ({placeholders}) AND period_student_id IS NOT NULL
+                """,
+                tuple(report_ids),
+            ).fetchall()
+        ) if thesis_exists else []
+
+        nuclei_rows: list[dict[str, Any]] = []
+        if (
+            conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='nucleus_instance_students'").fetchone()
+            and conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='nucleus_course_instances'").fetchone()
+        ):
+            cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(nucleus_instance_students)").fetchall()}
+            if "period_student_id" in cols:
+                nuclei_rows = rows_to_dicts(
+                    conn.execute(
+                        f"""
+                        SELECT ns.*, nc.nucleus_number, nc.report_id AS source_report_id
+                        FROM nucleus_instance_students ns
+                        JOIN nucleus_course_instances nc ON nc.id=ns.course_id
+                        WHERE nc.report_id IN ({placeholders}) AND ns.period_student_id IS NOT NULL
+                        """,
+                        tuple(report_ids),
+                    ).fetchall()
+                )
+        elif (
+            conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='nucleus_students'").fetchone()
+            and conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='nucleus_courses'").fetchone()
+        ):
+            cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(nucleus_students)").fetchall()}
+            if "period_student_id" in cols:
+                nuclei_rows = rows_to_dicts(
+                    conn.execute(
+                        f"""
+                        SELECT ns.*, nc.nucleus_number, nc.report_id AS source_report_id
+                        FROM nucleus_students ns
+                        JOIN nucleus_courses nc ON nc.id=ns.course_id
+                        WHERE nc.report_id IN ({placeholders}) AND ns.period_student_id IS NOT NULL
+                        """,
+                        tuple(report_ids),
+                    ).fetchall()
+                )
+
+    cases: list[dict[str, Any]] = []
+    by_complexive: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for row in complexive_rows:
+        by_complexive[int(row["period_student_id"])].append(row)
+    for student_id, rows in by_complexive.items():
+        values = sorted({
+            _grade_value(analytics.final_grade(row))
+            for row in rows
+            if _grade_value(analytics.final_grade(row)) is not None
+        })
+        if len(values) > 1 and _grade_resolution(
+            period_project_id, "COMPLEXIVE", f"student:{student_id}"
+        ) is None:
+            student = student_map.get(student_id, {})
+            cases.append({
+                "case_id": f"grade:complexive:{student_id}",
+                "case_type": "GRADE",
+                "match_status": domain.MATCH_GRADE_CONFLICT,
+                "source_module": "COMPLEXIVE",
+                "student_id": student_id,
+                "source_name": student.get("full_name") or "",
+                "source_identification": audit._public_identification(student.get("identification")),
+                "detail": "Existen notas finales distintas de Examen Complexivo para la misma persona.",
+                "grade_options": values,
+                "suggestion": None,
+            })
+
+    by_thesis: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for row in thesis_rows:
+        by_thesis[int(row["period_student_id"])].append(row)
+    for student_id, rows in by_thesis.items():
+        values = sorted({
+            _grade_value(row.get("final_grade"))
+            for row in rows
+            if _grade_value(row.get("final_grade")) is not None
+        })
+        if len(values) > 1 and _grade_resolution(
+            period_project_id, "THESIS", f"student:{student_id}"
+        ) is None:
+            student = student_map.get(student_id, {})
+            cases.append({
+                "case_id": f"grade:thesis:{student_id}",
+                "case_type": "GRADE",
+                "match_status": domain.MATCH_GRADE_CONFLICT,
+                "source_module": "THESIS",
+                "student_id": student_id,
+                "source_name": student.get("full_name") or "",
+                "source_identification": audit._public_identification(student.get("identification")),
+                "detail": "Existen notas finales distintas de Trabajo de Titulación para la misma persona.",
+                "grade_options": values,
+                "suggestion": None,
+            })
+
+    by_nucleus: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
+    for row in nuclei_rows:
+        sid = int(row["period_student_id"])
+        number = int(row.get("nucleus_number") or 0)
+        if sid and number:
+            by_nucleus[(sid, number)].append(row)
+    for (student_id, number), rows in by_nucleus.items():
+        values = sorted({
+            _grade_value(row.get("final_grade"))
+            for row in rows
+            if _grade_value(row.get("final_grade")) is not None
+        })
+        key = f"student:{student_id}:nucleus:{number}"
+        if len(values) > 1 and _grade_resolution(
+            period_project_id, "NUCLEI", key
+        ) is None:
+            student = student_map.get(student_id, {})
+            cases.append({
+                "case_id": f"grade:nuclei:{student_id}:{number}",
+                "case_type": "GRADE",
+                "match_status": domain.MATCH_GRADE_CONFLICT,
+                "source_module": "NUCLEI",
+                "student_id": student_id,
+                "nucleus_number": number,
+                "source_name": student.get("full_name") or "",
+                "source_identification": audit._public_identification(student.get("identification")),
+                "detail": f"Existen notas distintas para el Núcleo {number}.",
+                "grade_options": values,
+                "suggestion": None,
+            })
+    return cases
+
+
+def _resolve_grade_case(
+    period_project_id: int,
+    module: str,
+    student_id: int,
+    grade: Any,
+    nucleus_number: int = 0,
+) -> dict[str, Any]:
+    module = str(module or "").strip().upper()
+    if module not in {"NUCLEI", "COMPLEXIVE", "THESIS"}:
+        raise ValueError("Módulo de calificación no válido.")
+    selected = _grade_value(grade)
+    if selected is None:
+        raise ValueError("Seleccione una calificación válida.")
+    with connection() as conn:
+        student = conn.execute(
+            """
+            SELECT * FROM period_students
+            WHERE id=? AND period_project_id=? AND COALESCE(requirements_present,1)=1
+            """,
+            (student_id, period_project_id),
+        ).fetchone()
+    if not student:
+        raise ValueError("El estudiante no pertenece al período.")
+    identity = (
+        f"student:{student_id}:nucleus:{int(nucleus_number)}"
+        if module == "NUCLEI" else f"student:{student_id}"
+    )
+    _store_decision(
+        period_project_id, f"GRADE_{module}", identity, DECISION_GRADE,
+        decision_scope="selected", target_student_id=student_id,
+        decision_value=str(selected),
+        detail="Calificación seleccionada manualmente entre evidencias contradictorias.",
+    )
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO student_audit_log
+            (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+            VALUES (?, ?, 'RESOLVE_GRADE_CONFLICT', ?, '', ?,
+                    'Se conservan todas las evidencias originales; esta nota se usa como resolución efectiva.',
+                    ?)
+            """,
+            (
+                int(student["report_id"]), student_id, f"grade:{module.lower()}",
+                str(selected), utcnow(),
+            ),
+        )
+    return {
+        "ok": True, "student_id": student_id, "module": module,
+        "grade": selected, "nucleus_number": int(nucleus_number or 0),
+    }
+
+
+def _route_cases(period_project_id: int) -> list[dict[str, Any]]:
+    evidence = _route_evidence(period_project_id)
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT * FROM period_students
+                WHERE period_project_id=? AND COALESCE(requirements_present,1)=1
+                ORDER BY full_name
+                """,
+                (period_project_id,),
+            ).fetchall()
+        )
+    cases: list[dict[str, Any]] = []
+    for row in rows:
+        sid = int(row["id"])
+        modules = evidence.get(sid, set())
+        if (
+            "COMPLEXIVE" in modules and "THESIS" in modules
+            and str(row.get("route_source") or "") != "MANUAL"
+        ):
+            cases.append({
+                "case_id": f"route:{sid}",
+                "case_type": "ROUTE",
+                "match_status": domain.MATCH_ROUTE_CONFLICT,
+                "source_module": "ROUTE",
+                "student_id": sid,
+                "source_name": row.get("full_name") or "",
+                "source_identification": audit._public_identification(row.get("identification")),
+                "career_name": row.get("career_name") or "",
+                "modality": row.get("modality") or "",
+                "current_route": row.get("route") or domain.ROUTE_COMPLEXIVE,
+                "detail": "Existen evidencias válidas tanto de Examen Complexivo como de Trabajo de Titulación. Seleccione la ruta correcta.",
+                "suggestion": None,
+            })
+    return cases
+
+
+def _identity_cases(period_project_id: int) -> list[dict[str, Any]]:
+    report_ids = _project_report_ids(period_project_id)
+    if not report_ids:
+        return []
+    placeholders = ",".join("?" for _ in report_ids)
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT l.*, r.modality AS dataset_modality
+                FROM student_source_links l
+                JOIN reports r ON r.id=l.report_id
+                WHERE l.report_id IN ({placeholders})
+                  AND COALESCE(l.source_active,1)=1
+                  AND COALESCE(l.match_status,'UNMATCHED')<>'OK'
+                  AND COALESCE(l.match_status,'') NOT IN ('ROUTE_CONFLICT','GRADE_CONFLICT')
+                ORDER BY l.id
+                """,
+                tuple(report_ids),
+            ).fetchall()
+        )
+    priority = {
+        audit.MATCH_DUPLICATE: 120,
+        audit.MATCH_MODALITY_CONFLICT: 115,
+        audit.MATCH_IDENTITY_CONFLICT: 110,
+        domain.MATCH_AMBIGUOUS: 90,
+        domain.MATCH_REVIEW: 80,
+        smart.MATCH_OUTSIDE_POPULATION: 70,
+        domain.MATCH_UNMATCHED: 60,
+    }
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[(str(row.get("source_module") or ""), _identity_key_link(row))].append(row)
+
+    cases: list[dict[str, Any]] = []
+    for (module, identity), items in groups.items():
+        representative = max(
+            items, key=lambda row: priority.get(str(row.get("match_status") or ""), 50)
+        )
+        item = dict(representative)
+        try:
+            candidates = json.loads(item.get("candidates_json") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            candidates = []
+        blocked = _blocked_targets(period_project_id, module, identity)
+        candidates = [
+            candidate for candidate in candidates
+            if int(candidate.get("student_id") or 0) not in blocked
+        ][:3]
+        item.update({
+            "case_id": f"identity:{module.lower()}:{int(item['id'])}",
+            "case_type": "IDENTITY",
+            "occurrences": len(items),
+            "group_link_ids": [int(row["id"]) for row in items],
+            "candidates": candidates,
+            "suggestion": candidates[0] if candidates else None,
+        })
+        if len(items) > 1:
+            item["detail"] = (
+                f"{len(items)} evidencias de la misma persona se agruparon en este caso. "
+                + str(item.get("detail") or "")
+            ).strip()
+        cases.append(item)
+    return cases
+
+
+def _official_cases(period_project_id: int) -> list[dict[str, Any]]:
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT * FROM period_students
+                WHERE period_project_id=? AND COALESCE(requirements_present,1)=1
+                  AND COALESCE(reconciliation_status,'OK')<>'OK'
+                ORDER BY full_name
+                """,
+                (period_project_id,),
+            ).fetchall()
+        )
+    return [
+        {
+            "case_id": f"official:{int(row['id'])}",
+            "case_type": "OFFICIAL",
+            "match_status": str(row.get("reconciliation_status") or domain.MATCH_REVIEW),
+            "source_module": "REQUIREMENTS",
+            "student_id": int(row["id"]),
+            "source_name": row.get("full_name") or "",
+            "source_identification": audit._public_identification(row.get("identification")),
+            "detail": row.get("reconciliation_detail") or "Revise los datos oficiales de Requisitos.",
+            "suggestion": None,
+        }
+        for row in rows
+    ]
+
+
+def _project_cases(period_project_id: int) -> list[dict[str, Any]]:
+    cases = (
+        _identity_cases(period_project_id)
+        + _route_cases(period_project_id)
+        + _grade_cases(period_project_id)
+        + _official_cases(period_project_id)
+    )
+    priority = {
+        audit.MATCH_IDENTITY_CONFLICT: 120,
+        audit.MATCH_DUPLICATE: 115,
+        audit.MATCH_MODALITY_CONFLICT: 110,
+        domain.MATCH_ROUTE_CONFLICT: 100,
+        domain.MATCH_GRADE_CONFLICT: 95,
+        domain.MATCH_AMBIGUOUS: 90,
+        domain.MATCH_REVIEW: 80,
+        smart.MATCH_OUTSIDE_POPULATION: 70,
+        domain.MATCH_UNMATCHED: 60,
+    }
+    cases.sort(
+        key=lambda case: (
+            -priority.get(str(case.get("match_status") or ""), 50),
+            str(case.get("case_type") or ""),
+            str(case.get("source_name") or "").casefold(),
+        )
+    )
+    return cases
+
+
+def _final_case_summary(period_project_id: int) -> dict[str, int]:
+    cases = _project_cases(period_project_id)
+    outside = sum(
+        str(case.get("match_status") or "") == smart.MATCH_OUTSIDE_POPULATION
+        for case in cases
+    )
+    identity_review = sum(
+        case.get("case_type") == "IDENTITY"
+        and str(case.get("match_status") or "") != smart.MATCH_OUTSIDE_POPULATION
+        for case in cases
+    )
+    route = sum(case.get("case_type") == "ROUTE" for case in cases)
+    grade = sum(case.get("case_type") == "GRADE" for case in cases)
+    official = sum(case.get("case_type") == "OFFICIAL" for case in cases)
+
+    report_ids = _project_report_ids(period_project_id)
+    auto_resolved = 0
+    if report_ids:
+        placeholders = ",".join("?" for _ in report_ids)
+        with connection() as conn:
+            auto_resolved = int(
+                conn.execute(
+                    f"""
+                    SELECT COUNT(*) FROM student_source_links
+                    WHERE report_id IN ({placeholders})
+                      AND COALESCE(source_active,1)=1 AND match_status='OK'
+                      AND COALESCE(match_method,'') NOT IN ('MANUAL','MANUAL_REVIEW')
+                    """,
+                    tuple(report_ids),
+                ).fetchone()[0]
+            )
+    return {
+        "total_cases": len(cases),
+        "outside_population": int(outside),
+        "identity_review": int(identity_review),
+        "route_conflicts": int(route),
+        "grade_conflicts": int(grade),
+        "official_review": int(official),
+        "auto_resolved": auto_resolved,
+        "raw_pending": sum(
+            int(case.get("occurrences") or 1)
+            for case in cases if case.get("case_type") == "IDENTITY"
+        ),
+    }
+
+
+def _summary_from_report_ids(report_ids: list[int]) -> dict[str, int]:
+    if not report_ids:
+        return {
+            "total_cases": 0, "outside_population": 0, "identity_review": 0,
+            "route_conflicts": 0, "grade_conflicts": 0, "official_review": 0,
+            "auto_resolved": 0, "raw_pending": 0,
+        }
+    project_id = _project_id_for_report(int(report_ids[0]))
+    return _final_case_summary(project_id) if project_id else smart._case_summary(report_ids)
+
+
+def _period_read_final(period_project_id: int) -> dict[str, Any]:
+    assert _FINAL_BASE_PERIOD_READ is not None
+    data = _FINAL_BASE_PERIOD_READ(period_project_id)
+    cases = _project_cases(period_project_id)
+    summary = _final_case_summary(period_project_id)
+    data["cases"] = cases
+    data["open_links"] = cases
+    data["case_summary"] = summary
+    data.setdefault("summary", {})["review"] = summary["total_cases"]
+    data["summary"]["open_links"] = summary["identity_review"] + summary["outside_population"]
+    data["summary"]["source_alerts"] = summary["total_cases"]
+
+    by_student: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for case in cases:
+        if case.get("student_id"):
+            by_student[int(case["student_id"])].append(case)
+    priority = {
+        domain.MATCH_ROUTE_CONFLICT: 100,
+        domain.MATCH_GRADE_CONFLICT: 90,
+        audit.MATCH_IDENTITY_CONFLICT: 85,
+        domain.MATCH_AMBIGUOUS: 80,
+        domain.MATCH_REVIEW: 70,
+    }
+    for row in data.get("students", []):
+        student_cases = by_student.get(int(row["id"]), [])
+        if not student_cases:
+            continue
+        top = max(
+            student_cases,
+            key=lambda case: priority.get(str(case.get("match_status") or ""), 60),
+        )
+        row["reconciliation_status"] = top.get("match_status") or domain.MATCH_REVIEW
+        row["reconciliation_detail"] = top.get("detail") or ""
+    return data
+
+
+def _candidate_search(period_project_id: int, link_id: int, query: str) -> dict[str, Any]:
+    result = project_wide._search_project_candidates(period_project_id, link_id, query)
+    link = _project_link(period_project_id, link_id)
+    blocked = _blocked_targets(
+        period_project_id, str(link.get("source_module") or ""), _identity_key_link(link)
+    )
+    result["candidates"] = [
+        row for row in list(result.get("candidates") or [])
+        if int(row.get("student_id") or 0) not in blocked
+    ][:20]
+    return result
