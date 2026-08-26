@@ -763,7 +763,7 @@ def _masters_for_requirement(
     kind, value = identity
     placeholders = ",".join("?" for _ in report_ids)
     if kind == "id":
-        return rows_to_dicts(
+        exact = rows_to_dicts(
             conn.execute(
                 f"""
                 SELECT * FROM period_students
@@ -773,6 +773,51 @@ def _masters_for_requirement(
                 (*report_ids, value),
             ).fetchall()
         )
+        if exact:
+            return exact
+
+        # Requisitos puede incorporar por primera vez una cédula real a una persona
+        # que antes tenía una identidad NOID. Solo recuperamos maestros sin cédula
+        # oficial previa, usando correo o perfil exacto como puente seguro.
+        candidates = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT * FROM period_students
+                WHERE report_id IN ({placeholders})
+                ORDER BY id
+                """,
+                tuple(report_ids),
+            ).fetchall()
+        )
+        candidates = [
+            row for row in candidates
+            if not bridge._source_identification(row.get("identification"))
+        ]
+        email = bridge._source_email(requirement.get("email"))
+        if email:
+            matches = [
+                row for row in candidates
+                if bridge._source_email(row.get("email")) == email
+            ]
+            if len(matches) == 1:
+                return matches
+        personal = bridge._source_email(requirement.get("personal_email"))
+        if personal:
+            matches = [
+                row for row in candidates
+                if bridge._source_email(row.get("personal_email")) == personal
+            ]
+            if len(matches) == 1:
+                return matches
+        name = project_wide._identity_fold(requirement.get("full_name"))
+        career = project_wide._identity_fold(requirement.get("career_name"))
+        matches = [
+            row for row in candidates
+            if name
+            and project_wide._identity_fold(row.get("full_name")) == name
+            and (not career or project_wide._identity_fold(row.get("career_name")) == career)
+        ]
+        return matches if len(matches) == 1 else []
     if kind == "email":
         return rows_to_dicts(
             conn.execute(
