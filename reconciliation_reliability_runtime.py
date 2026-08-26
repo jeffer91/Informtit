@@ -900,3 +900,407 @@ def _final_match(
         )
         return _persist_final_match(report_id, module, source_key, source, downgraded)
     return result
+
+
+def _group_project_links(period_project_id: int, link: dict[str, Any]) -> list[dict[str, Any]]:
+    report_ids = _project_report_ids(period_project_id)
+    if not report_ids:
+        return [link]
+    placeholders = ",".join("?" for _ in report_ids)
+    identity = _identity_key_link(link)
+    module = str(link.get("source_module") or "")
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT * FROM student_source_links
+                WHERE report_id IN ({placeholders}) AND source_module=?
+                  AND COALESCE(source_active,1)=1
+                ORDER BY id
+                """,
+                (*report_ids, module),
+            ).fetchall()
+        )
+    siblings = [row for row in rows if _identity_key_link(row) == identity]
+    return siblings or [link]
+
+
+def _apply_source_rows(
+    report_id: int,
+    module: str,
+    source_keys: set[str],
+    student_id: int | None,
+    *,
+    manual_review: bool = False,
+) -> int:
+    """Actualiza solo las filas fuente afectadas; nunca re-concilia el módulo completo."""
+    changed = 0
+    if module == "COMPLEXIVE":
+        with connection() as conn:
+            rows = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT s.*, c.name AS career_name
+                    FROM students s JOIN careers c ON c.id=s.career_id
+                    WHERE c.report_id=? ORDER BY s.id
+                    """,
+                    (report_id,),
+                ).fetchall()
+            )
+            for row in rows:
+                if bridge._stable_source_key("COMPLEXIVE", row) not in source_keys:
+                    continue
+                conn.execute(
+                    "UPDATE students SET period_student_id=? WHERE id=?",
+                    (student_id, int(row["id"])),
+                )
+                changed += 1
+        return changed
+
+    if module == "THESIS":
+        with connection() as conn:
+            if not conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='thesis_projects'"
+            ).fetchone():
+                return 0
+            rows = rows_to_dicts(
+                conn.execute("SELECT * FROM thesis_projects WHERE report_id=? ORDER BY id", (report_id,)).fetchall()
+            )
+            for row in rows:
+                if bridge._stable_source_key("THESIS", row) not in source_keys:
+                    continue
+                conn.execute(
+                    "UPDATE thesis_projects SET period_student_id=? WHERE id=?",
+                    (student_id, int(row["id"])),
+                )
+                changed += 1
+        return changed
+
+    if module == "NUCLEI":
+        courses = bridge.nuclei_service.get_nuclei(report_id).get("courses", [])
+        with connection() as conn:
+            for course in courses:
+                course_id = int(course.get("id") or 0)
+                if not course_id:
+                    continue
+                table = bridge._nucleus_student_table(conn, course_id)
+                if not table:
+                    continue
+                context = bridge._nucleus_context(course)
+                for source in course.get("students", []):
+                    candidate = {
+                        "identification": source.get("identification") or "",
+                        "full_name": source.get("full_name") or "",
+                        "email": source.get("email") or "",
+                        "career_name": course.get("career_name") or "",
+                    }
+                    key = bridge._stable_source_key("NUCLEI", candidate, context)
+                    if key not in source_keys or not source.get("id"):
+                        continue
+                    if manual_review:
+                        conn.execute(
+                            f"""
+                            UPDATE {table}
+                            SET period_student_id=NULL, match_status=?, match_method='MANUAL_REVIEW',
+                                match_confidence=NULL
+                            WHERE id=? AND course_id=?
+                            """,
+                            (domain.MATCH_REVIEW, int(source["id"]), course_id),
+                        )
+                    else:
+                        conn.execute(
+                            f"""
+                            UPDATE {table}
+                            SET period_student_id=?, match_status='OK', match_method='MANUAL',
+                                match_confidence=100
+                            WHERE id=? AND course_id=?
+                            """,
+                            (student_id, int(source["id"]), course_id),
+                        )
+                    changed += 1
+        return changed
+    return 0
+
+
+def _confirm_project_case(period_project_id: int, link_id: int, student_id: int) -> dict[str, Any]:
+    link = _project_link(period_project_id, link_id)
+    with connection() as conn:
+        student = conn.execute(
+            """
+            SELECT * FROM period_students
+            WHERE id=? AND period_project_id=? AND COALESCE(requirements_present,1)=1
+            """,
+            (student_id, period_project_id),
+        ).fetchone()
+    if not student:
+        raise ValueError("El estudiante seleccionado no pertenece a Requisitos de este período.")
+
+    siblings = _group_project_links(period_project_id, link)
+    identity = _identity_key_link(link)
+    module = str(link.get("source_module") or "")
+    now = utcnow()
+    grouped: dict[int, set[str]] = defaultdict(set)
+    ids = [int(row["id"]) for row in siblings]
+    with sqlite_guard._WRITE_LOCK:
+        with connection() as conn:
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(
+                f"""
+                UPDATE student_source_links
+                SET period_student_id=?, match_status='OK', match_method='MANUAL',
+                    match_confidence=100,
+                    detail='Asociación confirmada manualmente. Requisitos conserva nombre, carrera y modalidad oficiales.',
+                    updated_at=?
+                WHERE id IN ({placeholders})
+                """,
+                (student_id, now, *ids),
+            )
+            for row in siblings:
+                grouped[int(row["report_id"])].add(str(row.get("source_key") or ""))
+            conn.execute(
+                """
+                INSERT INTO student_audit_log
+                (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+                VALUES (?, ?, 'CONFIRM_MATCH_PROJECT', 'source_link_group', ?, ?, ?, ?)
+                """,
+                (
+                    int(link["report_id"]), student_id, ",".join(str(item) for item in ids),
+                    str(student_id),
+                    f"{module}: se confirmaron {len(ids)} evidencias agrupadas a nivel de período.",
+                    now,
+                ),
+            )
+        _store_decision(
+            period_project_id, module, identity, DECISION_MATCH,
+            target_student_id=student_id, decision_value=str(student_id),
+            detail="Asociación manual persistente; sobrevive a futuras recargas.",
+        )
+        for report_id, keys in grouped.items():
+            _apply_source_rows(report_id, module, keys, student_id)
+    return {"ok": True, "student_id": student_id, "confirmed_links": len(ids), "module": module}
+
+
+def _unlink_project_case(period_project_id: int, link_id: int) -> dict[str, Any]:
+    link = _project_link(period_project_id, link_id)
+    siblings = _group_project_links(period_project_id, link)
+    identity = _identity_key_link(link)
+    module = str(link.get("source_module") or "")
+    old_targets = {
+        int(row["period_student_id"]) for row in siblings if row.get("period_student_id")
+    }
+    now = utcnow()
+    grouped: dict[int, set[str]] = defaultdict(set)
+    ids = [int(row["id"]) for row in siblings]
+    with sqlite_guard._WRITE_LOCK:
+        with connection() as conn:
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(
+                f"""
+                UPDATE student_source_links
+                SET period_student_id=NULL, match_status=?, match_method='MANUAL_REVIEW',
+                    match_confidence=NULL,
+                    detail='Asociación descartada manualmente. La evidencia permanece intacta y no volverá a enlazarse sola con el estudiante descartado.',
+                    source_active=1, updated_at=?
+                WHERE id IN ({placeholders})
+                """,
+                (domain.MATCH_REVIEW, now, *ids),
+            )
+            for row in siblings:
+                grouped[int(row["report_id"])].add(str(row.get("source_key") or ""))
+            conn.execute(
+                """
+                INSERT INTO student_audit_log
+                (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+                VALUES (?, ?, 'UNLINK_SOURCE_PROJECT', 'source_link_group', ?, '', ?, ?)
+                """,
+                (
+                    int(link["report_id"]), next(iter(old_targets), None),
+                    ",".join(str(item) for item in ids),
+                    f"{module}: se descartó manualmente la asociación de {len(ids)} evidencias agrupadas.",
+                    now,
+                ),
+            )
+        for target_id in old_targets:
+            _store_decision(
+                period_project_id, module, identity, DECISION_DO_NOT_MATCH,
+                decision_scope=str(target_id), target_student_id=target_id,
+                detail="El usuario indicó que esta evidencia no pertenece a este estudiante.",
+            )
+        for report_id, keys in grouped.items():
+            _apply_source_rows(report_id, module, keys, None, manual_review=True)
+    return {
+        "ok": True, "link_id": link_id, "module": module,
+        "unlinked_links": len(ids),
+        "unlinked_source_rows": sum(len(keys) for keys in grouped.values()),
+    }
+
+
+def _route_evidence(period_project_id: int) -> dict[int, set[str]]:
+    report_ids = _project_report_ids(period_project_id)
+    if not report_ids:
+        return {}
+    placeholders = ",".join("?" for _ in report_ids)
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT period_student_id, source_module
+                FROM student_source_links
+                WHERE report_id IN ({placeholders})
+                  AND COALESCE(source_active,1)=1
+                  AND period_student_id IS NOT NULL
+                  AND source_module IN ('COMPLEXIVE','THESIS')
+                  AND COALESCE(match_method,'')<>'MANUAL_REVIEW'
+                """,
+                tuple(report_ids),
+            ).fetchall()
+        )
+    evidence: dict[int, set[str]] = defaultdict(set)
+    for row in rows:
+        evidence[int(row["period_student_id"])].add(str(row["source_module"]))
+    return evidence
+
+
+def _write_route(
+    conn: Any,
+    row: dict[str, Any],
+    route: str,
+    source: str,
+    detail: str,
+) -> bool:
+    old_route = str(row.get("route") or domain.ROUTE_COMPLEXIVE)
+    old_source = str(row.get("route_source") or "")
+    if old_route == route and old_source == source:
+        return False
+    now = utcnow()
+    conn.execute(
+        "UPDATE period_students SET route=?, route_source=?, updated_at=? WHERE id=?",
+        (route, source, now, int(row["id"])),
+    )
+    conn.execute(
+        """
+        INSERT INTO student_audit_log
+        (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+        VALUES (?, ?, ?, 'route', ?, ?, ?, ?)
+        """,
+        (
+            int(row["report_id"]), int(row["id"]),
+            "AUTO_ROUTE_EVIDENCE" if source == "AUTO_EVIDENCE" else "CHANGE_ROUTE",
+            old_route, route, detail, now,
+        ),
+    )
+    return True
+
+
+def _normalize_routes(period_project_id: int) -> dict[str, int]:
+    """Corrige rutas inequívocas y convierte el doble origen en un único caso manual."""
+    evidence = _route_evidence(period_project_id)
+    with connection() as conn:
+        students = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT * FROM period_students
+                WHERE period_project_id=? AND COALESCE(requirements_present,1)=1
+                ORDER BY id
+                """,
+                (period_project_id,),
+            ).fetchall()
+        )
+    auto_routes = 0
+    conflicts = 0
+    manual_resolved = 0
+    with connection() as conn:
+        for row in students:
+            sid = int(row["id"])
+            modules = evidence.get(sid, set())
+            has_complexive = "COMPLEXIVE" in modules
+            has_thesis = "THESIS" in modules
+            manual = str(row.get("route_source") or "") == "MANUAL"
+
+            if manual:
+                selected = "THESIS" if row.get("route") == domain.ROUTE_THESIS else "COMPLEXIVE"
+                opposite = "COMPLEXIVE" if selected == "THESIS" else "THESIS"
+                conn.execute(
+                    """
+                    UPDATE student_source_links
+                    SET match_status='OK',
+                        detail=CASE
+                            WHEN source_module=? THEN 'Identidad confirmada; evidencia válida para la ruta seleccionada manualmente.'
+                            WHEN source_module=? THEN 'Identidad confirmada; evidencia conservada para auditoría pero excluida por la ruta seleccionada manualmente.'
+                            ELSE detail
+                        END,
+                        updated_at=?
+                    WHERE period_student_id=? AND source_module IN ('COMPLEXIVE','THESIS')
+                      AND COALESCE(source_active,1)=1
+                    """,
+                    (selected, opposite, utcnow(), sid),
+                )
+                if has_complexive and has_thesis:
+                    manual_resolved += 1
+                continue
+
+            if has_thesis and not has_complexive:
+                if _write_route(
+                    conn, row, domain.ROUTE_THESIS, "AUTO_EVIDENCE",
+                    "Ruta corregida automáticamente: existe Trabajo de Titulación y no existe evidencia válida de Examen Complexivo.",
+                ):
+                    auto_routes += 1
+            elif has_complexive and not has_thesis:
+                if _write_route(
+                    conn, row, domain.ROUTE_COMPLEXIVE, "AUTO_EVIDENCE",
+                    "Ruta corregida automáticamente: existe Examen Complexivo y no existe Trabajo de Titulación válido.",
+                ):
+                    auto_routes += 1
+            elif has_complexive and has_thesis:
+                conflicts += 1
+
+            # La identidad no debe quedar en ROUTE_CONFLICT: la ruta se trata aparte.
+            if has_complexive or has_thesis:
+                conn.execute(
+                    """
+                    UPDATE student_source_links
+                    SET match_status='OK',
+                        detail=CASE
+                            WHEN ?=1 AND ?=1 THEN
+                                'Identidad confirmada. Existen evidencias de ambas rutas; la ruta requiere decisión humana.'
+                            ELSE 'Identidad y ruta conciliadas.'
+                        END,
+                        updated_at=?
+                    WHERE period_student_id=? AND source_module IN ('COMPLEXIVE','THESIS')
+                      AND COALESCE(source_active,1)=1
+                    """,
+                    (int(has_complexive), int(has_thesis), utcnow(), sid),
+                )
+    return {
+        "auto_routes": auto_routes,
+        "route_conflicts": conflicts,
+        "manual_route_resolved": manual_resolved,
+    }
+
+
+def _set_route_manual_final(period_project_id: int, student_id: int, route: str) -> dict[str, Any]:
+    route = str(route or "").strip().upper()
+    if route not in domain.ROUTES:
+        raise ValueError("Seleccione Examen Complexivo o Trabajo de Titulación.")
+    with sqlite_guard._WRITE_LOCK:
+        with connection() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM period_students
+                WHERE id=? AND period_project_id=? AND COALESCE(requirements_present,1)=1
+                """,
+                (student_id, period_project_id),
+            ).fetchone()
+            if not row:
+                raise ValueError("El estudiante no pertenece al período seleccionado.")
+            _write_route(
+                conn, dict(row), route, "MANUAL",
+                "Ruta definida manualmente desde Estudiantes; prevalece sobre futuras conciliaciones.",
+            )
+        _store_decision(
+            period_project_id, "ROUTE", f"student:{student_id}", DECISION_ROUTE,
+            decision_scope="route", target_student_id=student_id,
+            decision_value=route, detail="Ruta confirmada manualmente.",
+        )
+        _normalize_routes(period_project_id)
+    return {"ok": True, "student_id": student_id, "route": route, "route_source": "MANUAL"}
