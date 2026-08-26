@@ -865,6 +865,77 @@ def _persist_final_match(
     return result
 
 
+def _exact_source_manual_target(report_id: int, module: str, source_key: str) -> int | None:
+    with connection() as conn:
+        row = conn.execute(
+            """
+            SELECT period_student_id FROM student_source_links
+            WHERE report_id=? AND source_module=? AND source_key=?
+              AND match_method='MANUAL' AND period_student_id IS NOT NULL
+            ORDER BY id DESC LIMIT 1
+            """,
+            (report_id, module, source_key),
+        ).fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def _guard_weak_manual_recovery(
+    report_id: int,
+    module: str,
+    source_key: str,
+    source: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Impide que una decisión por nombre se propague a otro homónimo."""
+    if _strong_identity_key(source.get("identification"), source.get("email")):
+        return result
+    if str(result.get("method") or "") != "MANUAL":
+        return result
+
+    selected = int(result.get("period_student_id") or 0)
+    if selected and _exact_source_manual_target(report_id, module, source_key) == selected:
+        return result
+
+    index = smart._master_index(report_id)
+    folded = smart._fold(source.get("full_name"))
+    exact = list(index["by_name"].get(folded, [])) if folded else []
+    if len(exact) == 1 and selected == int(exact[0]["id"]):
+        # El nombre es único en Requisitos; la recuperación no introduce ambigüedad.
+        return result
+    if len(exact) > 1:
+        guarded = {
+            "status": domain.MATCH_AMBIGUOUS,
+            "method": "HOMONIMO",
+            "confidence": 100.0,
+            "period_student_id": None,
+            "candidates": [smart._candidate_payload(item, 1.0) for item in exact[:3]],
+            "detail": (
+                "Existe una asociación manual de otra evidencia con el mismo nombre, "
+                "pero hay homónimos. Informtit no la propaga automáticamente."
+            ),
+        }
+        return _persist_final_match(report_id, module, source_key, source, guarded)
+
+    ranked = smart._rank_candidates(source, index["masters"])
+    candidates = [
+        smart._candidate_payload(student, score)
+        for score, student in ranked[:3]
+        if score >= 0.68
+    ]
+    guarded = {
+        "status": domain.MATCH_REVIEW,
+        "method": "MANUAL_NO_PROPAGADO",
+        "confidence": round(ranked[0][0] * 100, 1) if ranked else 0.0,
+        "period_student_id": None,
+        "candidates": candidates,
+        "detail": (
+            "Existe una decisión manual para otra evidencia parecida, pero esta fuente "
+            "no tiene cédula ni correo real. Revise antes de reutilizar la asociación."
+        ),
+    }
+    return _persist_final_match(report_id, module, source_key, source, guarded)
+
+
 def _final_match(
     report_id: int,
     module: str,
@@ -874,6 +945,7 @@ def _final_match(
     assert _FINAL_BASE_MATCH is not None
     # Mantiene el seguimiento de progreso de la capa de rendimiento.
     result = _FINAL_BASE_MATCH(report_id, module, source_key, source)
+    result = _guard_weak_manual_recovery(report_id, module, source_key, source, result)
     project_id = _project_id_for_report(report_id)
     identity = _identity_key_source(source, source_key)
     if not project_id or not identity:
