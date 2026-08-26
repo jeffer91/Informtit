@@ -205,7 +205,13 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
         sid = source.get("period_student_id")
         master = masters.get(int(sid)) if sid else None
         if _active_for_route(master, ROUTE_THESIS):
+            if not _grade_selected(report_id, "THESIS", int(sid), _grade(source.get("final_grade"))):
+                continue
             item = dict(source)
+            item["full_name"] = master.get("full_name") or item.get("full_name") or ""
+            item["identification"] = master.get("identification") or item.get("identification") or ""
+            item["career_name"] = master.get("career_name") or item.get("career_name") or ""
+            item["modality"] = master.get("modality") or item.get("modality") or ""
             item["official_graduated"] = bool(master.get("official_graduated"))
             item["official_titulation_completed"] = bool(master.get("official_titulation_completed"))
             projects.append(item)
