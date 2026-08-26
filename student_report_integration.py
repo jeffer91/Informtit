@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from statistics import mean
+
+import analytics
 from typing import Any, Callable
 
 import nuclei_export
