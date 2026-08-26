@@ -63,15 +63,30 @@ def _display_career(value: Any) -> str:
     return f"{text} Online" if online else text
 
 
-def _allowed_nuclei_career(career: Any, report: dict[str, Any]) -> bool:
+def _allowed_nuclei_career(
+    career: Any,
+    report: dict[str, Any],
+    source_modality: Any = "",
+) -> bool:
     key = normalize(career)
     if key in EXCLUDED_CAREERS:
         return False
-    modality = str(report.get("modality") or "").strip().lower()
-    if modality == "en_linea":
-        return _is_online(career)
-    if modality == "presencial":
-        return not _is_online(career)
+
+    report_modality = str(report.get("modality") or "").strip().lower()
+    explicit = normalize(source_modality)
+    if explicit in {"en linea", "online", "en_linea"}:
+        online = True
+    elif explicit == "presencial":
+        online = False
+    else:
+        # Solo archivos históricos sin etiqueta explícita conservan el fallback
+        # por texto. Las cargas conciliadas usan Requisitos/dataset.
+        online = _is_online(career)
+
+    if report_modality == "en_linea":
+        return online
+    if report_modality == "presencial":
+        return not online
     return True
 
 
@@ -87,7 +102,11 @@ def _filtered_nuclei_data(report_id: int) -> dict[str, Any]:
     source = final._nuclei_consolidated(report_id)
     courses = [
         course for course in source.get("courses", [])
-        if _allowed_nuclei_career(course.get("career_name"), report)
+        if _allowed_nuclei_career(
+            course.get("career_name"),
+            report,
+            course.get("official_modality") or course.get("dataset_modality") or course.get("modality"),
+        )
     ]
     courses.sort(
         key=lambda course: (
@@ -117,7 +136,15 @@ def _filtered_nuclei_data(report_id: int) -> dict[str, Any]:
         row = {
             "career": _display_career(raw_career),
             "raw_career": raw_career,
-            "modality": "Online" if _is_online(raw_career) else "Presencial",
+            "modality": (
+                "Online"
+                if any(
+                    normalize(course.get("official_modality") or course.get("dataset_modality") or course.get("modality"))
+                    in {"en linea", "online", "en_linea"}
+                    for course in career_courses
+                )
+                else "Presencial"
+            ),
             "courses": len(career_courses),
             "records": len(students),
             "evaluated": evaluated,
