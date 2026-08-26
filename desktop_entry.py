@@ -59,6 +59,7 @@ import robust_import_fixes
 import robust_import_policy
 import robust_import_runtime
 import schedule_defaults_runtime
+import sqlite_concurrency_runtime
 import storage_migration
 import student_domain_integrations
 import student_domain_runtime
@@ -201,6 +202,10 @@ def prepare() -> None:
     # Última capa: sirve siempre la interfaz actual sin caché y expone diagnóstico
     # del archivo SQLite realmente abierto por el proceso de escritorio.
     desktop_stability_runtime.install()
+
+    # SQLite admite un único escritor. La capa final elimina writers anidados,
+    # serializa escrituras y deja el dominio maestro sincronizado tras cada carga.
+    sqlite_concurrency_runtime.install()
 
 
 def main() -> None:
