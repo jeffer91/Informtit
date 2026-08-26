@@ -81,6 +81,51 @@ class StudentReportIntegrationTests(unittest.TestCase):
         self.assertEqual([row["full_name"] for row in result["careers"][0]["students"]], ["ANA"])
         self.assertTrue(result["student_domain_applied"])
 
+    @patch("student_report_integration._project_report_ids", return_value=[1])
+    @patch("student_report_integration._selected_grade", return_value=None)
+    @patch("student_report_integration.reconcile_all", return_value={"ok": True})
+    @patch("student_report_integration.get_period_students")
+    @patch("student_report_integration.nuclei_multicampus.get_nuclei")
+    def test_nuclei_is_split_by_official_requirements_career(
+        self, nuclei_mock, students_mock, _reconcile, _selected, _reports
+    ):
+        masters = [
+            {
+                "id": 201, "route": "COMPLEXIVO", "process_status": "ACTIVO",
+                "requirements_present": 1, "modality_conflict": 0,
+                "reconciliation_status": "OK", "identification": "201",
+                "full_name": "ANA", "career_name": "ADMINISTRACION",
+            },
+            {
+                "id": 202, "route": "COMPLEXIVO", "process_status": "ACTIVO",
+                "requirements_present": 1, "modality_conflict": 0,
+                "reconciliation_status": "OK", "identification": "202",
+                "full_name": "BEA", "career_name": "CONTABILIDAD",
+            },
+        ]
+        students_mock.return_value = {"students": masters}
+        nuclei_mock.return_value = {"courses": [{
+            "id": 1,
+            "nucleus_number": 1,
+            "career_name": "CARRERA MAL CARGADA",
+            "students": [
+                {"id": 1, "period_student_id": 201, "full_name": "ANA", "final_grade": 8.0, "scores": []},
+                {"id": 2, "period_student_id": 202, "full_name": "BEA", "final_grade": 9.0, "scores": []},
+            ],
+            "assessments": [],
+            "activity_averages": [],
+        }]}
+
+        result = integration.filtered_nuclei(1)
+        careers = {
+            course["career_name"]: [row["full_name"] for row in course["students"]]
+            for course in result["courses"]
+        }
+        self.assertEqual(careers["ADMINISTRACION"], ["ANA"])
+        self.assertEqual(careers["CONTABILIDAD"], ["BEA"])
+        self.assertNotIn("CARRERA MAL CARGADA", careers)
+
+
     @patch("student_report_integration._project_report_ids", return_value=[1, 2])
     @patch("student_report_integration._selected_grade", return_value=None)
     @patch("student_report_integration.reconcile_all", return_value={"ok": True})
