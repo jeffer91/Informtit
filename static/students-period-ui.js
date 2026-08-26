@@ -139,7 +139,7 @@
     const pid = projectId();
     const view = getView();
     if (!pid || !view) return;
-    view.innerHTML = '<div class="panel"><p>Cargando y conciliando estudiantes Presencial + Online...</p></div>';
+    view.innerHTML = '<div class="panel"><p>Cargando estudiantes Presencial + Online...</p></div>';
     try {
       const data = await apiRequest(`/api/period-projects/${pid}/students-domain`);
       const students = data.students || [];
@@ -166,7 +166,23 @@
         control.addEventListener('input', () => applyFilters(view));
         control.addEventListener('change', () => applyFilters(view));
       });
-      view.querySelector('#period-student-refresh')?.addEventListener('click', renderGlobalStudents);
+      const reconcileButton = view.querySelector('#period-student-refresh');
+      reconcileButton?.addEventListener('click', async () => {
+        reconcileButton.disabled = true;
+        const previousText = reconcileButton.textContent;
+        reconcileButton.textContent = 'Reconciliando...';
+        try {
+          await apiRequest(`/api/period-projects/${pid}/students-domain/reconcile`, {
+            method: 'POST', body: JSON.stringify({}),
+          });
+          if (typeof toast === 'function') toast('Conciliación actualizada.');
+          await renderGlobalStudents();
+        } catch (error) {
+          if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
+          reconcileButton.disabled = false;
+          reconcileButton.textContent = previousText;
+        }
+      });
       view.querySelectorAll('.period-route-select').forEach(select => {
         select.addEventListener('change', async event => {
           const studentId = Number(event.target.dataset.studentId);
