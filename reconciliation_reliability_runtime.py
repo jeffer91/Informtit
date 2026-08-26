@@ -19,6 +19,7 @@ from db import connection, rows_to_dicts, utcnow
 _INSTALLED = False
 _BASE_GET: Callable[..., Any] | None = None
 _BASE_WRITE: Callable[..., Any] | None = None
+_BASE_MEMBER_REPORTS: Callable[[int], list[dict[str, Any]]] | None = None
 
 
 def _error_job(period_project_id: int, message: str) -> dict[str, Any]:
@@ -36,6 +37,45 @@ def _error_job(period_project_id: int, message: str) -> dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
+
+
+def _member_reports_safe(period_project_id: int) -> list[dict[str, Any]]:
+    """Obtiene los datasets incluso en bases persistentes creadas por versiones antiguas.
+
+    Algunas instalaciones ya tienen ``reports.period_project_id`` pero no conservan
+    la tabla auxiliar ``period_projects`` que usa la lectura rápida. El fallo previo
+    podía escapar durante el POST de Reconciliar y Electron mostraba únicamente
+    ``Failed to fetch``. Primero intentamos la lectura normal y, si el catálogo del
+    proyecto no existe o está incompleto, reconstruimos los miembros directamente
+    desde ``reports`` sin crear ni modificar datos.
+    """
+    if _BASE_MEMBER_REPORTS is not None:
+        try:
+            rows = _BASE_MEMBER_REPORTS(period_project_id)
+            if rows:
+                return list(rows)
+        except Exception:
+            pass
+
+    with connection() as conn:
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='reports'"
+        ).fetchone()
+        if not table:
+            return []
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(reports)").fetchall()}
+        if "period_project_id" not in columns:
+            return []
+        selected = [name for name in ("id", "name", "period", "modality", "period_project_id") if name in columns]
+        if "id" not in selected or "modality" not in selected:
+            return []
+        sql = (
+            f"SELECT {', '.join(selected)} FROM reports "
+            "WHERE period_project_id=? ORDER BY "
+            + ("CASE modality WHEN 'presencial' THEN 0 WHEN 'en_linea' THEN 1 ELSE 2 END, " if "modality" in columns else "")
+            + "id"
+        )
+        return rows_to_dicts(conn.execute(sql, (period_project_id,)).fetchall())
 
 
 def _safe_job_worker(job_id: str, period_project_id: int) -> None:
@@ -62,7 +102,7 @@ def _safe_start_job(period_project_id: int) -> dict[str, Any]:
     hilo podía cerrar la conexión y el frontend solo veía ``Failed to fetch``.
     """
     try:
-        members = fast_read._member_reports(period_project_id)
+        members = _member_reports_safe(period_project_id)
         if not members:
             return _error_job(period_project_id, "El período no tiene datasets para conciliar.")
 
@@ -116,7 +156,7 @@ def _safe_start_job(period_project_id: int) -> dict[str, Any]:
 
 
 def _project_link(period_project_id: int, link_id: int) -> dict[str, Any]:
-    members = fast_read._member_reports(period_project_id)
+    members = _member_reports_safe(period_project_id)
     report_ids = {int(item["id"]) for item in members}
     with connection() as conn:
         row = conn.execute(
@@ -314,9 +354,15 @@ def unlink_period_source(period_project_id: int, link_id: int) -> dict[str, Any]
 
 def install() -> None:
     """Última barrera de fiabilidad para conciliación y acciones manuales."""
-    global _INSTALLED, _BASE_GET, _BASE_WRITE
+    global _INSTALLED, _BASE_GET, _BASE_WRITE, _BASE_MEMBER_REPORTS
     if _INSTALLED:
         return
+
+    # Instalar el fallback a nivel del lector compartido también protege el worker
+    # original de smart_reconciliation_runtime, que vuelve a consultar los miembros
+    # una vez iniciado el hilo.
+    _BASE_MEMBER_REPORTS = fast_read._member_reports
+    fast_read._member_reports = _member_reports_safe
 
     # Mantiene disponible la función también para cualquier wrapper antiguo que la
     # consulte por nombre dentro de student_final_audit.
