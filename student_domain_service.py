@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
-from collections import Counter
 from difflib import SequenceMatcher
 from typing import Any
 
 from db import connection, rows_to_dicts, utcnow
 from parser import canonical_name_key, clean_moodle_name
-from workflow_rules import PRE_NUCLEUS_REQUIREMENTS, downstream_state, prerequisite_state
+from workflow_rules import downstream_state, prerequisite_state
 
 ROUTE_COMPLEXIVE = "COMPLEXIVO"
 ROUTE_THESIS = "TRABAJO_TITULACION"
@@ -44,7 +44,85 @@ def _email(value: Any) -> str:
 
 
 def _id_number(value: Any) -> str:
-    return "".join(ch for ch in str(value or "").strip() if ch.isdigit())
+    """Devuelve solo identificaciones oficiales numéricas plausibles.
+
+    Los identificadores internos NOID:/REQ- no deben confundirse con cédulas.
+    """
+    raw = str(value or "").strip()
+    if not raw or any(character.isalpha() for character in raw):
+        return ""
+    digits = "".join(character for character in raw if character.isdigit())
+    return digits if 8 <= len(digits) <= 13 else ""
+
+
+def _synthetic_identification(row: dict[str, Any]) -> str:
+    """Clave local determinista para registros de Requisitos sin cédula."""
+    institutional = _email(row.get("email"))
+    if institutional:
+        return f"NOID:EMAIL:{institutional}"
+    personal = _email(row.get("personal_email"))
+    if personal:
+        return f"NOID:PERSONAL:{personal}"
+    payload = "|".join(
+        (
+            _fold(row.get("full_name")),
+            str(row.get("career_code") or "").strip().casefold(),
+            _fold(row.get("career_name")),
+            str(row.get("modality") or "").strip().casefold(),
+            str(row.get("campus") or "").strip().casefold(),
+            str(row.get("schedule") or "").strip().casefold(),
+        )
+    )
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:24]
+    return f"NOID:PROFILE:{digest}"
+
+
+def _stable_identification(row: dict[str, Any]) -> str:
+    return _id_number(row.get("identification")) or _synthetic_identification(row)
+
+
+def _existing_master(conn: Any, report_id: int, identification: str, row: dict[str, Any]) -> Any:
+    """Resuelve un maestro existente incluso al migrar antiguas claves REQ-<id>."""
+    existing = conn.execute(
+        "SELECT * FROM period_students WHERE report_id=? AND identification=?",
+        (report_id, identification),
+    ).fetchone()
+    if existing:
+        return existing
+
+    if identification.startswith("NOID:"):
+        legacy = conn.execute(
+            "SELECT * FROM period_students WHERE report_id=? AND identification=?",
+            (report_id, f"REQ-{int(row['id'])}"),
+        ).fetchone()
+        if legacy:
+            return legacy
+
+        email = _email(row.get("email"))
+        if email:
+            matches = conn.execute(
+                "SELECT * FROM period_students WHERE report_id=? AND lower(trim(email))=? ORDER BY id",
+                (report_id, email),
+            ).fetchall()
+            if len(matches) == 1:
+                return matches[0]
+
+        name = _fold(row.get("full_name"))
+        career = _fold(row.get("career_name"))
+        if name:
+            candidates = conn.execute(
+                "SELECT * FROM period_students WHERE report_id=? ORDER BY id",
+                (report_id,),
+            ).fetchall()
+            matches = [
+                candidate
+                for candidate in candidates
+                if _fold(candidate["full_name"]) == name
+                and (not career or _fold(candidate["career_name"]) == career)
+            ]
+            if len(matches) == 1:
+                return matches[0]
+    return None
 
 
 def ensure_student_domain_schema() -> None:
@@ -173,9 +251,12 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
     with connection() as conn:
         if not _table_exists(conn, "requirements_students"):
             return {"ok": True, "students": 0, "created": 0, "updated": 0}
-        source = rows_to_dicts(conn.execute(
-            "SELECT * FROM requirements_students WHERE report_id=? ORDER BY id", (report_id,)
-        ).fetchall())
+        source = rows_to_dicts(
+            conn.execute(
+                "SELECT * FROM requirements_students WHERE report_id=? ORDER BY id",
+                (report_id,),
+            ).fetchall()
+        )
         project_id = _report_project_id(conn, report_id)
         now = utcnow()
         created = 0
@@ -183,14 +264,8 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
         seen_ids: set[int] = set()
 
         for row in source:
-            identification = _id_number(row.get("identification"))
-            if not identification:
-                # La base institucional debería traer cédula; si no, conservamos una clave estable local.
-                identification = f"REQ-{int(row['id'])}"
-            existing = conn.execute(
-                "SELECT * FROM period_students WHERE report_id=? AND identification=?",
-                (report_id, identification),
-            ).fetchone()
+            identification = _stable_identification(row)
+            existing = _existing_master(conn, report_id, identification, row)
             process_status, missing = _derived_process(row)
             graduated, titulation_completed = _official_flags(row)
             conflicts = _official_conflicts(row)
@@ -201,7 +276,6 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
             if existing:
                 period_student_id = int(existing["id"])
                 seen_ids.add(period_student_id)
-                # Las decisiones manuales sobreviven a cualquier recarga de Requisitos.
                 final_process = str(existing["process_status"])
                 process_source = str(existing["process_status_source"])
                 if process_source != "MANUAL":
@@ -210,21 +284,35 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
                 conn.execute(
                     """
                     UPDATE period_students SET
-                        period_project_id=?, requirements_student_id=?, full_name=?, email=?, personal_email=?,
-                        career_code=?, career_name=?, modality=?, campus=?, schedule=?, process_status=?,
-                        process_status_source=?, reconciliation_status=?, reconciliation_detail=?,
-                        official_graduated=?, official_titulation_completed=?, missing_requirements_json=?,
-                        source_snapshot_json=?, updated_at=?
+                        period_project_id=?, requirements_student_id=?, identification=?, full_name=?,
+                        email=?, personal_email=?, career_code=?, career_name=?, modality=?, campus=?,
+                        schedule=?, process_status=?, process_status_source=?, reconciliation_status=?,
+                        reconciliation_detail=?, official_graduated=?, official_titulation_completed=?,
+                        missing_requirements_json=?, source_snapshot_json=?, updated_at=?
                     WHERE id=?
                     """,
                     (
-                        project_id, row.get("id"), row.get("full_name") or "",
-                        _email(row.get("email")), row.get("personal_email") or "",
-                        row.get("career_code") or "", row.get("career_name") or "",
-                        row.get("modality") or "", row.get("campus") or "", row.get("schedule") or "",
-                        final_process, process_source, reconciliation_status, detail,
-                        int(graduated), int(titulation_completed),
-                        json.dumps(missing, ensure_ascii=False), snapshot, now, period_student_id,
+                        project_id,
+                        row.get("id"),
+                        identification,
+                        row.get("full_name") or "",
+                        _email(row.get("email")),
+                        row.get("personal_email") or "",
+                        row.get("career_code") or "",
+                        row.get("career_name") or "",
+                        row.get("modality") or "",
+                        row.get("campus") or "",
+                        row.get("schedule") or "",
+                        final_process,
+                        process_source,
+                        reconciliation_status,
+                        detail,
+                        int(graduated),
+                        int(titulation_completed),
+                        json.dumps(missing, ensure_ascii=False),
+                        snapshot,
+                        now,
+                        period_student_id,
                     ),
                 )
                 updated += 1
@@ -240,22 +328,39 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DEFAULT', ?, 'DERIVED', ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        project_id, report_id, row.get("id"), identification, row.get("full_name") or "",
-                        _email(row.get("email")), row.get("personal_email") or "", row.get("career_code") or "",
-                        row.get("career_name") or "", row.get("modality") or "", row.get("campus") or "",
-                        row.get("schedule") or "", ROUTE_COMPLEXIVE, process_status,
-                        reconciliation_status, detail, int(graduated), int(titulation_completed),
-                        json.dumps(missing, ensure_ascii=False), snapshot, now, now,
+                        project_id,
+                        report_id,
+                        row.get("id"),
+                        identification,
+                        row.get("full_name") or "",
+                        _email(row.get("email")),
+                        row.get("personal_email") or "",
+                        row.get("career_code") or "",
+                        row.get("career_name") or "",
+                        row.get("modality") or "",
+                        row.get("campus") or "",
+                        row.get("schedule") or "",
+                        ROUTE_COMPLEXIVE,
+                        process_status,
+                        reconciliation_status,
+                        detail,
+                        int(graduated),
+                        int(titulation_completed),
+                        json.dumps(missing, ensure_ascii=False),
+                        snapshot,
+                        now,
+                        now,
                     ),
                 )
                 period_student_id = int(cursor.lastrowid)
                 seen_ids.add(period_student_id)
                 created += 1
 
-        # No borramos maestros ausentes en una recarga: se conservan para trazabilidad.
-        # Los marcamos para revisión en lugar de romper vínculos históricos.
         if source:
-            rows = conn.execute("SELECT id FROM period_students WHERE report_id=?", (report_id,)).fetchall()
+            rows = conn.execute(
+                "SELECT id FROM period_students WHERE report_id=?",
+                (report_id,),
+            ).fetchall()
             for item in rows:
                 student_id = int(item["id"])
                 if student_id not in seen_ids:
@@ -270,14 +375,18 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
 def get_period_students(report_id: int) -> dict[str, Any]:
     sync_report_students(report_id)
     with connection() as conn:
-        rows = rows_to_dicts(conn.execute(
-            "SELECT * FROM period_students WHERE report_id=? ORDER BY career_name, full_name, id",
-            (report_id,),
-        ).fetchall())
-        links = rows_to_dicts(conn.execute(
-            "SELECT * FROM student_source_links WHERE report_id=? ORDER BY source_module, id",
-            (report_id,),
-        ).fetchall())
+        rows = rows_to_dicts(
+            conn.execute(
+                "SELECT * FROM period_students WHERE report_id=? ORDER BY career_name, full_name, id",
+                (report_id,),
+            ).fetchall()
+        )
+        links = rows_to_dicts(
+            conn.execute(
+                "SELECT * FROM student_source_links WHERE report_id=? ORDER BY source_module, id",
+                (report_id,),
+            ).fetchall()
+        )
     by_student: dict[int, list[dict[str, Any]]] = {}
     for link in links:
         sid = int(link["period_student_id"]) if link.get("period_student_id") else 0
@@ -312,7 +421,8 @@ def set_student_route(report_id: int, student_id: int, route: str) -> dict[str, 
         raise ValueError("La ruta debe ser COMPLEXIVO o TRABAJO_TITULACION.")
     with connection() as conn:
         row = conn.execute(
-            "SELECT * FROM period_students WHERE id=? AND report_id=?", (student_id, report_id)
+            "SELECT * FROM period_students WHERE id=? AND report_id=?",
+            (student_id, report_id),
         ).fetchone()
         if not row:
             raise ValueError("El estudiante no existe en este período.")
@@ -341,7 +451,10 @@ def set_process_status(report_id: int, student_id: int, status: str) -> dict[str
     if status not in PROCESS_STATUSES:
         raise ValueError("Estado de proceso no válido.")
     with connection() as conn:
-        row = conn.execute("SELECT * FROM period_students WHERE id=? AND report_id=?", (student_id, report_id)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM period_students WHERE id=? AND report_id=?",
+            (student_id, report_id),
+        ).fetchone()
         if not row:
             raise ValueError("El estudiante no existe en este período.")
         old = str(row["process_status"])
@@ -382,7 +495,14 @@ def _candidate_score(source: dict[str, Any], student: dict[str, Any]) -> float:
     return name_score
 
 
-def match_source_record(report_id: int, source_module: str, source_key: str, source: dict[str, Any], *, persist: bool = True) -> dict[str, Any]:
+def match_source_record(
+    report_id: int,
+    source_module: str,
+    source_key: str,
+    source: dict[str, Any],
+    *,
+    persist: bool = True,
+) -> dict[str, Any]:
     """Matcher común: identifica primero; la habilitación se valida después."""
     students = get_period_students(report_id)["students"]
     ranked = sorted(
@@ -405,10 +525,10 @@ def match_source_record(report_id: int, source_module: str, source_key: str, sou
             status, method, selected_id = MATCH_OK, "CORREO", int(student["id"])
         elif score >= 0.97 and (score - second) >= 0.04:
             status, method, selected_id = MATCH_OK, "NOMBRE_ALTA_CONFIANZA", int(student["id"])
-        elif score >= 0.85:
-            status, method = MATCH_REVIEW, "NOMBRE_POSIBLE"
         elif score > 0 and abs(score - second) < 0.03:
             status, method = MATCH_AMBIGUOUS, "NOMBRE_AMBIGUO"
+        elif score >= 0.85:
+            status, method = MATCH_REVIEW, "NOMBRE_POSIBLE"
 
     candidates = [
         {
@@ -433,7 +553,13 @@ def match_source_record(report_id: int, source_module: str, source_key: str, sou
     return result
 
 
-def save_source_link(report_id: int, source_module: str, source_key: str, source: dict[str, Any], match: dict[str, Any]) -> None:
+def save_source_link(
+    report_id: int,
+    source_module: str,
+    source_key: str,
+    source: dict[str, Any],
+    match: dict[str, Any],
+) -> None:
     ensure_student_domain_schema()
     now = utcnow()
     with connection() as conn:
@@ -458,20 +584,36 @@ def save_source_link(report_id: int, source_module: str, source_key: str, source
                 updated_at=excluded.updated_at
             """,
             (
-                report_id, match.get("period_student_id"), source_module, source_key,
-                source.get("full_name") or "", _email(source.get("email")), _id_number(source.get("identification")),
-                source.get("career_name") or "", match.get("status") or MATCH_UNMATCHED,
-                match.get("method") or "", match.get("confidence"),
-                json.dumps(match.get("candidates") or [], ensure_ascii=False), match.get("detail") or "", now, now,
+                report_id,
+                match.get("period_student_id"),
+                source_module,
+                source_key,
+                source.get("full_name") or "",
+                _email(source.get("email")),
+                _id_number(source.get("identification")),
+                source.get("career_name") or "",
+                match.get("status") or MATCH_UNMATCHED,
+                match.get("method") or "",
+                match.get("confidence"),
+                json.dumps(match.get("candidates") or [], ensure_ascii=False),
+                match.get("detail") or "",
+                now,
+                now,
             ),
         )
 
 
-def confirm_source_link(report_id: int, source_module: str, source_key: str, student_id: int) -> dict[str, Any]:
+def confirm_source_link(
+    report_id: int,
+    source_module: str,
+    source_key: str,
+    student_id: int,
+) -> dict[str, Any]:
     ensure_student_domain_schema()
     with connection() as conn:
         student = conn.execute(
-            "SELECT * FROM period_students WHERE id=? AND report_id=?", (student_id, report_id)
+            "SELECT * FROM period_students WHERE id=? AND report_id=?",
+            (student_id, report_id),
         ).fetchone()
         if not student:
             raise ValueError("El estudiante seleccionado no existe en este período.")
@@ -506,15 +648,19 @@ def get_student_audit(report_id: int, student_id: int | None = None) -> dict[str
     ensure_student_domain_schema()
     with connection() as conn:
         if student_id:
-            rows = rows_to_dicts(conn.execute(
-                "SELECT * FROM student_audit_log WHERE report_id=? AND period_student_id=? ORDER BY id DESC",
-                (report_id, student_id),
-            ).fetchall())
+            rows = rows_to_dicts(
+                conn.execute(
+                    "SELECT * FROM student_audit_log WHERE report_id=? AND period_student_id=? ORDER BY id DESC",
+                    (report_id, student_id),
+                ).fetchall()
+            )
         else:
-            rows = rows_to_dicts(conn.execute(
-                "SELECT * FROM student_audit_log WHERE report_id=? ORDER BY id DESC LIMIT 1000",
-                (report_id,),
-            ).fetchall())
+            rows = rows_to_dicts(
+                conn.execute(
+                    "SELECT * FROM student_audit_log WHERE report_id=? ORDER BY id DESC LIMIT 1000",
+                    (report_id,),
+                ).fetchall()
+            )
     return {"ok": True, "audit": rows}
 
 
@@ -523,7 +669,14 @@ def students_by_route(report_id: int, route: str) -> list[dict[str, Any]]:
     return [row for row in data["students"] if row["route"] == route]
 
 
-def resolve_master_student(report_id: int, *, identification: Any = "", email: Any = "", full_name: Any = "", career_name: Any = "") -> dict[str, Any] | None:
+def resolve_master_student(
+    report_id: int,
+    *,
+    identification: Any = "",
+    email: Any = "",
+    full_name: Any = "",
+    career_name: Any = "",
+) -> dict[str, Any] | None:
     source = {
         "identification": identification,
         "email": email,
@@ -534,4 +687,7 @@ def resolve_master_student(report_id: int, *, identification: Any = "", email: A
     if match.get("status") != MATCH_OK or not match.get("period_student_id"):
         return None
     student_id = int(match["period_student_id"])
-    return next((row for row in get_period_students(report_id)["students"] if int(row["id"]) == student_id), None)
+    return next(
+        (row for row in get_period_students(report_id)["students"] if int(row["id"]) == student_id),
+        None,
+    )
