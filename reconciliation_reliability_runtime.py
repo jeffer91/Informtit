@@ -2484,6 +2484,13 @@ def _install_final_contract() -> None:
     domain_runtime.sync_report_students = _sync_students_final
     period_service.sync_report_students = _sync_students_final
 
+    # sqlite_concurrency_runtime capturó su sincronizador antes de instalar este
+    # contrato. Su commit dual de Requisitos resuelve el nombre global
+    # _locked_sync en tiempo de ejecución; sustituirlo aquí garantiza que una nueva
+    # carga Presencial/Online también migre la identidad maestra inmediatamente,
+    # sin depender de pulsar Reconciliar después.
+    sqlite_guard._locked_sync = _sync_students_final
+
     # Las decisiones humanas positivas y negativas sobreviven a recargas.
     bridge._match = _final_match
 
