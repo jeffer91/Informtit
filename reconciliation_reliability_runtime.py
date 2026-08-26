@@ -1269,6 +1269,32 @@ def _final_match(
             },
         )
 
+    # Si varias personas tienen exactamente los mismos componentes del nombre,
+    # el orden de nombres/apellidos tampoco puede utilizarse para elegir una.
+    # La carrera puede mostrarse como contexto, pero no decide la identidad.
+    if not _strong_identity_key(source.get("identification"), source.get("email")):
+        index = smart._master_index(report_id)
+        tokens = smart._token_signature(source.get("full_name"))
+        token_matches = list(index["by_tokens"].get(tokens, [])) if tokens else []
+        if len(token_matches) > 1:
+            return _persist_final_match(
+                report_id, module, source_key, source,
+                {
+                    "status": domain.MATCH_AMBIGUOUS,
+                    "method": "HOMONIMO_COMPONENTES",
+                    "confidence": 100.0,
+                    "period_student_id": None,
+                    "candidates": [
+                        smart._candidate_payload(item, 1.0)
+                        for item in token_matches[:3]
+                    ],
+                    "detail": (
+                        "Más de un estudiante de Requisitos tiene los mismos componentes "
+                        "del nombre. Informtit no usa carrera ni orden de palabras para decidir."
+                    ),
+                },
+            )
+
     # Carrera es contexto, no evidencia suficiente para escoger entre homónimos.
     if str(result.get("method") or "") == "NOMBRE_EXACTO_CONTEXTO":
         index = smart._master_index(report_id)
