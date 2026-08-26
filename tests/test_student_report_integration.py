@@ -62,6 +62,89 @@ class StudentReportIntegrationTests(unittest.TestCase):
         self.assertEqual([row["full_name"] for row in result["careers"][0]["students"]], ["ANA"])
         self.assertTrue(result["student_domain_applied"])
 
+    @patch("student_report_integration._project_report_ids", return_value=[1])
+    @patch("student_report_integration._selected_grade", return_value=6.0)
+    @patch("student_report_integration.reconcile_all", return_value={"ok": True})
+    @patch("student_report_integration.get_period_students")
+    @patch("student_report_integration.raw_get_projects")
+    def test_thesis_manual_grade_is_effective_and_status_does_not_override_it(
+        self, projects_mock, students_mock, _reconcile, _selected, _reports
+    ):
+        students_mock.return_value = {"students": self.master_rows}
+        projects_mock.return_value = {"projects": [
+            {
+                "id": 1, "report_id": 1, "period_student_id": 102,
+                "full_name": "BEA", "final_grade": 6.0, "final_status": "APROBADO",
+            },
+            {
+                "id": 2, "report_id": 1, "period_student_id": 102,
+                "full_name": "BEA", "final_grade": 9.0, "final_status": "REPROBADO",
+            },
+        ], "summary": {}}
+
+        result = integration.filtered_projects(1)
+        self.assertEqual(len(result["projects"]), 1)
+        self.assertEqual(result["projects"][0]["final_grade"], 6.0)
+        self.assertEqual(result["summary"]["approved"], 0)
+        self.assertEqual(result["summary"]["failed"], 1)
+
+    @patch("student_report_integration._project_report_ids", return_value=[1])
+    @patch("student_report_integration._selected_grade", return_value=None)
+    @patch("student_report_integration.reconcile_all", return_value={"ok": True})
+    @patch("student_report_integration.get_period_students")
+    @patch("student_report_integration.raw_get_projects")
+    def test_thesis_conflicting_grades_are_omitted_until_human_decision(
+        self, projects_mock, students_mock, _reconcile, _selected, _reports
+    ):
+        students_mock.return_value = {"students": self.master_rows}
+        projects_mock.return_value = {"projects": [
+            {"id": 1, "report_id": 1, "period_student_id": 102, "full_name": "BEA", "final_grade": 6.0},
+            {"id": 2, "report_id": 1, "period_student_id": 102, "full_name": "BEA", "final_grade": 9.0},
+        ], "summary": {}}
+
+        result = integration.filtered_projects(1)
+        self.assertEqual(result["projects"], [])
+        self.assertEqual(result["summary"]["total"], 0)
+        self.assertEqual(result["omitted_grade_conflicts"], 1)
+
+    @patch("student_report_integration._project_report_ids", return_value=[1, 2])
+    @patch("student_report_integration._selected_grade", return_value=None)
+    @patch("student_report_integration.reconcile_all", return_value={"ok": True})
+    @patch("student_report_integration.get_period_students")
+    def test_complexive_same_student_in_both_datasets_is_counted_once(
+        self, students_mock, _reconcile, _selected, _reports
+    ):
+        students_mock.return_value = {"students": self.master_rows}
+        original = integration._BASE_REPORT_DATA
+
+        def report_data(report_id):
+            return {
+                "careers": [{
+                    "id": report_id,
+                    "name": "CARRERA",
+                    "students": [{
+                        "id": report_id,
+                        "period_student_id": 101,
+                        "full_name": "ANA",
+                        "ordinary_theory": 80,
+                        "ordinary_practical": 80,
+                    }],
+                    "images": [],
+                    "analyses": {},
+                }]
+            }
+
+        integration._BASE_REPORT_DATA = report_data
+        try:
+            result = integration.filtered_report_data(1)
+        finally:
+            integration._BASE_REPORT_DATA = original
+
+        rows = result["careers"][0]["students"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["full_name"], "ANA")
+
+
     def test_nuclei_modality_comes_from_dataset_not_career_name(self):
         original = integration._BASE_NUCLEI_CONSOLIDATED
         integration._BASE_NUCLEI_CONSOLIDATED = lambda _rid: {
