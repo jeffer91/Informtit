@@ -1802,3 +1802,289 @@ def _candidate_search(period_project_id: int, link_id: int, query: str) -> dict[
         if int(row.get("student_id") or 0) not in blocked
     ][:20]
     return result
+
+
+def _run_final_job_core(job_id: str, period_project_id: int) -> None:
+    """Job final: identidad -> evidencias -> rutas -> notas -> casos."""
+    try:
+        members = fast_read._member_reports(period_project_id)
+        if not members:
+            raise ValueError("El período no tiene datasets para conciliar.")
+        total_steps = len(members) * 4 + 1
+        done = 0
+        aggregate = {
+            "matched": 0,
+            "outside_population": 0,
+            "identity_review": 0,
+            "route_conflicts": 0,
+            "grade_conflicts": 0,
+            "auto_routes": 0,
+            "auto_resolved": 0,
+            "cases": 0,
+        }
+        smart._set_job(
+            job_id,
+            status="running",
+            progress=2,
+            stage="Preparando población maestra",
+            detail="Verificando una sola identidad por cédula aunque Requisitos haya cambiado Presencial/Online.",
+            stats=aggregate,
+        )
+        with sqlite_guard._WRITE_LOCK:
+            migration = _migrate_project_master(period_project_id)
+            smart._set_job(
+                job_id,
+                progress=3,
+                detail=(
+                    f"Identidad maestra preparada: {migration['moved']} cambios de modalidad "
+                    f"y {migration['merged']} duplicados consolidados."
+                ),
+                stats=aggregate,
+            )
+
+            for member in members:
+                report_id = int(member["id"])
+                modality = str(member.get("modality") or "")
+                label = "Presencial" if modality == "presencial" else "Online"
+                smart._set_job(
+                    job_id,
+                    progress=smart._stage_progress(done, total_steps),
+                    stage=f"{label} · preparando estudiantes",
+                    detail="Sincronizando nombre, carrera y modalidad oficiales desde Requisitos.",
+                    stats=aggregate,
+                )
+                sync_result = audit.sync_report_students(report_id)
+                done += 1
+                smart._set_job(
+                    job_id,
+                    progress=smart._stage_progress(done, total_steps),
+                    detail=f"{int(sync_result.get('students') or 0)} estudiantes maestros verificados.",
+                    stats=aggregate,
+                )
+
+                for module, module_label, callback in (
+                    ("NUCLEI", "Núcleos", audit.reconcile_nuclei),
+                    ("COMPLEXIVE", "Examen Complexivo", audit.reconcile_complexive),
+                    ("THESIS", "Trabajo de Titulación", audit.reconcile_thesis),
+                ):
+                    total_records = smart._source_count(report_id, module)
+                    smart._set_job(
+                        job_id,
+                        progress=smart._stage_progress(done, total_steps),
+                        stage=f"{label} · {module_label}",
+                        detail=(
+                            f"Analizando {total_records} registros contra todos los "
+                            "estudiantes oficiales del período."
+                        ),
+                        stats=aggregate,
+                    )
+                    result = callback(report_id)
+                    counts = smart._module_status_counts(report_id, module)
+                    aggregate["matched"] += int(counts.get(domain.MATCH_OK, 0))
+                    aggregate["outside_population"] += int(
+                        counts.get(smart.MATCH_OUTSIDE_POPULATION, 0)
+                    )
+                    aggregate["identity_review"] += sum(
+                        int(counts.get(key, 0))
+                        for key in (
+                            audit.MATCH_IDENTITY_CONFLICT,
+                            domain.MATCH_REVIEW,
+                            domain.MATCH_AMBIGUOUS,
+                            domain.MATCH_UNMATCHED,
+                        )
+                    )
+                    done += 1
+                    smart._set_job(
+                        job_id,
+                        progress=smart._stage_progress(done, total_steps),
+                        detail=(
+                            f"{module_label}: {int(result.get('matched') or 0)} vinculados; "
+                            f"{int(counts.get(smart.MATCH_OUTSIDE_POPULATION, 0))} fuera de población."
+                        ),
+                        stats=aggregate,
+                    )
+
+            smart._set_job(
+                job_id,
+                progress=95,
+                stage="Resolviendo rutas",
+                detail="Corrigiendo automáticamente rutas inequívocas y separando los conflictos reales.",
+                stats=aggregate,
+            )
+            route_stats = _normalize_routes(period_project_id)
+            aggregate["auto_routes"] = int(route_stats["auto_routes"])
+
+            smart._set_job(
+                job_id,
+                progress=97,
+                stage="Verificando calificaciones",
+                detail="Buscando notas contradictorias sin elegir una de ellas automáticamente.",
+                stats=aggregate,
+            )
+            aggregate["grade_conflicts"] = len(_grade_cases(period_project_id))
+
+            smart._set_job(
+                job_id,
+                progress=99,
+                stage="Agrupando casos que requieren atención",
+                detail="Agrupando evidencias repetidas para dejar únicamente decisiones humanas reales.",
+                stats=aggregate,
+            )
+            summary = _final_case_summary(period_project_id)
+            aggregate["auto_resolved"] = summary["auto_resolved"]
+            aggregate["cases"] = summary["total_cases"]
+            aggregate["outside_population"] = summary["outside_population"]
+            aggregate["identity_review"] = summary["identity_review"]
+            aggregate["route_conflicts"] = summary["route_conflicts"]
+            aggregate["grade_conflicts"] = summary["grade_conflicts"]
+
+        smart._set_job(
+            job_id,
+            progress=100,
+            status="completed",
+            stage="Conciliación completada",
+            detail=(
+                f"Informtit resolvió automáticamente {aggregate['auto_resolved']} evidencias "
+                f"y dejó {aggregate['cases']} casos reales para revisión."
+            ),
+            stats=aggregate,
+            error="",
+        )
+    except Exception as exc:
+        smart._set_job(
+            job_id,
+            status="error",
+            stage="No se pudo completar la conciliación",
+            detail="Se conservaron los datos procesados antes del error.",
+            error=f"{type(exc).__name__}: {exc}",
+        )
+    finally:
+        with smart._JOB_LOCK:
+            if smart._ACTIVE_BY_PROJECT.get(period_project_id) == job_id:
+                smart._ACTIVE_BY_PROJECT.pop(period_project_id, None)
+        smart._cleanup_jobs()
+
+
+def _install_final_contract() -> None:
+    """Instala la semántica acordada después de todas las capas legacy/hotfix."""
+    global _FINAL_INSTALLED, _FINAL_BASE_MATCH, _FINAL_BASE_SYNC
+    global _FINAL_BASE_PERIOD_READ, _FINAL_BASE_GET, _FINAL_BASE_WRITE
+    if _FINAL_INSTALLED:
+        return
+    _ensure_final_schema()
+
+    _FINAL_BASE_MATCH = bridge._match
+    _FINAL_BASE_SYNC = audit.sync_report_students
+    _FINAL_BASE_PERIOD_READ = fast_read._period_students_read
+    _FINAL_BASE_GET = core.InformtitHandler._handle_api_get
+    _FINAL_BASE_WRITE = core.InformtitHandler._handle_api_write
+
+    # Requisitos gobierna identidad/nombre/carrera/modalidad y conserva la entidad
+    # aunque cambie de dataset en una carga posterior.
+    audit.sync_report_students = _sync_students_final
+
+    # Las decisiones humanas positivas y negativas sobreviven a recargas.
+    bridge._match = _final_match
+
+    # Mantiene el wrapper de rendimiento/progreso, pero sustituye su núcleo.
+    perf._BASE_RUN_JOB = _run_final_job_core
+
+    # Lectura única de casos para tabla, contadores y acciones manuales.
+    fast_read._period_students_read = _period_read_final
+
+    # Los informes deben consumir la conciliación persistida, no volver a escribir
+    # miles de filas al generar una salida.
+    report_integration.reconcile_all = lambda report_id: {"ok": True, "read_only": True}
+
+    def final_get(self: Any, path: str, query: dict[str, list[str]]) -> None:
+        match = re.fullmatch(r"/api/period-projects/(\d+)/reconciliation-summary", path)
+        if match:
+            pid = int(match.group(1))
+            self._send_json({"ok": True, "summary": _final_case_summary(pid)})
+            return
+
+        match = re.fullmatch(
+            r"/api/period-projects/(\d+)/students-domain/matches/(\d+)/candidates",
+            path,
+        )
+        if match:
+            values = query.get("q") if isinstance(query, dict) else None
+            q = values[0] if isinstance(values, list) and values else str(values or "")
+            try:
+                self._send_json(_candidate_search(int(match.group(1)), int(match.group(2)), q))
+            except ValueError as exc:
+                self._send_error_json(str(exc), 400)
+            return
+
+        assert _FINAL_BASE_GET is not None
+        _FINAL_BASE_GET(self, path, query)
+
+    def final_write(self: Any, method: str, path: str, payload: dict[str, Any]) -> None:
+        match = re.fullmatch(
+            r"/api/period-projects/(\d+)/students-domain/matches/(\d+)/confirm",
+            path,
+        )
+        if match and method in {"POST", "PUT"}:
+            try:
+                student_id = int(payload.get("student_id") or 0)
+                if not student_id:
+                    raise ValueError("Seleccione un estudiante válido.")
+                self._send_json(
+                    _confirm_project_case(int(match.group(1)), int(match.group(2)), student_id)
+                )
+            except ValueError as exc:
+                self._send_error_json(str(exc), 400)
+            return
+
+        match = re.fullmatch(
+            r"/api/period-projects/(\d+)/students-domain/matches/(\d+)/unlink",
+            path,
+        )
+        if match and method in {"POST", "PUT"}:
+            try:
+                self._send_json(_unlink_project_case(int(match.group(1)), int(match.group(2))))
+            except ValueError as exc:
+                self._send_error_json(str(exc), 400)
+            return
+
+        match = re.fullmatch(
+            r"/api/period-projects/(\d+)/students-domain/(\d+)/route",
+            path,
+        )
+        if match and method in {"POST", "PUT"}:
+            try:
+                self._send_json(
+                    _set_route_manual_final(
+                        int(match.group(1)), int(match.group(2)),
+                        str(payload.get("route") or ""),
+                    )
+                )
+            except ValueError as exc:
+                self._send_error_json(str(exc), 400)
+            return
+
+        match = re.fullmatch(
+            r"/api/period-projects/(\d+)/students-domain/grade-conflicts/resolve",
+            path,
+        )
+        if match and method in {"POST", "PUT"}:
+            try:
+                self._send_json(
+                    _resolve_grade_case(
+                        int(match.group(1)),
+                        str(payload.get("module") or ""),
+                        int(payload.get("student_id") or 0),
+                        payload.get("grade"),
+                        int(payload.get("nucleus_number") or 0),
+                    )
+                )
+            except ValueError as exc:
+                self._send_error_json(str(exc), 400)
+            return
+
+        assert _FINAL_BASE_WRITE is not None
+        _FINAL_BASE_WRITE(self, method, path, payload)
+
+    core.InformtitHandler._handle_api_get = final_get
+    core.InformtitHandler._handle_api_write = final_write
+    _FINAL_INSTALLED = True
