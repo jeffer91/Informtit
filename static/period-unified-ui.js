@@ -312,6 +312,10 @@
     }
   }
 
+  document.addEventListener('informtit:students-domain-changed', () => {
+    void refreshProjectStatus();
+  });
+
   const previousRenderDashboard = renderDashboard;
   renderDashboard = function () {
     if (Array.isArray(state?.reports) && state.reports.every(item => item.period_project_id || item.modality === 'unified')) {
