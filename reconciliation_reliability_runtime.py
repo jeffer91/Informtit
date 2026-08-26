@@ -425,3 +425,478 @@ def install() -> None:
     core.InformtitHandler._handle_api_write = handle_write
     _install_final_contract()
     _INSTALLED = True
+
+
+# ---------------------------------------------------------------------------
+# Contrato final del dominio de estudiantes
+# ---------------------------------------------------------------------------
+
+_FINAL_INSTALLED = False
+_FINAL_BASE_MATCH: Callable[..., dict[str, Any]] | None = None
+_FINAL_BASE_SYNC: Callable[[int], dict[str, Any]] | None = None
+_FINAL_BASE_PERIOD_READ: Callable[[int], dict[str, Any]] | None = None
+_FINAL_BASE_GET: Callable[..., Any] | None = None
+_FINAL_BASE_WRITE: Callable[..., Any] | None = None
+_DECISION_LOCAL = threading.local()
+
+DECISION_MATCH = "MATCH"
+DECISION_DO_NOT_MATCH = "DO_NOT_MATCH"
+DECISION_ROUTE = "ROUTE"
+DECISION_GRADE = "GRADE"
+
+
+def _ensure_final_schema() -> None:
+    audit.ensure_schema()
+    with connection() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS student_manual_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period_project_id INTEGER NOT NULL,
+                source_module TEXT NOT NULL,
+                identity_key TEXT NOT NULL,
+                decision_type TEXT NOT NULL,
+                decision_scope TEXT NOT NULL DEFAULT '',
+                target_student_id INTEGER,
+                decision_value TEXT NOT NULL DEFAULT '',
+                detail TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(period_project_id, source_module, identity_key, decision_type, decision_scope)
+            );
+            CREATE INDEX IF NOT EXISTS idx_student_manual_decisions_lookup
+                ON student_manual_decisions(period_project_id, source_module, identity_key, decision_type);
+            """
+        )
+
+
+def _project_id_for_report(report_id: int) -> int | None:
+    with connection() as conn:
+        cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(reports)").fetchall()}
+        if "period_project_id" not in cols:
+            return None
+        row = conn.execute("SELECT period_project_id FROM reports WHERE id=?", (report_id,)).fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def _project_report_ids(period_project_id: int) -> list[int]:
+    return [int(item["id"]) for item in _member_reports_safe(period_project_id)]
+
+
+def _identity_key_values(identification: Any, email: Any, name: Any) -> str:
+    sid = bridge._source_identification(identification)
+    if sid:
+        return f"id:{sid}"
+    semail = bridge._source_email(email)
+    if semail:
+        return f"email:{semail}"
+    folded = project_wide._identity_fold(name)
+    tokens = tuple(sorted(token for token in folded.split() if token))
+    return "name:" + "|".join(tokens) if tokens else ""
+
+
+def _identity_key_source(source: dict[str, Any]) -> str:
+    return _identity_key_values(
+        source.get("identification"),
+        source.get("email"),
+        source.get("full_name"),
+    )
+
+
+def _identity_key_link(link: dict[str, Any]) -> str:
+    return _identity_key_values(
+        link.get("source_identification"),
+        link.get("source_email"),
+        link.get("source_name"),
+    ) or f"link:{int(link.get('id') or 0)}"
+
+
+def _decision_cache() -> dict[Any, Any]:
+    cache = getattr(_DECISION_LOCAL, "cache", None)
+    if cache is None:
+        cache = {}
+        _DECISION_LOCAL.cache = cache
+    return cache
+
+
+def _clear_decision_cache() -> None:
+    _DECISION_LOCAL.cache = {}
+
+
+def _manual_decisions(
+    period_project_id: int,
+    source_module: str,
+    identity_key: str,
+    decision_type: str | None = None,
+) -> list[dict[str, Any]]:
+    if not identity_key:
+        return []
+    key = (period_project_id, source_module, identity_key, decision_type or "*")
+    cache = _decision_cache()
+    if key in cache:
+        return [dict(row) for row in cache[key]]
+    _ensure_final_schema()
+    sql = """
+        SELECT * FROM student_manual_decisions
+        WHERE period_project_id=? AND source_module=? AND identity_key=?
+    """
+    args: list[Any] = [period_project_id, source_module, identity_key]
+    if decision_type:
+        sql += " AND decision_type=?"
+        args.append(decision_type)
+    sql += " ORDER BY id DESC"
+    with connection() as conn:
+        rows = rows_to_dicts(conn.execute(sql, tuple(args)).fetchall())
+    cache[key] = [dict(row) for row in rows]
+    return rows
+
+
+def _store_decision(
+    period_project_id: int,
+    source_module: str,
+    identity_key: str,
+    decision_type: str,
+    *,
+    decision_scope: str = "",
+    target_student_id: int | None = None,
+    decision_value: str = "",
+    detail: str = "",
+) -> None:
+    if not identity_key:
+        return
+    _ensure_final_schema()
+    now = utcnow()
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO student_manual_decisions
+            (period_project_id, source_module, identity_key, decision_type, decision_scope,
+             target_student_id, decision_value, detail, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(period_project_id, source_module, identity_key, decision_type, decision_scope)
+            DO UPDATE SET target_student_id=excluded.target_student_id,
+                          decision_value=excluded.decision_value,
+                          detail=excluded.detail,
+                          updated_at=excluded.updated_at
+            """,
+            (
+                period_project_id, source_module, identity_key, decision_type,
+                decision_scope, target_student_id, decision_value, detail, now, now,
+            ),
+        )
+    _clear_decision_cache()
+
+
+def _requirements_rows_project(period_project_id: int) -> list[dict[str, Any]]:
+    report_ids = _project_report_ids(period_project_id)
+    if not report_ids:
+        return []
+    placeholders = ",".join("?" for _ in report_ids)
+    with connection() as conn:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='requirements_students'"
+        ).fetchone():
+            return []
+        return rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT rs.*, rs.report_id AS target_report_id, r.modality AS target_modality
+                FROM requirements_students rs
+                JOIN reports r ON r.id=rs.report_id
+                WHERE rs.report_id IN ({placeholders})
+                ORDER BY rs.id
+                """,
+                tuple(report_ids),
+            ).fetchall()
+        )
+
+
+def _merge_master_rows(conn: Any, keep_id: int, drop_id: int) -> None:
+    if keep_id == drop_id:
+        return
+    keep = conn.execute("SELECT * FROM period_students WHERE id=?", (keep_id,)).fetchone()
+    drop = conn.execute("SELECT * FROM period_students WHERE id=?", (drop_id,)).fetchone()
+    if not keep or not drop:
+        return
+    if str(drop["route_source"] or "") == "MANUAL" and str(keep["route_source"] or "") != "MANUAL":
+        conn.execute(
+            "UPDATE period_students SET route=?, route_source='MANUAL', updated_at=? WHERE id=?",
+            (drop["route"], utcnow(), keep_id),
+        )
+    if (
+        str(drop["process_status_source"] or "") == "MANUAL"
+        and str(keep["process_status_source"] or "") != "MANUAL"
+    ):
+        conn.execute(
+            """
+            UPDATE period_students SET process_status=?, process_status_source='MANUAL', updated_at=?
+            WHERE id=?
+            """,
+            (drop["process_status"], utcnow(), keep_id),
+        )
+    for table in (
+        "student_source_links", "students", "thesis_projects",
+        "nucleus_students", "nucleus_instance_students",
+    ):
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone():
+            continue
+        cols = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "period_student_id" in cols:
+            conn.execute(
+                f"UPDATE {table} SET period_student_id=? WHERE period_student_id=?",
+                (keep_id, drop_id),
+            )
+    conn.execute(
+        "UPDATE student_audit_log SET period_student_id=? WHERE period_student_id=?",
+        (keep_id, drop_id),
+    )
+    conn.execute(
+        "UPDATE student_manual_decisions SET target_student_id=? WHERE target_student_id=?",
+        (keep_id, drop_id),
+    )
+    conn.execute("DELETE FROM period_students WHERE id=?", (drop_id,))
+
+
+def _migrate_project_master(period_project_id: int) -> dict[str, int]:
+    """Mantiene un solo period_student_id aunque Requisitos cambie Presencial/Online."""
+    _ensure_final_schema()
+    requirements = _requirements_rows_project(period_project_id)
+    official: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in requirements:
+        sid = bridge._source_identification(row.get("identification"))
+        if sid:
+            official[sid].append(row)
+    report_ids = _project_report_ids(period_project_id)
+    if not report_ids:
+        return {"moved": 0, "merged": 0}
+    placeholders = ",".join("?" for _ in report_ids)
+    moved = 0
+    merged = 0
+    with connection() as conn:
+        for sid, req_rows in official.items():
+            if len(req_rows) != 1:
+                continue
+            target = req_rows[0]
+            target_report_id = int(target["target_report_id"])
+            target_modality = str(target.get("target_modality") or "")
+            masters = rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT * FROM period_students
+                    WHERE report_id IN ({placeholders}) AND identification=?
+                    ORDER BY id
+                    """,
+                    (*report_ids, sid),
+                ).fetchall()
+            )
+            if not masters:
+                continue
+            keep = next(
+                (row for row in masters if int(row["report_id"]) == target_report_id),
+                masters[0],
+            )
+            keep_id = int(keep["id"])
+            for row in masters:
+                row_id = int(row["id"])
+                if row_id != keep_id:
+                    _merge_master_rows(conn, keep_id, row_id)
+                    merged += 1
+            current = conn.execute("SELECT * FROM period_students WHERE id=?", (keep_id,)).fetchone()
+            if current and int(current["report_id"]) != target_report_id:
+                old_report = int(current["report_id"])
+                conn.execute(
+                    """
+                    UPDATE period_students
+                    SET report_id=?, period_project_id=?, modality=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (target_report_id, period_project_id, target_modality, utcnow(), keep_id),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO student_audit_log
+                    (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+                    VALUES (?, ?, 'MOVE_MASTER_DATASET', 'report_id', ?, ?,
+                            'Requisitos cambió la modalidad oficial; se conservó la misma identidad interna y todas sus evidencias.',
+                            ?)
+                    """,
+                    (target_report_id, keep_id, str(old_report), str(target_report_id), utcnow()),
+                )
+                moved += 1
+    return {"moved": moved, "merged": merged}
+
+
+def _official_snapshot(report_id: int) -> dict[int, dict[str, Any]]:
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id, identification, full_name, email, career_code, career_name,
+                       modality, campus, schedule
+                FROM period_students WHERE report_id=?
+                """,
+                (report_id,),
+            ).fetchall()
+        )
+    return {int(row["id"]): row for row in rows}
+
+
+def _audit_official_changes(report_id: int, before: dict[int, dict[str, Any]]) -> None:
+    fields = (
+        "identification", "full_name", "email", "career_code",
+        "career_name", "modality", "campus", "schedule",
+    )
+    after = _official_snapshot(report_id)
+    now = utcnow()
+    with connection() as conn:
+        for student_id, old in before.items():
+            current = after.get(student_id)
+            if not current:
+                continue
+            for field in fields:
+                old_value = str(old.get(field) or "")
+                new_value = str(current.get(field) or "")
+                if old_value == new_value:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO student_audit_log
+                    (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+                    VALUES (?, ?, 'SYNC_REQUIREMENTS_OFFICIAL', ?, ?, ?,
+                            'Requisitos actualizó el dato oficial; las fuentes académicas se conservan intactas.',
+                            ?)
+                    """,
+                    (report_id, student_id, field, old_value, new_value, now),
+                )
+
+
+def _sync_students_final(report_id: int) -> dict[str, Any]:
+    assert _FINAL_BASE_SYNC is not None
+    project_id = _project_id_for_report(report_id)
+    if project_id:
+        _migrate_project_master(project_id)
+    before = _official_snapshot(report_id)
+    result = _FINAL_BASE_SYNC(report_id)
+    _audit_official_changes(report_id, before)
+    return result
+
+
+def _manual_match_target(period_project_id: int, module: str, identity: str) -> int | None:
+    rows = _manual_decisions(period_project_id, module, identity, DECISION_MATCH)
+    if not rows or not rows[0].get("target_student_id"):
+        return None
+    target = int(rows[0]["target_student_id"])
+    with connection() as conn:
+        valid = conn.execute(
+            """
+            SELECT 1 FROM period_students
+            WHERE id=? AND period_project_id=? AND COALESCE(requirements_present,1)=1
+            """,
+            (target, period_project_id),
+        ).fetchone()
+    return target if valid else None
+
+
+def _blocked_targets(period_project_id: int, module: str, identity: str) -> set[int]:
+    return {
+        int(row["target_student_id"])
+        for row in _manual_decisions(period_project_id, module, identity, DECISION_DO_NOT_MATCH)
+        if row.get("target_student_id")
+    }
+
+
+def _persist_final_match(
+    report_id: int,
+    module: str,
+    source_key: str,
+    source: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    bridge.save_source_link(report_id, module, source_key, source, result)
+    return result
+
+
+def _final_match(
+    report_id: int,
+    module: str,
+    source_key: str,
+    source: dict[str, Any],
+) -> dict[str, Any]:
+    assert _FINAL_BASE_MATCH is not None
+    # Mantiene el seguimiento de progreso de la capa de rendimiento.
+    result = _FINAL_BASE_MATCH(report_id, module, source_key, source)
+    project_id = _project_id_for_report(report_id)
+    identity = _identity_key_source(source)
+    if not project_id or not identity:
+        return result
+
+    manual_target = _manual_match_target(project_id, module, identity)
+    if manual_target:
+        return _persist_final_match(
+            report_id, module, source_key, source,
+            {
+                "status": domain.MATCH_OK,
+                "method": "MANUAL",
+                "confidence": 100.0,
+                "period_student_id": manual_target,
+                "candidates": list(result.get("candidates") or [])[:3],
+                "detail": "Asociación manual persistente; prevalece sobre futuras conciliaciones y recargas.",
+            },
+        )
+
+    blocked = _blocked_targets(project_id, module, identity)
+    selected = int(result.get("period_student_id") or 0)
+    if selected and selected in blocked:
+        candidates = [
+            item for item in list(result.get("candidates") or [])
+            if int(item.get("student_id") or 0) not in blocked
+        ][:3]
+        return _persist_final_match(
+            report_id, module, source_key, source,
+            {
+                "status": domain.MATCH_REVIEW,
+                "method": "MANUAL_REVIEW",
+                "confidence": candidates[0].get("similarity") if candidates else None,
+                "period_student_id": None,
+                "candidates": candidates,
+                "detail": "La asociación propuesta fue descartada manualmente y no volverá a aplicarse sola.",
+            },
+        )
+
+    # Carrera es contexto, no evidencia suficiente para escoger entre homónimos.
+    if str(result.get("method") or "") == "NOMBRE_EXACTO_CONTEXTO":
+        index = smart._master_index(report_id)
+        folded = smart._fold(source.get("full_name"))
+        exact = list(index["by_name"].get(folded, [])) if folded else []
+        if len(exact) > 1:
+            return _persist_final_match(
+                report_id, module, source_key, source,
+                {
+                    "status": domain.MATCH_AMBIGUOUS,
+                    "method": "HOMONIMO",
+                    "confidence": 100.0,
+                    "period_student_id": None,
+                    "candidates": [smart._candidate_payload(item, 1.0) for item in exact[:3]],
+                    "detail": "Existen homónimos. La carrera de la fuente no decide la identidad; seleccione la persona correcta.",
+                },
+            )
+
+    # La similitud fuzzy queda como sugerencia salvo confianza excepcional.
+    if (
+        str(result.get("method") or "") == "NOMBRE_ALTA_CONFIANZA"
+        and float(result.get("confidence") or 0) < 98.5
+    ):
+        downgraded = dict(result)
+        downgraded.update(
+            {
+                "status": domain.MATCH_REVIEW,
+                "method": "NOMBRE_SUGERIDO",
+                "period_student_id": None,
+                "candidates": list(result.get("candidates") or [])[:3],
+                "detail": "Informtit encontró una coincidencia probable, pero la deja como sugerencia porque no alcanza el umbral final de identidad segura.",
+            }
+        )
+        return _persist_final_match(report_id, module, source_key, source, downgraded)
+    return result
