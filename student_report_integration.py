@@ -172,7 +172,7 @@ def _recalculate_nucleus(course: dict[str, Any]) -> None:
 
 
 def filtered_nuclei(report_id: int) -> dict[str, Any]:
-    """Filtra solo para reportes; la pantalla de carga conserva todos los registros crudos."""
+    """Filtra Núcleos por identidad/ruta y deja una nota efectiva por estudiante+número."""
     reconcile_all(report_id)
     masters = _master(report_id)
     source_courses: list[dict[str, Any]] = []
@@ -181,32 +181,87 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
             tagged = dict(raw_course)
             tagged["_source_report_id"] = source_report_id
             source_courses.append(tagged)
+
+    # La misma persona puede haber quedado cargada en Presencial y Online. Para
+    # métricas académicas existe una sola nota efectiva por número de Núcleo.
+    evidence: dict[tuple[int, int], list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]]] = {}
+    for source_course in source_courses:
+        nucleus_number = int(source_course.get("nucleus_number") or 0)
+        for source_student in source_course.get("students", []):
+            sid = int(source_student.get("period_student_id") or 0)
+            master = masters.get(sid) if sid else None
+            if not _active_for_route(master, ROUTE_COMPLEXIVE):
+                continue
+            evidence.setdefault((sid, nucleus_number), []).append(
+                (source_course, source_student, master)
+            )
+
+    selected_by_course: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    omitted_grade_conflicts = 0
+    for (sid, nucleus_number), entries in evidence.items():
+        selected = _selected_grade(report_id, "NUCLEI", sid, nucleus_number)
+        numeric_grades = {
+            _grade(student.get("final_grade"))
+            for _course, student, _master_row in entries
+            if _grade(student.get("final_grade")) is not None
+        }
+        if selected is None and len(numeric_grades) > 1:
+            # El conflicto permanece visible en Estudiantes y no contamina el reporte.
+            omitted_grade_conflicts += 1
+            continue
+
+        if selected is not None:
+            candidates = [
+                entry for entry in entries
+                if _grade(entry[1].get("final_grade")) == selected
+            ]
+        elif len(numeric_grades) == 1:
+            only_grade = next(iter(numeric_grades))
+            # Si una copia no tiene nota y otra sí, conserva la evidencia evaluada.
+            candidates = [
+                entry for entry in entries
+                if _grade(entry[1].get("final_grade")) == only_grade
+            ]
+        else:
+            candidates = list(entries)
+        if not candidates:
+            continue
+
+        candidates.sort(
+            key=lambda entry: (
+                0 if int(entry[0].get("_source_report_id") or 0) == report_id else 1,
+                int(entry[0].get("id") or 0),
+                int(entry[1].get("id") or 0),
+            )
+        )
+        source_course, source_student, master = candidates[0]
+        student = dict(source_student)
+        student["scores"] = [dict(score) for score in source_student.get("scores", [])]
+        student["master_identification"] = master.get("identification") or ""
+        student["master_name"] = master.get("full_name") or ""
+        student["full_name"] = master.get("full_name") or student.get("full_name") or ""
+        student["identification"] = master.get("identification") or student.get("identification") or ""
+        student["official_career_name"] = master.get("career_name") or ""
+        student["official_modality"] = master.get("modality") or ""
+        student["official_graduated"] = bool(master.get("official_graduated"))
+        course_key = (
+            int(source_course.get("_source_report_id") or 0),
+            int(source_course.get("id") or 0),
+        )
+        selected_by_course.setdefault(course_key, []).append(student)
+
     courses: list[dict[str, Any]] = []
     for source_course in source_courses:
+        course_key = (
+            int(source_course.get("_source_report_id") or 0),
+            int(source_course.get("id") or 0),
+        )
+        students = selected_by_course.get(course_key, [])
         course = dict(source_course)
         course["assessments"] = [dict(item) for item in source_course.get("assessments", [])]
         course["activity_averages"] = [
             dict(item) for item in source_course.get("activity_averages", []) if isinstance(item, dict)
         ]
-        students: list[dict[str, Any]] = []
-        for source_student in source_course.get("students", []):
-            sid = source_student.get("period_student_id")
-            master = masters.get(int(sid)) if sid else None
-            if _active_for_route(master, ROUTE_COMPLEXIVE):
-                final_grade = _grade(source_student.get("final_grade"))
-                nucleus_number = int(course.get("nucleus_number") or 0)
-                if not _grade_selected(report_id, "NUCLEI", int(sid), final_grade, nucleus_number):
-                    continue
-                student = dict(source_student)
-                student["scores"] = [dict(score) for score in source_student.get("scores", [])]
-                student["master_identification"] = master.get("identification") or ""
-                student["master_name"] = master.get("full_name") or ""
-                student["full_name"] = master.get("full_name") or student.get("full_name") or ""
-                student["identification"] = master.get("identification") or student.get("identification") or ""
-                student["official_career_name"] = master.get("career_name") or ""
-                student["official_modality"] = master.get("modality") or ""
-                student["official_graduated"] = bool(master.get("official_graduated"))
-                students.append(student)
         course["students"] = students
         official_careers = {
             str(item.get("official_career_name") or "")
@@ -215,13 +270,17 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
         if len(official_careers) == 1:
             course["career_name"] = next(iter(official_careers))
         _recalculate_nucleus(course)
+
         # Conserva cursos vacíos solo si pertenecen físicamente a esta salida.
-        # Los cursos del otro dataset se incorporan únicamente cuando contienen
-        # estudiantes cuya modalidad oficial (Requisitos) corresponde a esta salida.
+        # La copia del otro dataset solo entra si aporta la evidencia seleccionada.
         if students or int(source_course.get("_source_report_id") or 0) == report_id:
             course.pop("_source_report_id", None)
             courses.append(course)
-    return {"courses": courses}
+
+    return {
+        "courses": courses,
+        "omitted_grade_conflicts": omitted_grade_conflicts,
+    }
 
 
 def filtered_projects(report_id: int) -> dict[str, Any]:
