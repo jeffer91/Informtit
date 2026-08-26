@@ -182,7 +182,7 @@
                   data-link-id="${linkId}" data-student-id="${Number(candidate.student_id)}">
                   ${escapeValue(candidate.full_name)} · ${escapeValue(candidate.identification || 'sin cédula')} · ${escapeValue(candidate.career_name || '')}
                 </button>`).join('')
-            : '<small>No se encontraron estudiantes de Requisitos en este mismo dataset.</small>';
+            : '<small>No se encontraron estudiantes compatibles en Requisitos de este período.</small>';
         } catch (error) {
           notify(error.message, true);
         } finally {
@@ -236,7 +236,9 @@
     const view = document.getElementById('period-students-view');
     const pid = projectId();
     if (!view || !pid || !view.querySelector('.student-match-panel')) return;
-    if (view.querySelector('[data-final-audit-tools]')) return;
+    // Esta capa ya no crea una segunda pantalla de resolución. Solo añade el
+    // acceso "Revisar vínculos" a cada estudiante.
+    if (view.querySelector('.student-audit-row-button')) return;
 
     ensureStyles();
     bindView(view);
@@ -258,13 +260,6 @@
       const data = await request(`/api/period-projects/${pid}/students-domain`);
       view.__finalAuditData = data;
 
-      const sourceAlerts = Number(data.summary?.source_alerts || data.open_links?.length || 0);
-      const summaryGrid = view.querySelector('.student-summary-grid');
-      if (summaryGrid && !summaryGrid.querySelector('[data-source-alerts]')) {
-        summaryGrid.insertAdjacentHTML('beforeend',
-          `<div class="student-metric" data-source-alerts><strong>${sourceAlerts}</strong><span>Fuentes por conciliar</span></div>`);
-      }
-
       const byId = new Map((data.students || []).map(row => [Number(row.id), row]));
       view.querySelectorAll('[data-period-student-row]').forEach(rowNode => {
         const routeSelect = rowNode.querySelector('.period-route-select');
@@ -278,21 +273,9 @@
         }
       });
 
-      const panel = view.querySelector('.student-match-panel');
-      const links = data.open_links || [];
-      panel.insertAdjacentHTML('afterend', `
-        <div class="panel student-final-audit-tools" data-final-audit-tools>
-          <div class="panel-head">
-            <div>
-              <h2>Resolución manual avanzada</h2>
-              <p>Busque cualquier estudiante de Requisitos del mismo dataset cuando la sugerencia automática no sea suficiente. También puede desvincular una asociación incorrecta sin borrar la evidencia original.</p>
-            </div>
-            <strong>${links.length}</strong>
-          </div>
-          ${links.length
-            ? `<div class="student-final-audit-list">${links.map(openLinkCard).join('')}</div>`
-            : '<div class="empty-mini">No existen fuentes pendientes de conciliación.</div>'}
-        </div>`);
+      // Los casos pendientes se resuelven exclusivamente en "Casos que requieren
+      // atención". El diálogo de vínculos queda para inspeccionar/desvincular
+      // evidencias ya asociadas sin duplicar la interfaz.
     } catch (error) {
       notify(`No se pudo cargar la auditoría avanzada: ${error.message}`, true);
     }
