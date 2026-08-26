@@ -252,12 +252,23 @@ def filtered_report_data(report_id: int) -> dict[str, Any]:
             sid = source.get("period_student_id")
             master = masters.get(int(sid)) if sid else None
             if _active_for_route(master, ROUTE_COMPLEXIVE):
+                if not _grade_selected(report_id, "COMPLEXIVE", int(sid), analytics.final_grade(source)):
+                    continue
                 item = dict(source)
                 item["identification"] = master.get("identification") or item.get("identification") or ""
+                item["full_name"] = master.get("full_name") or item.get("full_name") or ""
+                item["official_career_name"] = master.get("career_name") or ""
+                item["official_modality"] = master.get("modality") or ""
                 item["official_graduated"] = bool(master.get("official_graduated"))
                 item["official_titulation_completed"] = bool(master.get("official_titulation_completed"))
                 filtered.append(item)
         career["students"] = filtered
+        official_careers = {
+            str(item.get("official_career_name") or "")
+            for item in filtered if item.get("official_career_name")
+        }
+        if len(official_careers) == 1:
+            career["name"] = next(iter(official_careers))
     report["student_domain_applied"] = True
     return report
 
