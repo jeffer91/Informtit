@@ -1269,6 +1269,29 @@ def _final_match(
             },
         )
 
+    # Una cédula explícita que no existe en Requisitos se presenta como
+    # "Fuera de población", aunque nombre/correo sugieran a alguien. El candidato
+    # se conserva para que el usuario pueda asociarlo manualmente en un clic.
+    source_id = bridge._source_identification(source.get("identification"))
+    if source_id:
+        index = smart._master_index(report_id)
+        if not list(index["by_id"].get(source_id, [])):
+            outside = dict(result)
+            outside.update(
+                {
+                    "status": smart.MATCH_OUTSIDE_POPULATION,
+                    "method": "CEDULA_FUERA_POBLACION",
+                    "period_student_id": None,
+                    "detail": (
+                        f"La cédula {source_id} no aparece en Requisitos. "
+                        "La evidencia queda fuera de población hasta que se confirme manualmente una asociación."
+                    ),
+                }
+            )
+            return _persist_final_match(
+                report_id, module, source_key, source, outside
+            )
+
     # Si varias personas tienen exactamente los mismos componentes del nombre,
     # el orden de nombres/apellidos tampoco puede utilizarse para elegir una.
     # La carrera puede mostrarse como contexto, pero no decide la identidad.
