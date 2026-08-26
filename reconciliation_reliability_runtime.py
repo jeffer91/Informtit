@@ -18,6 +18,7 @@ import smart_reconciliation_runtime as smart
 import sqlite_concurrency_runtime as sqlite_guard
 import student_domain_bridge as bridge
 import student_domain_service as domain
+import student_domain_read_model as read_model
 import student_final_audit as audit
 from db import connection, rows_to_dicts, utcnow
 
@@ -437,6 +438,9 @@ _FINAL_BASE_SYNC: Callable[[int], dict[str, Any]] | None = None
 _FINAL_BASE_PERIOD_READ: Callable[[int], dict[str, Any]] | None = None
 _FINAL_BASE_GET: Callable[..., Any] | None = None
 _FINAL_BASE_WRITE: Callable[..., Any] | None = None
+_FINAL_BASE_COMPLEXIVE_RECORDS: Callable[[int], dict[int, list[dict[str, Any]]]] | None = None
+_FINAL_BASE_THESIS_RECORDS: Callable[[int], dict[int, list[dict[str, Any]]]] | None = None
+_FINAL_BASE_NUCLEI_RECORDS: Callable[[int], dict[int, list[dict[str, Any]]]] | None = None
 _DECISION_LOCAL = threading.local()
 
 DECISION_MATCH = "MATCH"
@@ -1575,6 +1579,79 @@ def _resolve_grade_case(
     }
 
 
+
+def _complexive_records_final(report_id: int) -> dict[int, list[dict[str, Any]]]:
+    assert _FINAL_BASE_COMPLEXIVE_RECORDS is not None
+    grouped = _FINAL_BASE_COMPLEXIVE_RECORDS(report_id)
+    project_id = _project_id_for_report(report_id)
+    if not project_id:
+        return grouped
+    result: dict[int, list[dict[str, Any]]] = {}
+    for student_id, records in grouped.items():
+        selected = _grade_resolution(project_id, "COMPLEXIVE", f"student:{student_id}")
+        if selected is None:
+            result[student_id] = records
+            continue
+        chosen = [
+            row for row in records
+            if _grade_value(analytics.final_grade(row)) == selected
+        ]
+        result[student_id] = chosen or records
+    return result
+
+
+def _thesis_records_final(report_id: int) -> dict[int, list[dict[str, Any]]]:
+    assert _FINAL_BASE_THESIS_RECORDS is not None
+    grouped = _FINAL_BASE_THESIS_RECORDS(report_id)
+    project_id = _project_id_for_report(report_id)
+    if not project_id:
+        return grouped
+    result: dict[int, list[dict[str, Any]]] = {}
+    for student_id, records in grouped.items():
+        selected = _grade_resolution(project_id, "THESIS", f"student:{student_id}")
+        if selected is None:
+            result[student_id] = records
+            continue
+        chosen = [
+            row for row in records
+            if _grade_value(row.get("final_grade")) == selected
+        ]
+        result[student_id] = chosen or records
+    return result
+
+
+def _nuclei_records_final(report_id: int) -> dict[int, list[dict[str, Any]]]:
+    assert _FINAL_BASE_NUCLEI_RECORDS is not None
+    grouped = _FINAL_BASE_NUCLEI_RECORDS(report_id)
+    project_id = _project_id_for_report(report_id)
+    if not project_id:
+        return grouped
+    result: dict[int, list[dict[str, Any]]] = {}
+    for student_id, records in grouped.items():
+        by_number: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        passthrough: list[dict[str, Any]] = []
+        for row in records:
+            number = int(row.get("nucleus_number") or 0)
+            if number:
+                by_number[number].append(row)
+            else:
+                passthrough.append(row)
+        selected_rows = list(passthrough)
+        for number, items in by_number.items():
+            key = f"student:{student_id}:nucleus:{number}"
+            selected = _grade_resolution(project_id, "NUCLEI", key)
+            if selected is None:
+                selected_rows.extend(items)
+                continue
+            chosen = [
+                row for row in items
+                if _grade_value(row.get("final_grade")) == selected
+            ]
+            selected_rows.extend(chosen or items)
+        result[student_id] = selected_rows
+    return result
+
+
 def _route_cases(period_project_id: int) -> list[dict[str, Any]]:
     evidence = _route_evidence(period_project_id)
     with connection() as conn:
@@ -2007,6 +2084,7 @@ def _install_final_contract() -> None:
     """Instala la semántica acordada después de todas las capas legacy/hotfix."""
     global _FINAL_INSTALLED, _FINAL_BASE_MATCH, _FINAL_BASE_SYNC
     global _FINAL_BASE_PERIOD_READ, _FINAL_BASE_GET, _FINAL_BASE_WRITE
+    global _FINAL_BASE_COMPLEXIVE_RECORDS, _FINAL_BASE_THESIS_RECORDS, _FINAL_BASE_NUCLEI_RECORDS
     if _FINAL_INSTALLED:
         return
     _ensure_final_schema()
@@ -2016,6 +2094,9 @@ def _install_final_contract() -> None:
     _FINAL_BASE_PERIOD_READ = fast_read._period_students_read
     _FINAL_BASE_GET = core.InformtitHandler._handle_api_get
     _FINAL_BASE_WRITE = core.InformtitHandler._handle_api_write
+    _FINAL_BASE_COMPLEXIVE_RECORDS = read_model._complexive_records
+    _FINAL_BASE_THESIS_RECORDS = read_model._thesis_records
+    _FINAL_BASE_NUCLEI_RECORDS = read_model._nuclei_records
 
     # Requisitos gobierna identidad/nombre/carrera/modalidad y conserva la entidad
     # aunque cambie de dataset en una carga posterior.
@@ -2026,6 +2107,11 @@ def _install_final_contract() -> None:
 
     # Mantiene el wrapper de rendimiento/progreso, pero sustituye su núcleo.
     perf._BASE_RUN_JOB = _run_final_job_core
+
+    # Las decisiones de nota afectan la lectura efectiva, no la evidencia cruda.
+    read_model._complexive_records = _complexive_records_final
+    read_model._thesis_records = _thesis_records_final
+    read_model._nuclei_records = _nuclei_records_final
 
     # Lectura única de casos para tabla, contadores y acciones manuales.
     fast_read._period_students_read = _period_read_final
