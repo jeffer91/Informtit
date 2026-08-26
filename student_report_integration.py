@@ -232,6 +232,10 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
     for source in source_projects:
         sid = source.get("period_student_id")
         master = masters.get(int(sid)) if sid else None
+        if master is None:
+            # La evidencia pertenece a un estudiante cuya modalidad oficial es el
+            # otro dataset del mismo período; no es un conflicto de esta salida.
+            continue
         if _active_for_route(master, ROUTE_THESIS):
             if not _grade_selected(report_id, "THESIS", int(sid), _grade(source.get("final_grade"))):
                 continue
