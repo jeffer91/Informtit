@@ -206,7 +206,24 @@ def reconciled_courses(report_id: int) -> tuple[list[dict[str, Any]], dict[str, 
         if not career or (not title and not course.get("nucleus_number")):
             reasons["Registro vacío"] += 1
             continue
-        online = "ONLINE" in ascii_key(career) or "EN LINEA" in ascii_key(career) or "-L-" in str(course.get("career_code") or "").upper()
+        explicit_modality = ascii_key(
+            course.get("official_modality")
+            or course.get("dataset_modality")
+            or course.get("modality")
+        )
+        if explicit_modality in {"EN LINEA", "ONLINE", "EN_LINEA"}:
+            online = True
+        elif explicit_modality == "PRESENCIAL":
+            online = False
+        else:
+            # Compatibilidad con evidencias históricas que todavía no llevan una
+            # modalidad explícita. Los datos nuevos deben venir etiquetados desde
+            # Requisitos/dataset, no inferirse por el nombre de la carrera.
+            online = (
+                "ONLINE" in ascii_key(career)
+                or "EN LINEA" in ascii_key(career)
+                or "-L-" in str(course.get("career_code") or "").upper()
+            )
         if report.get("modality") == "en_linea" and not online:
             reasons["Otra modalidad"] += 1
             continue
