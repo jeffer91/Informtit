@@ -359,12 +359,86 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(result["moved"], 1)
         with db.connection() as conn:
             row = conn.execute(
-                "SELECT id, report_id FROM period_students WHERE id=?",
+                "SELECT id, report_id, identification FROM period_students WHERE id=?",
                 (noid_id,),
             ).fetchone()
         self.assertIsNotNone(row)
         self.assertEqual(int(row["id"]), noid_id)
         self.assertEqual(int(row["report_id"]), online_id)
+        self.assertEqual(row["identification"], "1754444444")
+
+
+    def test_migration_merges_legacy_noid_copy_with_new_cedula_master(self):
+        requirements_store.ensure_requirements_schema()
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO reports
+                (name, period, modality, period_project_id, created_at, updated_at)
+                VALUES ('Online', 'P', 'en_linea', 77, 'x', 'x')
+                """
+            )
+            online_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+            conn.execute(
+                """
+                INSERT INTO period_students
+                (period_project_id, report_id, identification, full_name, email,
+                 career_name, modality, route, route_source, process_status,
+                 requirements_present, created_at, updated_at)
+                VALUES (77, ?, 'NOID:EMAIL:legacy@itsqmet.edu.ec',
+                        'ESTUDIANTE LEGACY', 'legacy@itsqmet.edu.ec',
+                        'DESARROLLO DE SOFTWARE', 'presencial', 'TRABAJO_TITULACION',
+                        'MANUAL', 'ACTIVO', 1, 'x', 'x')
+                """,
+                (self.report_id,),
+            )
+            legacy_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+            conn.execute(
+                """
+                INSERT INTO period_students
+                (period_project_id, report_id, identification, full_name, email,
+                 career_name, modality, route, route_source, process_status,
+                 requirements_present, created_at, updated_at)
+                VALUES (77, ?, '1755555555', 'ESTUDIANTE LEGACY',
+                        'legacy@itsqmet.edu.ec', 'DESARROLLO DE SOFTWARE',
+                        'en_linea', 'COMPLEXIVO', 'DEFAULT', 'ACTIVO', 1, 'x', 'x')
+                """,
+                (online_id,),
+            )
+            duplicate_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+            conn.execute(
+                """
+                INSERT INTO requirements_students
+                (report_id, identification, full_name, career_name, modality,
+                 email, created_at, updated_at)
+                VALUES (?, '1755555555', 'ESTUDIANTE LEGACY',
+                        'DESARROLLO DE SOFTWARE', 'en_linea',
+                        'legacy@itsqmet.edu.ec', 'x', 'x')
+                """,
+                (online_id,),
+            )
+
+        result = reliability._migrate_project_master(77)
+        self.assertEqual(result["merged"], 1)
+        with db.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, report_id, identification, route, route_source
+                FROM period_students
+                WHERE period_project_id=77 AND email='legacy@itsqmet.edu.ec'
+                ORDER BY id
+                """
+            ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(int(rows[0]["id"]), legacy_id)
+        self.assertNotEqual(int(rows[0]["id"]), duplicate_id)
+        self.assertEqual(int(rows[0]["report_id"]), online_id)
+        self.assertEqual(rows[0]["identification"], "1755555555")
+        self.assertEqual(rows[0]["route"], "TRABAJO_TITULACION")
+        self.assertEqual(rows[0]["route_source"], "MANUAL")
 
 
     def test_grade_conflict_requires_manual_choice_and_then_disappears(self):
