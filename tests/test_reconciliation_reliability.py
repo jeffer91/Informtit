@@ -151,16 +151,6 @@ class ReconciliationReliabilityTests(unittest.TestCase):
             )
             conn.execute(
                 """
-                INSERT INTO thesis_projects
-                (report_id, identification, full_name, career_name, final_grade,
-                 final_status, created_at, updated_at, period_student_id)
-                VALUES (?, '1752222404', 'ALOMOTO PAZMIÑO BAYRON JAVIER',
-                        'DESARROLLO DE SOFTWARE', 8.4, 'APROBADO', 'x', 'x', ?)
-                """,
-                (self.report_id, self.student_id),
-            )
-            conn.execute(
-                """
                 INSERT INTO student_source_links
                 (report_id, period_student_id, source_module, source_key, source_name,
                  source_email, source_identification, source_career, match_status,
