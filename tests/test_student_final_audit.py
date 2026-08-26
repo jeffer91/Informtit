@@ -18,6 +18,12 @@ class StudentFinalAuditTests(unittest.TestCase):
         db.init_db()
         requirements_store.ensure_requirements_schema()
         with db.connection() as conn:
+            # En escritorio period_policy_runtime.ensure_schema() crea esta columna
+            # antes de instalar el dominio maestro. La prueba reproduce ese contrato.
+            if "period_project_id" not in {
+                str(row[1]) for row in conn.execute("PRAGMA table_info(reports)").fetchall()
+            }:
+                conn.execute("ALTER TABLE reports ADD COLUMN period_project_id INTEGER")
             conn.execute(
                 """
                 INSERT INTO reports (name, period, modality, created_at, updated_at)
