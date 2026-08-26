@@ -281,6 +281,87 @@
           }
         });
       });
+
+      view.querySelectorAll('.period-route-case').forEach(button => {
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await apiRequest(\`/api/period-projects/\${pid}/students-domain/\${Number(button.dataset.studentId)}/route\`, {
+              method: 'PUT', body: JSON.stringify({route: button.dataset.route}),
+            });
+            if (typeof toast === 'function') toast('Ruta resuelta y guardada.');
+            await renderGlobalStudents();
+          } catch (error) {
+            if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
+            button.disabled = false;
+          }
+        });
+      });
+
+      view.querySelectorAll('.period-grade-case').forEach(button => {
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await apiRequest(\`/api/period-projects/\${pid}/students-domain/grade-conflicts/resolve\`, {
+              method: 'POST',
+              body: JSON.stringify({
+                module: button.dataset.module,
+                student_id: Number(button.dataset.studentId),
+                nucleus_number: Number(button.dataset.nucleus || 0),
+                grade: button.dataset.grade,
+              }),
+            });
+            if (typeof toast === 'function') toast('Calificación seleccionada y auditada.');
+            await renderGlobalStudents();
+          } catch (error) {
+            if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
+            button.disabled = false;
+          }
+        });
+      });
+
+      view.querySelectorAll('.period-case-search').forEach(button => {
+        button.addEventListener('click', async () => {
+          const linkId = Number(button.dataset.linkId);
+          const input = view.querySelector(\`[data-period-case-search-input="\${linkId}"]\`);
+          const host = view.querySelector(\`[data-period-case-results="\${linkId}"]\`);
+          if (!host) return;
+          button.disabled = true;
+          try {
+            const q = encodeURIComponent(input?.value || '');
+            const result = await apiRequest(\`/api/period-projects/\${pid}/students-domain/matches/\${linkId}/candidates?q=\${q}\`);
+            const candidates = result.candidates || [];
+            host.innerHTML = candidates.length
+              ? candidates.slice(0, 3).map((candidate, index) => \`
+                <button type="button" class="button secondary compact period-case-search-confirm"
+                  data-link-id="\${linkId}" data-student-id="\${Number(candidate.student_id)}">
+                  \${index === 0 ? 'Sugerido · ' : ''}\${escapeValue(candidate.full_name)} ·
+                  \${escapeValue(candidate.identification || 'sin cédula')}
+                </button>\`).join('')
+              : '<small>No se encontraron estudiantes compatibles en Requisitos.</small>';
+            host.querySelectorAll('.period-case-search-confirm').forEach(candidateButton => {
+              candidateButton.addEventListener('click', async () => {
+                candidateButton.disabled = true;
+                try {
+                  await apiRequest(\`/api/period-projects/\${pid}/students-domain/matches/\${Number(candidateButton.dataset.linkId)}/confirm\`, {
+                    method: 'POST',
+                    body: JSON.stringify({student_id: Number(candidateButton.dataset.studentId)}),
+                  });
+                  if (typeof toast === 'function') toast('Asociación confirmada.');
+                  await renderGlobalStudents();
+                } catch (error) {
+                  if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
+                  candidateButton.disabled = false;
+                }
+              });
+            });
+          } catch (error) {
+            if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
     } catch (error) {
       view.innerHTML = `<div class="empty-state"><h3>No se pudo cargar Estudiantes</h3><p>${escapeValue(error.message)}</p></div>`;
     }
