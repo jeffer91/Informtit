@@ -1099,6 +1099,62 @@ def _exact_source_manual_target(report_id: int, module: str, source_key: str) ->
     return int(row[0]) if row and row[0] is not None else None
 
 
+def _guard_strong_identity_conflict(
+    report_id: int,
+    module: str,
+    source_key: str,
+    source: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Una cédula exacta no puede contradecir silenciosamente un correo exacto."""
+    if str(result.get("status") or "") != domain.MATCH_OK:
+        return result
+    if str(result.get("method") or "") != "CEDULA":
+        return result
+
+    source_id = bridge._source_identification(source.get("identification"))
+    source_email = bridge._source_email(source.get("email"))
+    if not source_id or not source_email:
+        return result
+
+    index = smart._master_index(report_id)
+    id_matches = list(index["by_id"].get(source_id, []))
+    email_matches = list(index["by_email"].get(source_email, []))
+    if len(id_matches) != 1 or not email_matches:
+        return result
+
+    target = id_matches[0]
+    target_id = int(target["id"])
+    conflicting = [
+        item for item in email_matches
+        if int(item["id"]) != target_id
+    ]
+    if not conflicting:
+        return result
+
+    candidates: list[dict[str, Any]] = [smart._candidate_payload(target, 1.0)]
+    seen = {target_id}
+    for item in conflicting:
+        item_id = int(item["id"])
+        if item_id in seen:
+            continue
+        candidates.append(smart._candidate_payload(item, 1.0))
+        seen.add(item_id)
+
+    guarded = {
+        "status": audit.MATCH_IDENTITY_CONFLICT,
+        "method": "CEDULA_CORREO_CONFLICTO",
+        "confidence": 100.0,
+        "period_student_id": None,
+        "candidates": candidates[:3],
+        "detail": (
+            "La cédula y el correo institucional de la fuente apuntan a estudiantes "
+            "distintos en Requisitos. Informtit no elige automáticamente."
+        ),
+    }
+    return _persist_final_match(report_id, module, source_key, source, guarded)
+
+
 def _guard_weak_manual_recovery(
     report_id: int,
     module: str,
@@ -1165,6 +1221,7 @@ def _final_match(
     assert _FINAL_BASE_MATCH is not None
     # Mantiene el seguimiento de progreso de la capa de rendimiento.
     result = _FINAL_BASE_MATCH(report_id, module, source_key, source)
+    result = _guard_strong_identity_conflict(report_id, module, source_key, source, result)
     result = _guard_weak_manual_recovery(report_id, module, source_key, source, result)
     project_id = _project_id_for_report(report_id)
     identity = _identity_key_source(source, source_key)
