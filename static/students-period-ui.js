@@ -200,7 +200,7 @@
       const openLinks = data.open_links || [];
       view.innerHTML = `<div class="panel">
         <div class="panel-head"><div><h2>Estudiantes del período</h2><p>Vista global. Requisitos conserva la identidad oficial; todos parten por Complexivo y los casos excepcionales se cambian aquí a Trabajo de Titulación.</p></div>
-          <button class="button secondary" id="period-student-refresh" type="button">Reconciliar</button></div>
+          <button class="button secondary" id="period-student-refresh" type="button" title="Identifica y corrige automáticamente todos los casos seguros; deja únicamente las decisiones ambiguas para revisión">Reconciliar y resolver seguros</button></div>
         ${summaryHtml(data.summary || {})}
         <div class="student-filters">
           <input id="period-student-search" placeholder="Buscar por cédula, nombre, correo o carrera">
