@@ -33,6 +33,7 @@ import period_readonly_runtime
 import period_unified_runtime
 import process_export
 import process_routes
+import read_performance_runtime
 import report_catalog_independent
 import report_completion
 import report_completion_constants
@@ -206,6 +207,10 @@ def prepare() -> None:
     # SQLite admite un único escritor. La capa final elimina writers anidados,
     # serializa escrituras y deja el dominio maestro sincronizado tras cada carga.
     sqlite_concurrency_runtime.install()
+
+    # Navegar por Todos/Estudiantes debe ser lectura pura. La conciliación pesada
+    # queda para cargas, cambios y el botón explícito Reconciliar.
+    read_performance_runtime.install()
 
 
 def main() -> None:
