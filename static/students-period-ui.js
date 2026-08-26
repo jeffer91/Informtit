@@ -93,71 +93,71 @@
     const occurrences = Number(link.occurrences || 1);
 
     if (type === 'ROUTE') {
-      return \`<article class="student-match-card">
-        <div><strong>\${escapeValue(title)}</strong> \${badge('CONFLICTO DE RUTA', 'warn')}</div>
-        <p><strong>\${escapeValue(student)}</strong> · \${escapeValue(identification)}</p>
-        <p>\${escapeValue(link.detail || '')}</p>
+      return `<article class="student-match-card">
+        <div><strong>${escapeValue(title)}</strong> ${badge('CONFLICTO DE RUTA', 'warn')}</div>
+        <p><strong>${escapeValue(student)}</strong> · ${escapeValue(identification)}</p>
+        <p>${escapeValue(link.detail || '')}</p>
         <div class="student-match-candidates">
           <button type="button" class="button secondary compact period-route-case"
-            data-student-id="\${Number(link.student_id)}" data-route="COMPLEXIVO">Usar Examen Complexivo</button>
+            data-student-id="${Number(link.student_id)}" data-route="COMPLEXIVO">Usar Examen Complexivo</button>
           <button type="button" class="button secondary compact period-route-case"
-            data-student-id="\${Number(link.student_id)}" data-route="TRABAJO_TITULACION">Usar Trabajo de Titulación</button>
+            data-student-id="${Number(link.student_id)}" data-route="TRABAJO_TITULACION">Usar Trabajo de Titulación</button>
         </div>
         <small>La identidad ya está confirmada. Elegir una ruta resuelve el conflicto completo sin borrar la otra evidencia.</small>
-      </article>\`;
+      </article>`;
     }
 
     if (type === 'GRADE') {
       const options = Array.isArray(link.grade_options) ? link.grade_options : [];
-      return \`<article class="student-match-card">
-        <div><strong>\${escapeValue(title)}</strong> \${badge('CONFLICTO DE NOTA', 'warn')}</div>
-        <p><strong>\${escapeValue(student)}</strong> · \${escapeValue(identification)}</p>
-        <p>\${escapeValue(link.detail || '')}</p>
+      return `<article class="student-match-card">
+        <div><strong>${escapeValue(title)}</strong> ${badge('CONFLICTO DE NOTA', 'warn')}</div>
+        <p><strong>${escapeValue(student)}</strong> · ${escapeValue(identification)}</p>
+        <p>${escapeValue(link.detail || '')}</p>
         <div class="student-match-candidates">
-          \${options.map(value => \`<button type="button" class="button secondary compact period-grade-case"
-            data-student-id="\${Number(link.student_id)}"
-            data-module="\${escapeValue(link.source_module || '')}"
-            data-nucleus="\${Number(link.nucleus_number || 0)}"
-            data-grade="\${escapeValue(value)}">Usar \${escapeValue(value)}</button>\`).join('')}
+          ${options.map(value => `<button type="button" class="button secondary compact period-grade-case"
+            data-student-id="${Number(link.student_id)}"
+            data-module="${escapeValue(link.source_module || '')}"
+            data-nucleus="${Number(link.nucleus_number || 0)}"
+            data-grade="${escapeValue(value)}">Usar ${escapeValue(value)}</button>`).join('')}
         </div>
         <small>Informtit no elige automáticamente entre notas contradictorias. La opción seleccionada queda auditada.</small>
-      </article>\`;
+      </article>`;
     }
 
     if (type === 'OFFICIAL') {
-      return \`<article class="student-match-card">
-        <div><strong>Requisitos</strong> \${badge(status, 'warn')}</div>
-        <p><strong>\${escapeValue(student)}</strong> · \${escapeValue(identification)}</p>
-        <p>\${escapeValue(link.detail || '')}</p>
+      return `<article class="student-match-card">
+        <div><strong>Requisitos</strong> ${badge(status, 'warn')}</div>
+        <p><strong>${escapeValue(student)}</strong> · ${escapeValue(identification)}</p>
+        <p>${escapeValue(link.detail || '')}</p>
         <small>Requisitos es la fuente maestra. Corrija el dato oficial en esa fuente y vuelva a conciliar.</small>
-      </article>\`;
+      </article>`;
     }
 
     const suggestion = link.suggestion || candidates[0] || null;
     const candidateHtml = candidates.length
-      ? \`<div class="student-match-candidates">
-          \${suggestion ? \`<small><strong>Sugerencia de Informtit:</strong> \${escapeValue(suggestion.full_name || '')} · \${escapeValue(suggestion.similarity || link.match_confidence || 0)}%</small>\` : ''}
-          \${candidates.map((candidate, index) => \`
+      ? `<div class="student-match-candidates">
+          ${suggestion ? `<small><strong>Sugerencia de Informtit:</strong> ${escapeValue(suggestion.full_name || '')} · ${escapeValue(suggestion.similarity || link.match_confidence || 0)}%</small>` : ''}
+          ${candidates.map((candidate, index) => `
           <button type="button" class="button secondary compact period-match-confirm"
-            data-link-id="\${Number(link.id)}" data-student-id="\${Number(candidate.student_id)}">
-            \${index === 0 ? 'Sugerido · ' : ''}\${escapeValue(candidate.full_name)} · \${escapeValue(candidate.identification || 'sin cédula')} · \${escapeValue(candidate.similarity || 0)}%
-          </button>\`).join('')}
-        </div>\`
+            data-link-id="${Number(link.id)}" data-student-id="${Number(candidate.student_id)}">
+            ${index === 0 ? 'Sugerido · ' : ''}${escapeValue(candidate.full_name)} · ${escapeValue(candidate.identification || 'sin cédula')} · ${escapeValue(candidate.similarity || 0)}%
+          </button>`).join('')}
+        </div>`
       : '';
-    return \`<article class="student-match-card">
-      <div><strong>\${escapeValue(title)}</strong> \${badge(status, 'warn')}</div>
-      <p><strong>\${escapeValue(student)}</strong> · \${escapeValue(identification)} · \${link.dataset_modality === 'en_linea' ? 'Online' : 'Presencial'}</p>
-      \${occurrences > 1 ? \`<small>\${occurrences} evidencias agrupadas en un solo caso.</small>\` : ''}
-      \${link.detail ? \`<p>\${escapeValue(link.detail)}</p>\` : ''}
-      \${candidateHtml}
+    return `<article class="student-match-card">
+      <div><strong>${escapeValue(title)}</strong> ${badge(status, 'warn')}</div>
+      <p><strong>${escapeValue(student)}</strong> · ${escapeValue(identification)} · ${link.dataset_modality === 'en_linea' ? 'Online' : 'Presencial'}</p>
+      ${occurrences > 1 ? `<small>${occurrences} evidencias agrupadas en un solo caso.</small>` : ''}
+      ${link.detail ? `<p>${escapeValue(link.detail)}</p>` : ''}
+      ${candidateHtml}
       <div class="student-final-audit-search">
-        <input type="search" data-period-case-search-input="\${Number(link.id)}"
+        <input type="search" data-period-case-search-input="${Number(link.id)}"
           placeholder="Buscar cédula, nombre, correo o carrera">
         <button type="button" class="button secondary compact period-case-search"
-          data-link-id="\${Number(link.id)}">Buscar estudiante</button>
+          data-link-id="${Number(link.id)}">Buscar estudiante</button>
       </div>
-      <div class="student-final-audit-results" data-period-case-results="\${Number(link.id)}"></div>
-    </article>\`;
+      <div class="student-final-audit-results" data-period-case-results="${Number(link.id)}"></div>
+    </article>`;
   }
 
   function applyFilters(view) {
@@ -286,7 +286,7 @@
         button.addEventListener('click', async () => {
           button.disabled = true;
           try {
-            await apiRequest(\`/api/period-projects/\${pid}/students-domain/\${Number(button.dataset.studentId)}/route\`, {
+            await apiRequest(`/api/period-projects/${pid}/students-domain/${Number(button.dataset.studentId)}/route`, {
               method: 'PUT', body: JSON.stringify({route: button.dataset.route}),
             });
             if (typeof toast === 'function') toast('Ruta resuelta y guardada.');
@@ -302,7 +302,7 @@
         button.addEventListener('click', async () => {
           button.disabled = true;
           try {
-            await apiRequest(\`/api/period-projects/\${pid}/students-domain/grade-conflicts/resolve\`, {
+            await apiRequest(`/api/period-projects/${pid}/students-domain/grade-conflicts/resolve`, {
               method: 'POST',
               body: JSON.stringify({
                 module: button.dataset.module,
@@ -323,27 +323,27 @@
       view.querySelectorAll('.period-case-search').forEach(button => {
         button.addEventListener('click', async () => {
           const linkId = Number(button.dataset.linkId);
-          const input = view.querySelector(\`[data-period-case-search-input="\${linkId}"]\`);
-          const host = view.querySelector(\`[data-period-case-results="\${linkId}"]\`);
+          const input = view.querySelector(`[data-period-case-search-input="${linkId}"]`);
+          const host = view.querySelector(`[data-period-case-results="${linkId}"]`);
           if (!host) return;
           button.disabled = true;
           try {
             const q = encodeURIComponent(input?.value || '');
-            const result = await apiRequest(\`/api/period-projects/\${pid}/students-domain/matches/\${linkId}/candidates?q=\${q}\`);
+            const result = await apiRequest(`/api/period-projects/${pid}/students-domain/matches/${linkId}/candidates?q=${q}`);
             const candidates = result.candidates || [];
             host.innerHTML = candidates.length
-              ? candidates.slice(0, 3).map((candidate, index) => \`
+              ? candidates.slice(0, 3).map((candidate, index) => `
                 <button type="button" class="button secondary compact period-case-search-confirm"
-                  data-link-id="\${linkId}" data-student-id="\${Number(candidate.student_id)}">
-                  \${index === 0 ? 'Sugerido · ' : ''}\${escapeValue(candidate.full_name)} ·
-                  \${escapeValue(candidate.identification || 'sin cédula')}
-                </button>\`).join('')
+                  data-link-id="${linkId}" data-student-id="${Number(candidate.student_id)}">
+                  ${index === 0 ? 'Sugerido · ' : ''}${escapeValue(candidate.full_name)} ·
+                  ${escapeValue(candidate.identification || 'sin cédula')}
+                </button>`).join('')
               : '<small>No se encontraron estudiantes compatibles en Requisitos.</small>';
             host.querySelectorAll('.period-case-search-confirm').forEach(candidateButton => {
               candidateButton.addEventListener('click', async () => {
                 candidateButton.disabled = true;
                 try {
-                  await apiRequest(\`/api/period-projects/\${pid}/students-domain/matches/\${Number(candidateButton.dataset.linkId)}/confirm\`, {
+                  await apiRequest(`/api/period-projects/${pid}/students-domain/matches/${Number(candidateButton.dataset.linkId)}/confirm`, {
                     method: 'POST',
                     body: JSON.stringify({student_id: Number(candidateButton.dataset.studentId)}),
                   });
