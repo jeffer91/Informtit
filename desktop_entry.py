@@ -60,6 +60,7 @@ import robust_import_fixes
 import robust_import_policy
 import robust_import_runtime
 import schedule_defaults_runtime
+import smart_reconciliation_performance_runtime
 import smart_reconciliation_runtime
 import sqlite_concurrency_runtime
 import storage_migration
@@ -216,6 +217,10 @@ def prepare() -> None:
     # Capa final de matching: identidad fuerte antes que similitud, agrupación de
     # evidencias repetidas y conciliación en segundo plano con progreso observable.
     smart_reconciliation_runtime.install()
+
+    # Hotfix de rendimiento para lotes grandes: reutiliza el índice maestro, evita
+    # consultas manuales redundantes, reduce escrituras y muestra avance por fila.
+    smart_reconciliation_performance_runtime.install()
 
 
 def main() -> None:
