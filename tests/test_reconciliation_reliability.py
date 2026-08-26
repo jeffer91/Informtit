@@ -144,6 +144,48 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         blocked = reliability._blocked_targets(77, "COMPLEXIVE", identity)
         self.assertIn(self.student_id, blocked)
 
+    def test_nuclei_counts_as_complexive_route_evidence(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO student_source_links
+                (report_id, period_student_id, source_module, source_key, source_name,
+                 source_email, source_identification, source_career, match_status,
+                 match_method, match_confidence, candidates_json, detail, source_active,
+                 created_at, updated_at)
+                VALUES (?, ?, 'NUCLEI', 'nuclei:test-route',
+                        'ALOMOTO PAZMIÑO BAYRON JAVIER', '',
+                        '1752222404', 'DESARROLLO DE SOFTWARE', 'OK',
+                        'CEDULA', 100, '[]', '', 1, 'x', 'x')
+                """,
+                (self.report_id, self.student_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO student_source_links
+                (report_id, period_student_id, source_module, source_key, source_name,
+                 source_email, source_identification, source_career, match_status,
+                 match_method, match_confidence, candidates_json, detail, source_active,
+                 created_at, updated_at)
+                VALUES (?, ?, 'THESIS', 'thesis:test-route',
+                        'ALOMOTO PAZMIÑO BAYRON JAVIER', '',
+                        '1752222404', 'DESARROLLO DE SOFTWARE', 'OK',
+                        'CEDULA', 100, '[]', '', 1, 'x', 'x')
+                """,
+                (self.report_id, self.student_id),
+            )
+            conn.execute(
+                "UPDATE period_students SET route='COMPLEXIVO', route_source='DEFAULT' WHERE id=?",
+                (self.student_id,),
+            )
+
+        stats = reliability._normalize_routes(77)
+        self.assertEqual(stats["route_conflicts"], 1)
+        cases = reliability._route_cases(77)
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]["match_status"], domain.MATCH_ROUTE_CONFLICT)
+
+
     def test_auto_route_returns_to_complexive_when_supporting_evidence_disappears(self):
         with db.connection() as conn:
             conn.execute(
