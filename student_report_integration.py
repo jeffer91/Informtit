@@ -175,6 +175,11 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
     """Filtra Núcleos por identidad/ruta y deja una nota efectiva por estudiante+número."""
     reconcile_all(report_id)
     masters = _master(report_id)
+    with connection() as conn:
+        target_row = conn.execute(
+            "SELECT modality FROM reports WHERE id=?", (report_id,)
+        ).fetchone()
+    target_modality = str(target_row["modality"] if target_row else "")
     source_courses: list[dict[str, Any]] = []
     for source_report_id in _project_report_ids(report_id):
         for raw_course in nuclei_multicampus.get_nuclei(source_report_id).get("courses", []):
@@ -275,6 +280,7 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
         # La copia del otro dataset solo entra si aporta la evidencia seleccionada.
         if students or int(source_course.get("_source_report_id") or 0) == report_id:
             course.pop("_source_report_id", None)
+            course["official_modality"] = target_modality
             courses.append(course)
 
     return {
