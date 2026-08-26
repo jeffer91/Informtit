@@ -2076,46 +2076,47 @@ def _resolve_grade_case(
     selected = _grade_value(grade)
     if selected is None:
         raise ValueError("Seleccione una calificación válida.")
-    with connection() as conn:
-        student = conn.execute(
-            """
-            SELECT * FROM period_students
-            WHERE id=? AND period_project_id=? AND COALESCE(requirements_present,1)=1
-            """,
-            (student_id, period_project_id),
-        ).fetchone()
-    if not student:
-        raise ValueError("El estudiante no pertenece al período.")
-    identity = (
-        f"student:{student_id}:nucleus:{int(nucleus_number)}"
-        if module == "NUCLEI" else f"student:{student_id}"
-    )
-    _store_decision(
-        period_project_id, f"GRADE_{module}", identity, DECISION_GRADE,
-        decision_scope="selected", target_student_id=student_id,
-        decision_value=str(selected),
-        detail="Calificación seleccionada manualmente entre evidencias contradictorias.",
-    )
-    with connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO student_audit_log
-            (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
-            VALUES (?, ?, 'RESOLVE_GRADE_CONFLICT', ?, '', ?,
-                    'Se conservan todas las evidencias originales; esta nota se usa como resolución efectiva.',
-                    ?)
-            """,
-            (
-                int(student["report_id"]), student_id, f"grade:{module.lower()}",
-                str(selected), utcnow(),
-            ),
+
+    with sqlite_guard._WRITE_LOCK:
+        with connection() as conn:
+            student = conn.execute(
+                """
+                SELECT * FROM period_students
+                WHERE id=? AND period_project_id=? AND COALESCE(requirements_present,1)=1
+                """,
+                (student_id, period_project_id),
+            ).fetchone()
+        if not student:
+            raise ValueError("El estudiante no pertenece al período.")
+
+        identity = (
+            f"student:{student_id}:nucleus:{int(nucleus_number)}"
+            if module == "NUCLEI" else f"student:{student_id}"
         )
+        _store_decision(
+            period_project_id, f"GRADE_{module}", identity, DECISION_GRADE,
+            decision_scope="selected", target_student_id=student_id,
+            decision_value=str(selected),
+            detail="Calificación seleccionada manualmente entre evidencias contradictorias.",
+        )
+        with connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO student_audit_log
+                (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+                VALUES (?, ?, 'RESOLVE_GRADE_CONFLICT', ?, '', ?,
+                        'Se conservan todas las evidencias originales; esta nota se usa como resolución efectiva.',
+                        ?)
+                """,
+                (
+                    int(student["report_id"]), student_id, f"grade:{module.lower()}",
+                    str(selected), utcnow(),
+                ),
+            )
     return {
         "ok": True, "student_id": student_id, "module": module,
         "grade": selected, "nucleus_number": int(nucleus_number or 0),
     }
-
-
 
 def _complexive_records_final(report_id: int) -> dict[int, list[dict[str, Any]]]:
     assert _FINAL_BASE_COMPLEXIVE_RECORDS is not None
