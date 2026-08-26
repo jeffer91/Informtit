@@ -1672,6 +1672,15 @@ def _normalize_routes(period_project_id: int) -> dict[str, int]:
                     auto_routes += 1
             elif has_complexive and has_thesis:
                 conflicts += 1
+            elif not has_complexive and not has_thesis and str(row.get("route_source") or "") == "AUTO_EVIDENCE":
+                # Si desaparece la única evidencia que había provocado una ruta
+                # automática, no dejamos una decisión obsoleta. Sin evidencia y
+                # sin decisión humana se vuelve al contrato base: Complexivo.
+                if _write_route(
+                    conn, row, domain.ROUTE_COMPLEXIVE, "DEFAULT",
+                    "La evidencia que sustentaba la ruta automática ya no está activa; se restableció la ruta base Complexivo.",
+                ):
+                    auto_routes += 1
 
             # La identidad no debe quedar en ROUTE_CONFLICT: la ruta se trata aparte.
             if has_complexive or has_thesis:
