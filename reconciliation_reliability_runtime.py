@@ -487,32 +487,48 @@ def _project_report_ids(period_project_id: int) -> list[int]:
     return [int(item["id"]) for item in _member_reports_safe(period_project_id)]
 
 
-def _identity_key_values(identification: Any, email: Any, name: Any) -> str:
+def _strong_identity_key(identification: Any, email: Any) -> str:
     sid = bridge._source_identification(identification)
     if sid:
         return f"id:{sid}"
     semail = bridge._source_email(email)
     if semail:
         return f"email:{semail}"
+    return ""
+
+
+def _weak_name_key(name: Any) -> str:
     folded = project_wide._identity_fold(name)
     tokens = tuple(sorted(token for token in folded.split() if token))
     return "name:" + "|".join(tokens) if tokens else ""
 
 
-def _identity_key_source(source: dict[str, Any]) -> str:
-    return _identity_key_values(
-        source.get("identification"),
-        source.get("email"),
-        source.get("full_name"),
-    )
+def _identity_key_values(identification: Any, email: Any, name: Any) -> str:
+    """Clave descriptiva: identidad fuerte primero y nombre solo como contexto."""
+    return _strong_identity_key(identification, email) or _weak_name_key(name)
+
+
+def _identity_key_source(source: dict[str, Any], source_key: str = "") -> str:
+    strong = _strong_identity_key(source.get("identification"), source.get("email"))
+    if strong:
+        return strong
+    # Sin cédula/correo real no propagamos una decisión por todo el nombre:
+    # dos homónimos podrían terminar enlazados en bloque. La decisión queda
+    # ligada a la evidencia estable concreta.
+    return f"source:{source_key}" if source_key else _weak_name_key(source.get("full_name"))
 
 
 def _identity_key_link(link: dict[str, Any]) -> str:
-    return _identity_key_values(
+    strong = _strong_identity_key(
         link.get("source_identification"),
         link.get("source_email"),
-        link.get("source_name"),
-    ) or f"link:{int(link.get('id') or 0)}"
+    )
+    if strong:
+        return strong
+    source_key = str(link.get("source_key") or "").strip()
+    if source_key:
+        return f"source:{source_key}"
+    return f"link:{int(link.get('id') or 0)}"
 
 
 def _decision_cache() -> dict[Any, Any]:
@@ -859,7 +875,7 @@ def _final_match(
     # Mantiene el seguimiento de progreso de la capa de rendimiento.
     result = _FINAL_BASE_MATCH(report_id, module, source_key, source)
     project_id = _project_id_for_report(report_id)
-    identity = _identity_key_source(source)
+    identity = _identity_key_source(source, source_key)
     if not project_id or not identity:
         return result
 
