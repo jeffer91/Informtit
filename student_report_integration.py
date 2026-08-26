@@ -177,9 +177,10 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
     masters = _master(report_id)
     source_courses: list[dict[str, Any]] = []
     for source_report_id in _project_report_ids(report_id):
-        source_courses.extend(
-            nuclei_multicampus.get_nuclei(source_report_id).get("courses", [])
-        )
+        for raw_course in nuclei_multicampus.get_nuclei(source_report_id).get("courses", []):
+            tagged = dict(raw_course)
+            tagged["_source_report_id"] = source_report_id
+            source_courses.append(tagged)
     courses: list[dict[str, Any]] = []
     for source_course in source_courses:
         course = dict(source_course)
@@ -214,9 +215,12 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
         if len(official_careers) == 1:
             course["career_name"] = next(iter(official_careers))
         _recalculate_nucleus(course)
-        # El curso permanece como evidencia de carga incluso si queda sin población
-        # válida; sus métricas se recalculan a cero en lugar de contaminar el reporte.
-        courses.append(course)
+        # Conserva cursos vacíos solo si pertenecen físicamente a esta salida.
+        # Los cursos del otro dataset se incorporan únicamente cuando contienen
+        # estudiantes cuya modalidad oficial (Requisitos) corresponde a esta salida.
+        if students or int(source_course.get("_source_report_id") or 0) == report_id:
+            course.pop("_source_report_id", None)
+            courses.append(course)
     return {"courses": courses}
 
 
