@@ -1373,7 +1373,7 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
         students = rows_to_dicts(
             conn.execute(
                 """
-                SELECT id, report_id, full_name, identification, career_name, modality
+                SELECT id, report_id, full_name, identification, career_name, modality, route
                 FROM period_students
                 WHERE period_project_id=? AND COALESCE(requirements_present,1)=1
                 """,
@@ -1445,6 +1445,9 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
     for row in complexive_rows:
         by_complexive[int(row["period_student_id"])].append(row)
     for student_id, rows in by_complexive.items():
+        student = student_map.get(student_id, {})
+        if str(student.get("route") or domain.ROUTE_COMPLEXIVE) != domain.ROUTE_COMPLEXIVE:
+            continue
         values = sorted({
             _grade_value(analytics.final_grade(row))
             for row in rows
@@ -1453,7 +1456,6 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
         if len(values) > 1 and _grade_resolution(
             period_project_id, "COMPLEXIVE", f"student:{student_id}"
         ) is None:
-            student = student_map.get(student_id, {})
             cases.append({
                 "case_id": f"grade:complexive:{student_id}",
                 "case_type": "GRADE",
@@ -1471,6 +1473,9 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
     for row in thesis_rows:
         by_thesis[int(row["period_student_id"])].append(row)
     for student_id, rows in by_thesis.items():
+        student = student_map.get(student_id, {})
+        if str(student.get("route") or domain.ROUTE_COMPLEXIVE) != domain.ROUTE_THESIS:
+            continue
         values = sorted({
             _grade_value(row.get("final_grade"))
             for row in rows
@@ -1479,7 +1484,6 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
         if len(values) > 1 and _grade_resolution(
             period_project_id, "THESIS", f"student:{student_id}"
         ) is None:
-            student = student_map.get(student_id, {})
             cases.append({
                 "case_id": f"grade:thesis:{student_id}",
                 "case_type": "GRADE",
@@ -1500,6 +1504,9 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
         if sid and number:
             by_nucleus[(sid, number)].append(row)
     for (student_id, number), rows in by_nucleus.items():
+        student = student_map.get(student_id, {})
+        if str(student.get("route") or domain.ROUTE_COMPLEXIVE) != domain.ROUTE_COMPLEXIVE:
+            continue
         values = sorted({
             _grade_value(row.get("final_grade"))
             for row in rows
@@ -1509,7 +1516,6 @@ def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
         if len(values) > 1 and _grade_resolution(
             period_project_id, "NUCLEI", key
         ) is None:
-            student = student_map.get(student_id, {})
             cases.append({
                 "case_id": f"grade:nuclei:{student_id}:{number}",
                 "case_type": "GRADE",
