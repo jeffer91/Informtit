@@ -233,7 +233,13 @@ def reconciled_courses(report_id: int) -> tuple[list[dict[str, Any]], dict[str, 
         if not course_in_period(report, course):
             reasons["Fuera del período"] += 1
             continue
-        if not polish._allowed_nuclei_career(course.get("career_name"), report):
+        if not polish._allowed_nuclei_career(
+            course.get("career_name"),
+            report,
+            course.get("official_modality")
+            or course.get("dataset_modality")
+            or course.get("modality"),
+        ):
             reasons["Curso no aplicable"] += 1
             continue
         signature = _course_signature(course)
