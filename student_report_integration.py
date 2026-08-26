@@ -57,6 +57,27 @@ def _grade(value: Any) -> float | None:
         return None
 
 
+def _project_report_ids(report_id: int) -> list[int]:
+    """Reports físicos que pertenecen al mismo período académico."""
+    with connection() as conn:
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(reports)").fetchall()}
+        if "period_project_id" not in columns:
+            return [report_id]
+        row = conn.execute(
+            "SELECT period_project_id FROM reports WHERE id=?", (report_id,)
+        ).fetchone()
+        if not row or row[0] is None:
+            return [report_id]
+        ids = [
+            int(item[0])
+            for item in conn.execute(
+                "SELECT id FROM reports WHERE period_project_id=? ORDER BY id",
+                (int(row[0]),),
+            ).fetchall()
+        ]
+    return ids or [report_id]
+
+
 def _selected_grade(report_id: int, module: str, student_id: int, nucleus_number: int = 0) -> float | None:
     """Lee una resolución manual de nota sin alterar las evidencias originales."""
     with connection() as conn:
@@ -154,9 +175,13 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
     """Filtra solo para reportes; la pantalla de carga conserva todos los registros crudos."""
     reconcile_all(report_id)
     masters = _master(report_id)
-    data = nuclei_multicampus.get_nuclei(report_id)
+    source_courses: list[dict[str, Any]] = []
+    for source_report_id in _project_report_ids(report_id):
+        source_courses.extend(
+            nuclei_multicampus.get_nuclei(source_report_id).get("courses", [])
+        )
     courses: list[dict[str, Any]] = []
-    for source_course in data.get("courses", []):
+    for source_course in source_courses:
         course = dict(source_course)
         course["assessments"] = [dict(item) for item in source_course.get("assessments", [])]
         course["activity_averages"] = [
@@ -199,9 +224,12 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
     reconcile_all(report_id)
     masters = _master(report_id)
     data = raw_get_projects(report_id)
+    source_projects: list[dict[str, Any]] = []
+    for source_report_id in _project_report_ids(report_id):
+        source_projects.extend(raw_get_projects(source_report_id).get("projects", []))
     projects: list[dict[str, Any]] = []
     omitted_route_conflicts = 0
-    for source in data.get("projects", []):
+    for source in source_projects:
         sid = source.get("period_student_id")
         master = masters.get(int(sid)) if sid else None
         if _active_for_route(master, ROUTE_THESIS):
@@ -246,29 +274,50 @@ def filtered_report_data(report_id: int) -> dict[str, Any]:
     if _BASE_REPORT_DATA is None:
         raise RuntimeError("La integración del dominio de estudiantes todavía no fue instalada.")
     report = _BASE_REPORT_DATA(report_id)
-    for career in report.get("careers", []):
-        filtered: list[dict[str, Any]] = []
-        for source in career.get("students", []):
+    target_templates = {
+        str(career.get("name") or "").strip().casefold(): dict(career)
+        for career in report.get("careers", [])
+    }
+    source_careers: list[dict[str, Any]] = []
+    for source_report_id in _project_report_ids(report_id):
+        source_careers.extend(_BASE_REPORT_DATA(source_report_id).get("careers", []))
+
+    grouped_careers: dict[str, dict[str, Any]] = {}
+    synthetic_id = -1
+    for source_career in source_careers:
+        for source in source_career.get("students", []):
             sid = source.get("period_student_id")
             master = masters.get(int(sid)) if sid else None
-            if _active_for_route(master, ROUTE_COMPLEXIVE):
-                if not _grade_selected(report_id, "COMPLEXIVE", int(sid), analytics.final_grade(source)):
-                    continue
-                item = dict(source)
-                item["identification"] = master.get("identification") or item.get("identification") or ""
-                item["full_name"] = master.get("full_name") or item.get("full_name") or ""
-                item["official_career_name"] = master.get("career_name") or ""
-                item["official_modality"] = master.get("modality") or ""
-                item["official_graduated"] = bool(master.get("official_graduated"))
-                item["official_titulation_completed"] = bool(master.get("official_titulation_completed"))
-                filtered.append(item)
-        career["students"] = filtered
-        official_careers = {
-            str(item.get("official_career_name") or "")
-            for item in filtered if item.get("official_career_name")
-        }
-        if len(official_careers) == 1:
-            career["name"] = next(iter(official_careers))
+            if not _active_for_route(master, ROUTE_COMPLEXIVE):
+                continue
+            if not _grade_selected(report_id, "COMPLEXIVE", int(sid), analytics.final_grade(source)):
+                continue
+            official_career = str(master.get("career_name") or source_career.get("name") or "Sin carrera")
+            key = official_career.strip().casefold()
+            if key not in grouped_careers:
+                template = dict(target_templates.get(key) or source_career)
+                if key not in target_templates:
+                    template["id"] = synthetic_id
+                    synthetic_id -= 1
+                    template["images"] = []
+                    template["analyses"] = {}
+                template["name"] = official_career
+                template["students"] = []
+                grouped_careers[key] = template
+
+            item = dict(source)
+            item["identification"] = master.get("identification") or item.get("identification") or ""
+            item["full_name"] = master.get("full_name") or item.get("full_name") or ""
+            item["official_career_name"] = official_career
+            item["official_modality"] = master.get("modality") or ""
+            item["official_graduated"] = bool(master.get("official_graduated"))
+            item["official_titulation_completed"] = bool(master.get("official_titulation_completed"))
+            grouped_careers[key]["students"].append(item)
+
+    report["careers"] = sorted(
+        grouped_careers.values(),
+        key=lambda career: str(career.get("name") or "").casefold(),
+    )
     report["student_domain_applied"] = True
     return report
 
