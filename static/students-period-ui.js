@@ -150,6 +150,12 @@
       ${occurrences > 1 ? `<small>${occurrences} evidencias agrupadas en un solo caso.</small>` : ''}
       ${link.detail ? `<p>${escapeValue(link.detail)}</p>` : ''}
       ${candidateHtml}
+      ${String(link.match_method || '') === 'MANUAL_REVIEW'
+        ? `<div class="student-final-audit-actions">
+            <button type="button" class="button secondary compact period-match-reset"
+              data-link-id="${Number(link.id)}">Permitir volver a asociar</button>
+          </div>`
+        : ''}
       <div class="student-final-audit-search">
         <input type="search" data-period-case-search-input="${Number(link.id)}"
           placeholder="Buscar cédula, nombre, correo o carrera">
@@ -274,6 +280,23 @@
             await apiRequest(`/api/period-projects/${pid}/students-domain/matches/${Number(button.dataset.linkId)}/confirm`, {
               method: 'POST', body: JSON.stringify({student_id: Number(button.dataset.studentId)}),
             });
+            await renderGlobalStudents();
+          } catch (error) {
+            if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
+            button.disabled = false;
+          }
+        });
+      });
+
+      view.querySelectorAll('.period-match-reset').forEach(button => {
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await apiRequest(`/api/period-projects/${pid}/students-domain/matches/${Number(button.dataset.linkId)}/reset-decision`, {
+              method: 'POST',
+              body: JSON.stringify({}),
+            });
+            if (typeof toast === 'function') toast('Decisión manual restablecida. Ya puede asociar nuevamente o reconciliar.');
             await renderGlobalStudents();
           } catch (error) {
             if (typeof toast === 'function') toast(error.message, true); else alert(error.message);
