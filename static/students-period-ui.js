@@ -47,7 +47,7 @@
       <div class="student-metric"><strong>${summary.thesis || 0}</strong><span>Trabajo titulación</span></div>
       <div class="student-metric"><strong>${summary.graduated || 0}</strong><span>Graduados oficiales</span></div>
       <div class="student-metric"><strong>${summary.retired || 0}</strong><span>Retirados</span></div>
-      <div class="student-metric"><strong>${summary.review || 0}</strong><span>Alertas / revisión</span></div>
+      <div class="student-metric"><strong>${summary.review || 0}</strong><span>Casos por revisar</span></div>
     </div>`;
   }
 
@@ -65,7 +65,7 @@
       <td><select class="student-route-select period-route-select" data-student-id="${Number(row.id)}">
         <option value="COMPLEXIVO" ${row.route === 'COMPLEXIVO' ? 'selected' : ''}>Examen Complexivo</option>
         <option value="TRABAJO_TITULACION" ${row.route === 'TRABAJO_TITULACION' ? 'selected' : ''}>Trabajo de Titulación</option>
-      </select><small>${row.route_source === 'MANUAL' ? 'Definido manualmente' : 'Complexivo por defecto'}</small></td>
+      </select><small>${row.route_source === 'MANUAL' ? 'Definido manualmente' : row.route_source === 'AUTO_EVIDENCE' ? 'Detectado automáticamente' : 'Complexivo por defecto'}</small></td>
       <td>${missingBadge(row)}
         <select class="student-route-select period-process-select" data-student-id="${Number(row.id)}" title="Permite una corrección manual excepcional del estado">
           <option value="ACTIVO" ${row.process_status === 'ACTIVO' ? 'selected' : ''}>Continúa proceso</option>
@@ -80,30 +80,84 @@
   }
 
   function moduleLabel(module) {
-    return ({NUCLEI:'Núcleos', COMPLEXIVE:'Examen Complexivo', THESIS:'Trabajo de Titulación'}[module] || module || 'Fuente');
+    return ({NUCLEI:'Núcleos', COMPLEXIVE:'Examen Complexivo', THESIS:'Trabajo de Titulación', ROUTE:'Ruta de titulación', REQUIREMENTS:'Requisitos'}[module] || module || 'Fuente');
   }
 
   function openLinkHtml(link) {
-    const candidates = Array.isArray(link.candidates) ? link.candidates : [];
-    const canConfirm = ['REVIEW_REQUIRED', 'AMBIGUOUS', 'UNMATCHED'].includes(String(link.match_status || ''));
-    const candidateHtml = canConfirm && candidates.length
-      ? `<div class="student-match-candidates">${candidates.slice(0, 5).map(candidate => `
+    const type = String(link.case_type || 'IDENTITY');
+    const candidates = Array.isArray(link.candidates) ? link.candidates.slice(0, 3) : [];
+    const status = String(link.match_status || 'REVIEW_REQUIRED');
+    const title = moduleLabel(link.source_module);
+    const student = link.source_name || 'Sin nombre';
+    const identification = link.source_identification || 'sin cédula';
+    const occurrences = Number(link.occurrences || 1);
+
+    if (type === 'ROUTE') {
+      return \`<article class="student-match-card">
+        <div><strong>\${escapeValue(title)}</strong> \${badge('CONFLICTO DE RUTA', 'warn')}</div>
+        <p><strong>\${escapeValue(student)}</strong> · \${escapeValue(identification)}</p>
+        <p>\${escapeValue(link.detail || '')}</p>
+        <div class="student-match-candidates">
+          <button type="button" class="button secondary compact period-route-case"
+            data-student-id="\${Number(link.student_id)}" data-route="COMPLEXIVO">Usar Examen Complexivo</button>
+          <button type="button" class="button secondary compact period-route-case"
+            data-student-id="\${Number(link.student_id)}" data-route="TRABAJO_TITULACION">Usar Trabajo de Titulación</button>
+        </div>
+        <small>La identidad ya está confirmada. Elegir una ruta resuelve el conflicto completo sin borrar la otra evidencia.</small>
+      </article>\`;
+    }
+
+    if (type === 'GRADE') {
+      const options = Array.isArray(link.grade_options) ? link.grade_options : [];
+      return \`<article class="student-match-card">
+        <div><strong>\${escapeValue(title)}</strong> \${badge('CONFLICTO DE NOTA', 'warn')}</div>
+        <p><strong>\${escapeValue(student)}</strong> · \${escapeValue(identification)}</p>
+        <p>\${escapeValue(link.detail || '')}</p>
+        <div class="student-match-candidates">
+          \${options.map(value => \`<button type="button" class="button secondary compact period-grade-case"
+            data-student-id="\${Number(link.student_id)}"
+            data-module="\${escapeValue(link.source_module || '')}"
+            data-nucleus="\${Number(link.nucleus_number || 0)}"
+            data-grade="\${escapeValue(value)}">Usar \${escapeValue(value)}</button>\`).join('')}
+        </div>
+        <small>Informtit no elige automáticamente entre notas contradictorias. La opción seleccionada queda auditada.</small>
+      </article>\`;
+    }
+
+    if (type === 'OFFICIAL') {
+      return \`<article class="student-match-card">
+        <div><strong>Requisitos</strong> \${badge(status, 'warn')}</div>
+        <p><strong>\${escapeValue(student)}</strong> · \${escapeValue(identification)}</p>
+        <p>\${escapeValue(link.detail || '')}</p>
+        <small>Requisitos es la fuente maestra. Corrija el dato oficial en esa fuente y vuelva a conciliar.</small>
+      </article>\`;
+    }
+
+    const suggestion = link.suggestion || candidates[0] || null;
+    const candidateHtml = candidates.length
+      ? \`<div class="student-match-candidates">
+          \${suggestion ? \`<small><strong>Sugerencia de Informtit:</strong> \${escapeValue(suggestion.full_name || '')} · \${escapeValue(suggestion.similarity || link.match_confidence || 0)}%</small>\` : ''}
+          \${candidates.map((candidate, index) => \`
           <button type="button" class="button secondary compact period-match-confirm"
-            data-link-id="${Number(link.id)}" data-student-id="${Number(candidate.student_id)}">
-            ${escapeValue(candidate.full_name)} · ${escapeValue(candidate.identification || 'sin cédula')} · ${escapeValue(candidate.similarity || 0)}%
-          </button>`).join('')}</div>`
+            data-link-id="\${Number(link.id)}" data-student-id="\${Number(candidate.student_id)}">
+            \${index === 0 ? 'Sugerido · ' : ''}\${escapeValue(candidate.full_name)} · \${escapeValue(candidate.identification || 'sin cédula')} · \${escapeValue(candidate.similarity || 0)}%
+          </button>\`).join('')}
+        </div>\`
       : '';
-    const guidance = link.match_status === 'ROUTE_CONFLICT'
-      ? '<small>La identidad ya está vinculada. Corrija la ruta del estudiante en la tabla superior.</small>'
-      : link.match_status === 'GRADE_CONFLICT'
-        ? '<small>Revise el conflicto de notas en el módulo correspondiente.</small>'
-        : !candidates.length ? '<small>No existen candidatos confiables. Revise los datos de origen.</small>' : '';
-    return `<article class="student-match-card">
-      <div><strong>${escapeValue(moduleLabel(link.source_module))}</strong> ${badge(link.match_status || 'REVIEW_REQUIRED', 'warn')}</div>
-      <p><strong>${escapeValue(link.source_name || 'Sin nombre')}</strong> · ${escapeValue(link.source_email || 'sin correo')} · ${link.dataset_modality === 'en_linea' ? 'Online' : 'Presencial'}</p>
-      ${link.detail ? `<p>${escapeValue(link.detail)}</p>` : ''}
-      ${candidateHtml}${guidance}
-    </article>`;
+    return \`<article class="student-match-card">
+      <div><strong>\${escapeValue(title)}</strong> \${badge(status, 'warn')}</div>
+      <p><strong>\${escapeValue(student)}</strong> · \${escapeValue(identification)} · \${link.dataset_modality === 'en_linea' ? 'Online' : 'Presencial'}</p>
+      \${occurrences > 1 ? \`<small>\${occurrences} evidencias agrupadas en un solo caso.</small>\` : ''}
+      \${link.detail ? \`<p>\${escapeValue(link.detail)}</p>\` : ''}
+      \${candidateHtml}
+      <div class="student-final-audit-search">
+        <input type="search" data-period-case-search-input="\${Number(link.id)}"
+          placeholder="Buscar cédula, nombre, correo o carrera">
+        <button type="button" class="button secondary compact period-case-search"
+          data-link-id="\${Number(link.id)}">Buscar estudiante</button>
+      </div>
+      <div class="student-final-audit-results" data-period-case-results="\${Number(link.id)}"></div>
+    </article>\`;
   }
 
   function applyFilters(view) {
@@ -158,7 +212,7 @@
         <div class="table-scroll"><table class="student-table"><thead><tr><th>Estudiante</th><th>Carrera</th><th>Ruta</th><th>Requisitos / estado</th><th>Evidencia</th><th>Oficial</th><th>Conciliación</th></tr></thead><tbody>${students.map(rowHtml).join('')}</tbody></table></div>
       </div>
       <div class="panel student-match-panel">
-        <div class="panel-head"><div><h2>Discrepancias por subsanar</h2><p>Solo se muestran registros de Núcleos, Complexivo o Trabajo de Titulación que requieren una decisión. Confirmar una coincidencia queda guardado y prevalece en futuras conciliaciones.</p></div><strong>${openLinks.length}</strong></div>
+        <div class="panel-head"><div><h2>Casos que requieren atención</h2><p>Informtit resuelve automáticamente lo seguro. Aquí quedan únicamente identidades ambiguas, personas fuera de población, rutas dobles, notas contradictorias o conflictos de Requisitos.</p></div><strong>${openLinks.length}</strong></div>
         ${openLinks.length ? `<div class="student-match-list">${openLinks.map(openLinkHtml).join('')}</div>` : '<div class="empty-mini">No existen discrepancias de matching pendientes.</div>'}
       </div>`;
 
