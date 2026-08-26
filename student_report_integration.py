@@ -266,25 +266,41 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
             int(source_course.get("id") or 0),
         )
         students = selected_by_course.get(course_key, [])
-        course = dict(source_course)
-        course["assessments"] = [dict(item) for item in source_course.get("assessments", [])]
-        course["activity_averages"] = [
-            dict(item) for item in source_course.get("activity_averages", []) if isinstance(item, dict)
-        ]
-        course["students"] = students
-        official_careers = {
-            str(item.get("official_career_name") or "")
-            for item in students if item.get("official_career_name")
-        }
-        if len(official_careers) == 1:
-            course["career_name"] = next(iter(official_careers))
-        _recalculate_nucleus(course)
 
-        # Conserva cursos vacíos solo si pertenecen físicamente a esta salida.
-        # La copia del otro dataset solo entra si aporta la evidencia seleccionada.
-        if students or int(source_course.get("_source_report_id") or 0) == report_id:
+        # Requisitos también gobierna la carrera. Si un archivo de Núcleos mezcló
+        # estudiantes que oficialmente pertenecen a carreras distintas, el informe
+        # se divide por carrera oficial en lugar de conservar la etiqueta errónea
+        # del archivo de origen.
+        by_official_career: dict[str, list[dict[str, Any]]] = {}
+        for student in students:
+            official_career = str(
+                student.get("official_career_name")
+                or source_course.get("career_name")
+                or "Sin carrera"
+            )
+            by_official_career.setdefault(official_career, []).append(student)
+
+        if not by_official_career:
+            # Conserva el cascarón vacío únicamente en el dataset donde fue cargado.
+            if int(source_course.get("_source_report_id") or 0) != report_id:
+                continue
+            by_official_career[str(source_course.get("career_name") or "Sin carrera")] = []
+
+        for official_career, career_students in by_official_career.items():
+            course = dict(source_course)
+            course["assessments"] = [
+                dict(item) for item in source_course.get("assessments", [])
+            ]
+            course["activity_averages"] = [
+                dict(item)
+                for item in source_course.get("activity_averages", [])
+                if isinstance(item, dict)
+            ]
+            course["students"] = career_students
+            course["career_name"] = official_career
             course.pop("_source_report_id", None)
             course["official_modality"] = target_modality
+            _recalculate_nucleus(course)
             courses.append(course)
 
     return {
