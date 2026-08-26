@@ -1563,7 +1563,7 @@ def _route_evidence(period_project_id: int) -> dict[int, set[str]]:
                 WHERE report_id IN ({placeholders})
                   AND COALESCE(source_active,1)=1
                   AND period_student_id IS NOT NULL
-                  AND source_module IN ('COMPLEXIVE','THESIS')
+                  AND source_module IN ('NUCLEI','COMPLEXIVE','THESIS')
                   AND COALESCE(match_method,'')<>'MANUAL_REVIEW'
                 """,
                 tuple(report_ids),
@@ -1571,7 +1571,10 @@ def _route_evidence(period_project_id: int) -> dict[int, set[str]]:
         )
     evidence: dict[int, set[str]] = defaultdict(set)
     for row in rows:
-        evidence[int(row["period_student_id"])].add(str(row["source_module"]))
+        module = str(row["source_module"])
+        evidence[int(row["period_student_id"])].add(
+            "COMPLEXIVE" if module in {"NUCLEI", "COMPLEXIVE"} else module
+        )
     return evidence
 
 
@@ -2076,7 +2079,7 @@ def _route_cases(period_project_id: int) -> list[dict[str, Any]]:
                 "career_name": row.get("career_name") or "",
                 "modality": row.get("modality") or "",
                 "current_route": row.get("route") or domain.ROUTE_COMPLEXIVE,
-                "detail": "Existen evidencias válidas tanto de Examen Complexivo como de Trabajo de Titulación. Seleccione la ruta correcta.",
+                "detail": "Existen evidencias válidas de la ruta Complexivo (Núcleos o examen) y también de Trabajo de Titulación. Seleccione la ruta correcta.",
                 "suggestion": None,
             })
     return cases
