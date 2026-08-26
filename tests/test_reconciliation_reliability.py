@@ -336,6 +336,82 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(methods["COMPLEXIVE"], "ROUTE_EXCLUDED_MANUAL")
         self.assertEqual(methods["THESIS"], "MANUAL_ROUTE_INCLUDED")
 
+    def test_explicit_unknown_cedula_is_outside_population_even_with_name_candidate(self):
+        original = reliability._FINAL_BASE_MATCH
+        reliability._FINAL_BASE_MATCH = lambda *_args, **_kwargs: {
+            "status": audit.MATCH_IDENTITY_CONFLICT,
+            "method": "IDENTIDAD_CONFLICTIVA",
+            "confidence": 99.0,
+            "period_student_id": None,
+            "candidates": [{
+                "student_id": self.student_id,
+                "full_name": "ALOMOTO PAZMIÑO BAYRON JAVIER",
+                "similarity": 99.0,
+            }],
+            "detail": "",
+        }
+        try:
+            result = reliability._final_match(
+                self.report_id,
+                "COMPLEXIVE",
+                "complexive:unknown-id",
+                {
+                    "identification": "1799999999",
+                    "email": "",
+                    "full_name": "ALOMOTO PAZMIÑO BAYRON JAVIER",
+                    "career_name": "DESARROLLO DE SOFTWARE",
+                },
+            )
+        finally:
+            reliability._FINAL_BASE_MATCH = original
+        self.assertEqual(result["status"], reliability.smart.MATCH_OUTSIDE_POPULATION)
+        self.assertIsNone(result["period_student_id"])
+        self.assertEqual(len(result["candidates"]), 1)
+
+    def test_same_name_tokens_for_two_students_stays_ambiguous(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO period_students
+                (period_project_id, report_id, identification, full_name, email,
+                 career_name, modality, route, route_source, process_status,
+                 requirements_present, created_at, updated_at)
+                VALUES (77, ?, '1757777777',
+                        'BAYRON JAVIER ALOMOTO PAZMIÑO', '',
+                        'OTRA CARRERA', 'presencial', 'COMPLEXIVO',
+                        'DEFAULT', 'ACTIVO', 1, 'x', 'x')
+                """,
+                (self.report_id,),
+            )
+
+        original = reliability._FINAL_BASE_MATCH
+        reliability._FINAL_BASE_MATCH = lambda *_args, **_kwargs: {
+            "status": domain.MATCH_OK,
+            "method": "NOMBRE_ALTA_CONFIANZA",
+            "confidence": 99.0,
+            "period_student_id": self.student_id,
+            "candidates": [],
+            "detail": "",
+        }
+        try:
+            result = reliability._final_match(
+                self.report_id,
+                "NUCLEI",
+                "nuclei:name-token-homonym",
+                {
+                    "identification": "",
+                    "email": "",
+                    "full_name": "JAVIER BAYRON PAZMIÑO ALOMOTO",
+                    "career_name": "DESARROLLO DE SOFTWARE",
+                },
+            )
+        finally:
+            reliability._FINAL_BASE_MATCH = original
+        self.assertEqual(result["status"], domain.MATCH_AMBIGUOUS)
+        self.assertIsNone(result["period_student_id"])
+        self.assertEqual(result["method"], "HOMONIMO_COMPONENTES")
+
+
     def test_cedula_and_email_pointing_to_different_students_never_auto_link(self):
         with db.connection() as conn:
             conn.execute(
