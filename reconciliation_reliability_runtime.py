@@ -762,87 +762,7 @@ def _masters_for_requirement(
         return []
     kind, value = identity
     placeholders = ",".join("?" for _ in report_ids)
-    if kind == "id":
-        exact = rows_to_dicts(
-            conn.execute(
-                f"""
-                SELECT * FROM period_students
-                WHERE report_id IN ({placeholders}) AND identification=?
-                ORDER BY id
-                """,
-                (*report_ids, value),
-            ).fetchall()
-        )
-        if exact:
-            return exact
-
-        # Requisitos puede incorporar por primera vez una cédula real a una persona
-        # que antes tenía una identidad NOID. Solo recuperamos maestros sin cédula
-        # oficial previa, usando correo o perfil exacto como puente seguro.
-        candidates = rows_to_dicts(
-            conn.execute(
-                f"""
-                SELECT * FROM period_students
-                WHERE report_id IN ({placeholders})
-                ORDER BY id
-                """,
-                tuple(report_ids),
-            ).fetchall()
-        )
-        candidates = [
-            row for row in candidates
-            if not bridge._source_identification(row.get("identification"))
-        ]
-        email = bridge._source_email(requirement.get("email"))
-        if email:
-            matches = [
-                row for row in candidates
-                if bridge._source_email(row.get("email")) == email
-            ]
-            if len(matches) == 1:
-                return matches
-        personal = bridge._source_email(requirement.get("personal_email"))
-        if personal:
-            matches = [
-                row for row in candidates
-                if bridge._source_email(row.get("personal_email")) == personal
-            ]
-            if len(matches) == 1:
-                return matches
-        name = project_wide._identity_fold(requirement.get("full_name"))
-        career = project_wide._identity_fold(requirement.get("career_name"))
-        matches = [
-            row for row in candidates
-            if name
-            and project_wide._identity_fold(row.get("full_name")) == name
-            and (not career or project_wide._identity_fold(row.get("career_name")) == career)
-        ]
-        return matches if len(matches) == 1 else []
-    if kind == "email":
-        return rows_to_dicts(
-            conn.execute(
-                f"""
-                SELECT * FROM period_students
-                WHERE report_id IN ({placeholders}) AND lower(trim(email))=?
-                ORDER BY id
-                """,
-                (*report_ids, value),
-            ).fetchall()
-        )
-    if kind == "personal":
-        return rows_to_dicts(
-            conn.execute(
-                f"""
-                SELECT * FROM period_students
-                WHERE report_id IN ({placeholders}) AND lower(trim(personal_email))=?
-                ORDER BY id
-                """,
-                (*report_ids, value),
-            ).fetchall()
-        )
-
-    # Último recurso: nombre+carrera exactos y únicos en Requisitos.
-    rows = rows_to_dicts(
+    all_rows = rows_to_dicts(
         conn.execute(
             f"""
             SELECT * FROM period_students
@@ -852,18 +772,82 @@ def _masters_for_requirement(
             tuple(report_ids),
         ).fetchall()
     )
-    return [
+
+    def unique_bridge(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # Solo una identidad alternativa inequívoca puede fusionarse. Esto permite
+        # recuperar instalaciones que ya crearon una copia al cambiar modalidad,
+        # sin unir homónimos ni estudiantes con una cédula oficial diferente.
+        eligible = [
+            row for row in candidates
+            if not bridge._source_identification(row.get("identification"))
+        ]
+        email = bridge._source_email(requirement.get("email"))
+        if email:
+            matches = [
+                row for row in eligible
+                if bridge._source_email(row.get("email")) == email
+            ]
+            if len(matches) == 1:
+                return matches
+        personal = bridge._source_email(requirement.get("personal_email"))
+        if personal:
+            matches = [
+                row for row in eligible
+                if bridge._source_email(row.get("personal_email")) == personal
+            ]
+            if len(matches) == 1:
+                return matches
+        name = project_wide._identity_fold(requirement.get("full_name"))
+        career = project_wide._identity_fold(requirement.get("career_name"))
+        matches = [
+            row for row in eligible
+            if name
+            and project_wide._identity_fold(row.get("full_name")) == name
+            and (not career or project_wide._identity_fold(row.get("career_name")) == career)
+        ]
+        return matches if len(matches) == 1 else []
+
+    if kind == "id":
+        exact = [
+            row for row in all_rows
+            if bridge._source_identification(row.get("identification")) == value
+        ]
+        bridge_rows = unique_bridge([
+            row for row in all_rows
+            if int(row["id"]) not in {int(item["id"]) for item in exact}
+        ])
+        combined = {int(row["id"]): row for row in (*exact, *bridge_rows)}
+        return [combined[key] for key in sorted(combined)]
+
+    if kind == "email":
+        exact = [
+            row for row in all_rows
+            if bridge._source_email(row.get("email")) == value
+        ]
+        if exact:
+            return exact
+        return unique_bridge(all_rows)
+
+    if kind == "personal":
+        exact = [
+            row for row in all_rows
+            if bridge._source_email(row.get("personal_email")) == value
+        ]
+        if exact:
+            return exact
+        return unique_bridge(all_rows)
+
+    # Último recurso: nombre+carrera exactos. Si hay más de uno, se conserva la
+    # ambigüedad para revisión en lugar de fusionarlos.
+    matches = [
         row
-        for row in rows
-        if _migration_identity(row) == identity
-        or (
-            project_wide._identity_fold(row.get("full_name"))
-            and project_wide._identity_fold(row.get("full_name"))
-            == project_wide._identity_fold(requirement.get("full_name"))
-            and project_wide._identity_fold(row.get("career_name"))
-            == project_wide._identity_fold(requirement.get("career_name"))
-        )
+        for row in all_rows
+        if project_wide._identity_fold(row.get("full_name"))
+        == project_wide._identity_fold(requirement.get("full_name"))
+        and project_wide._identity_fold(row.get("career_name"))
+        == project_wide._identity_fold(requirement.get("career_name"))
     ]
+    return matches if len(matches) == 1 else []
 
 
 def _merge_master_rows(conn: Any, keep_id: int, drop_id: int) -> None:
@@ -954,39 +938,63 @@ def _migrate_project_master(period_project_id: int) -> dict[str, int]:
                 "SELECT * FROM period_students WHERE id=?",
                 (keep_id,),
             ).fetchone()
-            if current and int(current["report_id"]) != target_report_id:
+            if current:
                 old_report = int(current["report_id"])
-                conn.execute(
-                    """
-                    UPDATE period_students
-                    SET report_id=?, period_project_id=?, modality=?, updated_at=?
-                    WHERE id=?
-                    """,
-                    (
-                        target_report_id,
-                        period_project_id,
-                        target_modality,
-                        utcnow(),
-                        keep_id,
-                    ),
-                )
-                conn.execute(
-                    """
-                    INSERT INTO student_audit_log
-                    (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
-                    VALUES (?, ?, 'MOVE_MASTER_DATASET', 'report_id', ?, ?,
-                            'Requisitos cambió la modalidad oficial; se conservó la misma identidad interna y todas sus evidencias.',
-                            ?)
-                    """,
-                    (
-                        target_report_id,
-                        keep_id,
-                        str(old_report),
-                        str(target_report_id),
-                        utcnow(),
-                    ),
-                )
-                moved += 1
+                old_identification = str(current["identification"] or "")
+                target_identification = domain._stable_identification(target)
+                report_changed = old_report != target_report_id
+                identity_changed = old_identification != target_identification
+                if report_changed or identity_changed or str(current["modality"] or "") != target_modality:
+                    conn.execute(
+                        """
+                        UPDATE period_students
+                        SET report_id=?, period_project_id=?, modality=?, identification=?, updated_at=?
+                        WHERE id=?
+                        """,
+                        (
+                            target_report_id,
+                            period_project_id,
+                            target_modality,
+                            target_identification,
+                            utcnow(),
+                            keep_id,
+                        ),
+                    )
+                if report_changed:
+                    conn.execute(
+                        """
+                        INSERT INTO student_audit_log
+                        (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+                        VALUES (?, ?, 'MOVE_MASTER_DATASET', 'report_id', ?, ?,
+                                'Requisitos cambió la modalidad oficial; se conservó la misma identidad interna y todas sus evidencias.',
+                                ?)
+                        """,
+                        (
+                            target_report_id,
+                            keep_id,
+                            str(old_report),
+                            str(target_report_id),
+                            utcnow(),
+                        ),
+                    )
+                    moved += 1
+                if identity_changed:
+                    conn.execute(
+                        """
+                        INSERT INTO student_audit_log
+                        (report_id, period_student_id, action, field_name, old_value, new_value, detail, created_at)
+                        VALUES (?, ?, 'MIGRATE_MASTER_IDENTITY', 'identification', ?, ?,
+                                'Requisitos actualizó la identificación estable; se conservó el mismo estudiante interno.',
+                                ?)
+                        """,
+                        (
+                            target_report_id,
+                            keep_id,
+                            old_identification,
+                            target_identification,
+                            utcnow(),
+                        ),
+                    )
     _clear_decision_cache()
     return {"moved": moved, "merged": merged}
 
