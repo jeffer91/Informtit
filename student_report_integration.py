@@ -167,13 +167,27 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
             sid = source_student.get("period_student_id")
             master = masters.get(int(sid)) if sid else None
             if _active_for_route(master, ROUTE_COMPLEXIVE):
+                final_grade = _grade(source_student.get("final_grade"))
+                nucleus_number = int(course.get("nucleus_number") or 0)
+                if not _grade_selected(report_id, "NUCLEI", int(sid), final_grade, nucleus_number):
+                    continue
                 student = dict(source_student)
                 student["scores"] = [dict(score) for score in source_student.get("scores", [])]
                 student["master_identification"] = master.get("identification") or ""
                 student["master_name"] = master.get("full_name") or ""
+                student["full_name"] = master.get("full_name") or student.get("full_name") or ""
+                student["identification"] = master.get("identification") or student.get("identification") or ""
+                student["official_career_name"] = master.get("career_name") or ""
+                student["official_modality"] = master.get("modality") or ""
                 student["official_graduated"] = bool(master.get("official_graduated"))
                 students.append(student)
         course["students"] = students
+        official_careers = {
+            str(item.get("official_career_name") or "")
+            for item in students if item.get("official_career_name")
+        }
+        if len(official_careers) == 1:
+            course["career_name"] = next(iter(official_careers))
         _recalculate_nucleus(course)
         # El curso permanece como evidencia de carga incluso si queda sin población
         # válida; sus métricas se recalculan a cero en lugar de contaminar el reporte.
