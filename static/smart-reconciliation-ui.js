@@ -253,6 +253,13 @@
     if (!reconcile) return;
     event.preventDefault();
     event.stopImmediatePropagation();
+
+    // Otros componentes antiguos usaban button.click() como una forma de refrescar
+    // la vista. Esos clics sintéticos ya no deben disparar una conciliación pesada.
+    if (!event.isTrusted) {
+      document.querySelector('[data-period-students-view]')?.click();
+      return;
+    }
     startReconciliation(projectId());
   }, true);
 
