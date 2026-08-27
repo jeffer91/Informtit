@@ -5,6 +5,7 @@ import unittest
 import report_integrity_core as integrity
 import report_integrity_final_fixes as final_fixes
 import report_integrity_requirements as integrity_requirements
+import report_pdf_guard
 
 
 class ReportIntegrityCoreTests(unittest.TestCase):
@@ -101,6 +102,31 @@ class ReportIntegrityCoreTests(unittest.TestCase):
 
         self.assertEqual(len(courses), 1)
         self.assertEqual(reasons["Otra modalidad"], 0)
+
+    def test_pdf_guard_accepts_explicit_modality_and_does_not_infer_from_career_name(self):
+        online_report = {"modality": "en_linea"}
+        presencial_report = {"modality": "presencial"}
+
+        self.assertTrue(
+            report_pdf_guard._allowed_nuclei_career(
+                "ENFERMERÍA", online_report, "en_linea"
+            )
+        )
+        self.assertFalse(
+            report_pdf_guard._allowed_nuclei_career(
+                "ENFERMERÍA", online_report, "presencial"
+            )
+        )
+        self.assertTrue(
+            report_pdf_guard._allowed_nuclei_career(
+                "ENFERMERÍA", presencial_report, "presencial"
+            )
+        )
+        self.assertFalse(
+            report_pdf_guard._allowed_nuclei_career(
+                "ENFERMERÍA", presencial_report, "en_linea"
+            )
+        )
 
     def test_nuclei_integrity_rejects_explicit_other_modality_even_without_online_name(self):
         original_provider = integrity._RAW_NUCLEI_PROVIDER
