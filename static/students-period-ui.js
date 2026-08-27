@@ -234,16 +234,38 @@
     const preserveState = Boolean(options.preserveState);
     const silent = Boolean(options.silent);
     const saved = preserveState ? captureViewState(view) : null;
+    const loadStarted = (window.performance?.now?.() ?? Date.now());
+    let loadingTimer = null;
+
     if (!silent || !view.innerHTML.trim()) {
-      view.innerHTML = '<div class="panel"><p>Cargando estudiantes Presencial + Online...</p></div>';
+      view.innerHTML = `<div class="panel student-loading-panel">
+        <p>Cargando estudiantes Presencial + Online...</p>
+        <div class="student-loading-clock">Tiempo transcurrido: <strong id="period-student-load-time">0.0 s</strong></div>
+        <small>Se están leyendo estudiantes, evidencias y casos pendientes. Esta vista no vuelve a conciliar automáticamente.</small>
+      </div>`;
+      const timer = view.querySelector('#period-student-load-time');
+      loadingTimer = window.setInterval(() => {
+        if (!timer?.isConnected) return;
+        const now = (window.performance?.now?.() ?? Date.now());
+        timer.textContent = `${((now - loadStarted) / 1000).toFixed(1)} s`;
+      }, 100);
     }
+
     try {
       const data = await apiRequest(`/api/period-projects/${pid}/students-domain`);
       const students = data.students || [];
       const openLinks = data.open_links || [];
+      const loadFinished = (window.performance?.now?.() ?? Date.now());
+      const clientSeconds = Math.max(0, (loadFinished - loadStarted) / 1000);
+      const backendPerf = data.performance || {};
+      const backendSeconds = Number(backendPerf.total_ms || 0) / 1000;
+      const performanceText = backendSeconds > 0
+        ? `Carga: ${clientSeconds.toFixed(1)} s · backend ${backendSeconds.toFixed(1)} s · estudiantes ${Number(backendPerf.students_read_ms || 0).toFixed(0)} ms · casos ${Number(backendPerf.cases_ms || 0).toFixed(0)} ms`
+        : `Carga: ${clientSeconds.toFixed(1)} s`;
       view.innerHTML = `<div class="panel">
         <div class="panel-head"><div><h2>Estudiantes del período</h2><p>Vista global. Requisitos conserva la identidad oficial; todos parten por Complexivo y los casos excepcionales se cambian aquí a Trabajo de Titulación.</p></div>
           <button class="button secondary" id="period-student-refresh" type="button" title="Identifica y corrige automáticamente todos los casos seguros; deja únicamente las decisiones ambiguas para revisión">Reconciliar y resolver seguros</button></div>
+        <div class="student-load-performance">${escapeValue(performanceText)}</div>
         ${summaryHtml(data.summary || {})}
         <div class="student-filters">
           <input id="period-student-search" placeholder="Buscar por cédula, nombre, correo o carrera">
@@ -432,6 +454,8 @@
       });
     } catch (error) {
       view.innerHTML = `<div class="empty-state"><h3>No se pudo cargar Estudiantes</h3><p>${escapeValue(error.message)}</p></div>`;
+    } finally {
+      if (loadingTimer !== null) window.clearInterval(loadingTimer);
     }
   }
 
