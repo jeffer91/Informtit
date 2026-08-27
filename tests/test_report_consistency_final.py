@@ -15,6 +15,39 @@ class ReportConsistencyFinalTests(unittest.TestCase):
         self.assertTrue(consistency._matches_modality(online, "Administración", "560417A01-L-1701"))
         self.assertFalse(consistency._matches_modality(online, "Administración", "560417A01-P-1701"))
 
+    def test_explicit_modality_overrides_career_text_for_reconciled_data(self) -> None:
+        online = {"modality": "en_linea"}
+        presencial = {"modality": "presencial"}
+        self.assertTrue(
+            consistency._matches_modality(
+                online, "ENFERMERÍA", "", "en_linea"
+            )
+        )
+        self.assertFalse(
+            consistency._matches_modality(
+                online, "ENFERMERÍA ONLINE", "", "presencial"
+            )
+        )
+        self.assertTrue(
+            consistency._matches_modality(
+                presencial, "REDES Y TELECOMUNICACIONES ONLINE", "", "presencial"
+            )
+        )
+
+    def test_display_report_does_not_refilter_student_domain_by_name(self) -> None:
+        report = {
+            "modality": "en_linea",
+            "student_domain_applied": True,
+            "careers": [{"name": "ENFERMERÍA"}],
+        }
+        with patch.object(
+            consistency,
+            "_ORIGINAL_DISPLAY_REPORT",
+            lambda value: dict(value, careers=[dict(row) for row in value["careers"]]),
+        ):
+            result = consistency._display_report_filtered(report)
+        self.assertEqual([row["name"] for row in result["careers"]], ["ENFERMERÍA"])
+
     def test_filename_uses_code_period_and_modality(self) -> None:
         report = {
             "code": "UTET-PRO-95",
