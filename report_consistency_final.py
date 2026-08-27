@@ -50,12 +50,26 @@ def _is_online(career_name: Any, career_code: Any = "") -> bool:
     return "online" in key or "en linea" in key or "-L-" in code
 
 
-def _matches_modality(report: dict[str, Any], career_name: Any, career_code: Any = "") -> bool:
+def _matches_modality(
+    report: dict[str, Any],
+    career_name: Any,
+    career_code: Any = "",
+    explicit_modality: Any = "",
+) -> bool:
     modality = str(report.get("modality") or "").strip().lower()
+    explicit = normalize(explicit_modality)
+    if explicit in {"en linea", "online", "en_linea"}:
+        online = True
+    elif explicit == "presencial":
+        online = False
+    else:
+        # Compatibilidad con fuentes históricas. En el dominio reconciliado,
+        # Requisitos/dataset aporta explicit_modality y no dependemos del texto.
+        online = _is_online(career_name, career_code)
     if modality == "en_linea":
-        return _is_online(career_name, career_code)
+        return online
     if modality == "presencial":
-        return not _is_online(career_name, career_code)
+        return not online
     return True
 
 
@@ -66,7 +80,12 @@ def _display_report_filtered(report: dict[str, Any]) -> dict[str, Any]:
     result["careers"] = [
         career
         for career in result.get("careers", [])
-        if _matches_modality(result, career.get("name"), career.get("career_code"))
+        if _matches_modality(
+            result,
+            career.get("name"),
+            career.get("career_code"),
+            career.get("official_modality") or career.get("modality"),
+        )
     ]
     return result
 
@@ -79,7 +98,12 @@ def _filtered_projects(report_id: int) -> dict[str, Any]:
     projects = [
         project
         for project in raw.get("projects", [])
-        if _matches_modality(report, project.get("career_name"), project.get("career_code"))
+        if _matches_modality(
+            report,
+            project.get("career_name"),
+            project.get("career_code"),
+            project.get("official_modality") or project.get("modality"),
+        )
     ]
     finals = [float(project["final_grade"]) for project in projects if project.get("final_grade") is not None]
     raw["projects"] = projects
@@ -100,7 +124,13 @@ def _master_nuclei(report_id: int) -> dict[str, Any]:
     courses = [
         course
         for course in source.get("courses", [])
-        if polish._allowed_nuclei_career(course.get("career_name"), report)
+        if polish._allowed_nuclei_career(
+            course.get("career_name"),
+            report,
+            course.get("official_modality")
+            or course.get("dataset_modality")
+            or course.get("modality"),
+        )
     ]
     courses.sort(
         key=lambda course: (
@@ -393,7 +423,12 @@ def _validation_fixed(report_id: int) -> dict[str, Any]:
     mixed_careers = [
         career.get("name") or "Sin carrera"
         for career in displayed.get("careers", [])
-        if not _matches_modality(displayed, career.get("name"), career.get("career_code"))
+        if not _matches_modality(
+            displayed,
+            career.get("name"),
+            career.get("career_code"),
+            career.get("official_modality") or career.get("modality"),
+        )
     ]
     add(
         "Modalidad de carreras",
@@ -406,7 +441,12 @@ def _validation_fixed(report_id: int) -> dict[str, Any]:
     mixed_projects = [
         project.get("full_name") or project.get("identification") or "Registro sin nombre"
         for project in projects
-        if not _matches_modality(report, project.get("career_name"), project.get("career_code"))
+        if not _matches_modality(
+            report,
+            project.get("career_name"),
+            project.get("career_code"),
+            project.get("official_modality") or project.get("modality"),
+        )
     ]
     add(
         "Modalidad de Trabajo de Titulación",
@@ -419,7 +459,13 @@ def _validation_fixed(report_id: int) -> dict[str, Any]:
     mixed_nuclei = [
         course.get("career_name") or "Sin carrera"
         for course in nuclei.get("courses", [])
-        if not polish._allowed_nuclei_career(course.get("career_name"), report)
+        if not polish._allowed_nuclei_career(
+            course.get("career_name"),
+            report,
+            course.get("official_modality")
+            or course.get("dataset_modality")
+            or course.get("modality"),
+        )
     ]
     add(
         "Modalidad de Núcleos",
