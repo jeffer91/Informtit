@@ -46,14 +46,29 @@ def _display_career(value: Any) -> str:
     return f"{text} Online" if online else text
 
 
-def _allowed_nuclei_career(career: Any, report: dict[str, Any]) -> bool:
+def _allowed_nuclei_career(
+    career: Any,
+    report: dict[str, Any],
+    source_modality: Any = "",
+) -> bool:
     if _is_excluded_career(career):
         return False
-    modality = str(report.get("modality") or "").strip().lower()
-    if modality == "en_linea":
-        return polish._is_online(career)
-    if modality == "presencial":
-        return not polish._is_online(career)
+
+    report_modality = str(report.get("modality") or "").strip().lower()
+    explicit = normalize(source_modality)
+    if explicit in {"en linea", "online", "en_linea"}:
+        online = True
+    elif explicit == "presencial":
+        online = False
+    else:
+        # Compatibilidad con fuentes históricas que todavía no llevan modalidad
+        # explícita. Las cargas conciliadas usan la modalidad oficial.
+        online = polish._is_online(career)
+
+    if report_modality == "en_linea":
+        return online
+    if report_modality == "presencial":
+        return not online
     return True
 
 
