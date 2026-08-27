@@ -77,6 +77,11 @@ def _display_report_filtered(report: dict[str, Any]) -> dict[str, Any]:
     if _ORIGINAL_DISPLAY_REPORT is None:
         raise RuntimeError("La capa de consistencia todavía no está instalada.")
     result = _ORIGINAL_DISPLAY_REPORT(report)
+    if result.get("student_domain_applied") or report.get("student_domain_applied"):
+        # student_report_integration ya aplicó Requisitos, ruta y modalidad.
+        # Volver a inferir modalidad por el texto de la carrera eliminaría
+        # carreras Online válidas cuyo nombre oficial no contiene "Online".
+        return result
     result["careers"] = [
         career
         for career in result.get("careers", [])
@@ -93,8 +98,14 @@ def _display_report_filtered(report: dict[str, Any]) -> dict[str, Any]:
 def _filtered_projects(report_id: int) -> dict[str, Any]:
     if _ORIGINAL_GET_PROJECTS is None:
         raise RuntimeError("La capa de consistencia todavía no está instalada.")
-    raw = copy.deepcopy(_ORIGINAL_GET_PROJECTS(report_id))
     report = report_quality._report_data(report_id)
+    if report.get("student_domain_applied"):
+        # La capa final de estudiantes conoce la modalidad oficial de Requisitos,
+        # la ruta efectiva y las decisiones manuales de nota.
+        import student_report_integration as student_reports
+        return copy.deepcopy(student_reports.filtered_projects(report_id))
+
+    raw = copy.deepcopy(_ORIGINAL_GET_PROJECTS(report_id))
     projects = [
         project
         for project in raw.get("projects", [])
@@ -120,7 +131,11 @@ def _master_nuclei(report_id: int) -> dict[str, Any]:
     if _ORIGINAL_NUCLEI_CONSOLIDATED is None:
         raise RuntimeError("La capa de consistencia todavía no está instalada.")
     report = report_quality._report_data(report_id)
-    source = _ORIGINAL_NUCLEI_CONSOLIDATED(report_id)
+    if report.get("student_domain_applied"):
+        import student_report_integration as student_reports
+        source = student_reports.filtered_nuclei(report_id)
+    else:
+        source = _ORIGINAL_NUCLEI_CONSOLIDATED(report_id)
     courses = [
         course
         for course in source.get("courses", [])
