@@ -1851,18 +1851,52 @@ def _grade_value(value: Any) -> float | None:
         return None
 
 
+def _grade_resolution_map(period_project_id: int) -> dict[tuple[str, str], float | None]:
+    """Carga todas las decisiones de nota del período con una sola consulta."""
+    cache = _decision_cache()
+    cache_key = ("GRADE_RESOLUTION_MAP", period_project_id)
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict):
+        return dict(cached)
+
+    _ensure_final_schema()
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT source_module, identity_key, decision_value
+                FROM student_manual_decisions
+                WHERE period_project_id=? AND decision_type=?
+                  AND source_module LIKE 'GRADE_%'
+                ORDER BY id DESC
+                """,
+                (period_project_id, DECISION_GRADE),
+            ).fetchall()
+        )
+
+    result: dict[tuple[str, str], float | None] = {}
+    for row in rows:
+        source_module = str(row.get("source_module") or "")
+        module = source_module[6:] if source_module.startswith("GRADE_") else source_module
+        key = (module, str(row.get("identity_key") or ""))
+        if key not in result:
+            result[key] = _grade_value(row.get("decision_value"))
+    cache[cache_key] = dict(result)
+    return result
+
+
 def _grade_resolution(period_project_id: int, module: str, identity_key: str) -> float | None:
-    rows = _manual_decisions(
-        period_project_id, f"GRADE_{module}", identity_key, DECISION_GRADE
-    )
-    return _grade_value(rows[0].get("decision_value")) if rows else None
+    return _grade_resolution_map(period_project_id).get((module, identity_key))
 
 
-def _grade_cases(period_project_id: int) -> list[dict[str, Any]]:
+def _grade_cases(
+    period_project_id: int,
+    route_evidence: dict[int, set[str]] | None = None,
+) -> list[dict[str, Any]]:
     report_ids = _project_report_ids(period_project_id)
     if not report_ids:
         return []
-    route_evidence = _route_evidence(period_project_id)
+    route_evidence = route_evidence if route_evidence is not None else _route_evidence(period_project_id)
     placeholders = ",".join("?" for _ in report_ids)
     with connection() as conn:
         students = rows_to_dicts(
@@ -2190,8 +2224,11 @@ def _nuclei_records_final(report_id: int) -> dict[int, list[dict[str, Any]]]:
     return result
 
 
-def _route_cases(period_project_id: int) -> list[dict[str, Any]]:
-    evidence = _route_evidence(period_project_id)
+def _route_cases(
+    period_project_id: int,
+    evidence: dict[int, set[str]] | None = None,
+) -> list[dict[str, Any]]:
+    evidence = evidence if evidence is not None else _route_evidence(period_project_id)
     with connection() as conn:
         rows = rows_to_dicts(
             conn.execute(
@@ -2324,10 +2361,11 @@ def _official_cases(period_project_id: int) -> list[dict[str, Any]]:
 
 
 def _project_cases(period_project_id: int) -> list[dict[str, Any]]:
+    route_evidence = _route_evidence(period_project_id)
     cases = (
         _identity_cases(period_project_id)
-        + _route_cases(period_project_id)
-        + _grade_cases(period_project_id)
+        + _route_cases(period_project_id, route_evidence)
+        + _grade_cases(period_project_id, route_evidence)
         + _official_cases(period_project_id)
     )
     priority = {
@@ -2351,8 +2389,10 @@ def _project_cases(period_project_id: int) -> list[dict[str, Any]]:
     return cases
 
 
-def _final_case_summary(period_project_id: int) -> dict[str, int]:
-    cases = _project_cases(period_project_id)
+def _case_summary_from_cases(
+    period_project_id: int,
+    cases: list[dict[str, Any]],
+) -> dict[str, int]:
     outside = sum(
         str(case.get("match_status") or "") == smart.MATCH_OUTSIDE_POPULATION
         for case in cases
@@ -2397,6 +2437,10 @@ def _final_case_summary(period_project_id: int) -> dict[str, int]:
     }
 
 
+def _final_case_summary(period_project_id: int) -> dict[str, int]:
+    return _case_summary_from_cases(period_project_id, _project_cases(period_project_id))
+
+
 def _summary_from_report_ids(report_ids: list[int]) -> dict[str, int]:
     if not report_ids:
         return {
@@ -2410,9 +2454,19 @@ def _summary_from_report_ids(report_ids: list[int]) -> dict[str, int]:
 
 def _period_read_final(period_project_id: int) -> dict[str, Any]:
     assert _FINAL_BASE_PERIOD_READ is not None
+    started = time.perf_counter()
+
+    read_started = time.perf_counter()
     data = _FINAL_BASE_PERIOD_READ(period_project_id)
+    read_ms = (time.perf_counter() - read_started) * 1000
+
+    cases_started = time.perf_counter()
     cases = _project_cases(period_project_id)
-    summary = _final_case_summary(period_project_id)
+    cases_ms = (time.perf_counter() - cases_started) * 1000
+
+    summary_started = time.perf_counter()
+    summary = _case_summary_from_cases(period_project_id, cases)
+    summary_ms = (time.perf_counter() - summary_started) * 1000
     data["cases"] = cases
     data["open_links"] = cases
     data["case_summary"] = summary
@@ -2441,6 +2495,15 @@ def _period_read_final(period_project_id: int) -> dict[str, Any]:
         )
         row["reconciliation_status"] = top.get("match_status") or domain.MATCH_REVIEW
         row["reconciliation_detail"] = top.get("detail") or ""
+
+    data["performance"] = {
+        "total_ms": round((time.perf_counter() - started) * 1000, 1),
+        "students_read_ms": round(read_ms, 1),
+        "cases_ms": round(cases_ms, 1),
+        "summary_ms": round(summary_ms, 1),
+        "student_count": len(data.get("students", [])),
+        "case_count": len(cases),
+    }
     return data
 
 
