@@ -1365,9 +1365,28 @@ def _final_match(
     # el orden de nombres/apellidos tampoco puede utilizarse para elegir una.
     # La carrera puede mostrarse como contexto, pero no decide la identidad.
     if not _strong_identity_key(source.get("identification"), source.get("email")):
-        index = smart._master_index(report_id)
+        # El guard de homónimos debe leer el maestro actual, no un índice cacheado:
+        # una carga o corrección reciente puede haber añadido otra persona con los
+        # mismos componentes del nombre y nunca debemos auto-vincular con caché vieja.
         tokens = smart._token_signature(source.get("full_name"))
-        token_matches = list(index["by_tokens"].get(tokens, [])) if tokens else []
+        if tokens:
+            with connection() as conn:
+                current_masters = rows_to_dicts(
+                    conn.execute(
+                        """
+                        SELECT * FROM period_students
+                        WHERE report_id=? AND COALESCE(requirements_present,1)=1
+                        ORDER BY id
+                        """,
+                        (report_id,),
+                    ).fetchall()
+                )
+            token_matches = [
+                item for item in current_masters
+                if smart._token_signature(item.get("full_name")) == tokens
+            ]
+        else:
+            token_matches = []
         if len(token_matches) > 1:
             return _persist_final_match(
                 report_id, module, source_key, source,
