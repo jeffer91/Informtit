@@ -27,6 +27,14 @@ class PeriodUnifiedFrontendTests(unittest.TestCase):
         self.assertIn("period_project_id", script)
         self.assertIn("Cronograma compartido", script)
 
+    def test_creation_dialog_exposes_explicit_pvc_option(self):
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('id="new-pvc-report-btn"', html)
+        self.assertIn('name="report_type"', html)
+        self.assertIn('value="pvc"', html)
+        self.assertIn("openReportDialog('pvc')", app)
+
     def test_dashboard_uses_one_card_per_period(self):
         script = (ROOT / "static" / "period-unified-ui.js").read_text(encoding="utf-8")
         self.assertIn("Períodos", script)

@@ -118,6 +118,11 @@ class PvcReportRuntimeTests(unittest.TestCase):
         self.assertLess(figure_chunk.index("_body(story, styles, context_text)"), figure_chunk.index("institutional.fit_image"))
         self.assertLess(figure_chunk.index("institutional.fit_image"), figure_chunk.index("_body(story, styles, analysis_text)"))
 
+    def test_pvc_cover_uses_full_width_signature_grid(self):
+        source = Path("pvc_report_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("colWidths=[6.0 * cm] * 3", source)
+        self.assertIn("Spacer(1, 8.2 * cm)", source)
+
     def test_frontend_exposes_pvc_results_module(self):
         source = Path("static/pvc-report-ui.js").read_text(encoding="utf-8")
         self.assertIn("Resultados PVC", source)

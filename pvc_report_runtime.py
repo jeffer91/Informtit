@@ -1258,16 +1258,16 @@ def _cover(report: dict[str, Any], styles: Any) -> list[Any]:
         parent=styles["Title"],
         alignment=TA_CENTER,
         fontName="Helvetica-Bold",
-        fontSize=18,
-        leading=22,
+        fontSize=16,
+        leading=20,
+        spaceAfter=3,
     )
     story: list[Any] = [
-        Spacer(1, 3.4 * cm),
-        Paragraph("Informe Final Del Proceso De Titulación", title),
-        Spacer(1, 0.25 * cm),
+        Spacer(1, 3.5 * cm),
+        Paragraph("Informe Final Del Proceso De Titulación.", title),
         Paragraph("PVC – Modalidad Artículo Científico", title),
         Paragraph(html.escape(str(report.get("period") or "")), title),
-        Spacer(1, 6.3 * cm),
+        Spacer(1, 8.2 * cm),
     ]
     data = [[
         institutional.signature_items(
@@ -1283,17 +1283,19 @@ def _cover(report: dict[str, Any], styles: Any) -> list[Any]:
             str(report.get("approved_by") or ""), str(report.get("approved_role") or ""), styles
         ),
     ]]
-    table = Table(data, colWidths=[5.55 * cm] * 3)
+    table = Table(data, colWidths=[6.0 * cm] * 3, hAlign="CENTER")
     table.setStyle(
         TableStyle([
             ("GRID", (0, 0), (-1, -1), 0.7, colors.black),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("PADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ])
     )
     story += [table, PageBreak()]
     return story
-
 
 def _fmt(value: Any) -> str:
     number = _number(value)
