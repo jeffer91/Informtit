@@ -23,6 +23,7 @@ import report_integrity_requirements as integrity_requirements
 import report_integrity_rules as rules
 import report_pdf_polish as polish
 import report_quality
+import pdf_progress_runtime
 
 
 def install() -> None:
@@ -113,7 +114,14 @@ def install() -> None:
     def audit_get(self: Any, path: str, query: dict[str, list[str]]) -> None:
         match = re.fullmatch(r"/api/reports/(\d+)/audit", path)
         if match:
-            self._send_json({"ok": True, "audit": integrity.audit_report(int(match.group(1)))})
+            report_id = int(match.group(1))
+            validation = hooks.validation_integrity(report_id)
+            token = pdf_progress_runtime.store_preflight(report_id, "normal", validation)
+            self._send_json({
+                "ok": True,
+                "audit": validation.get("audit") or {},
+                "preflight_token": token,
+            })
             return
         previous_get(self, path, query)
 

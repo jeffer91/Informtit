@@ -85,6 +85,41 @@ class PdfProgressRuntimeTests(unittest.TestCase):
             integrity_hooks.clear_primed_validation()
         self.assertEqual(result["audit"]["state"], "BORRADOR")
 
+    def test_preflight_is_consumed_once_by_matching_job(self):
+        payload = {"audit": {"state": "BORRADOR"}, "ok": True}
+        token = progress.store_preflight(777, "normal", payload)
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "informe.pdf"
+            def fake_build(report_id: int):
+                reused = progress.consume_preflight(report_id, "normal")
+                self.assertEqual(reused["audit"]["state"], "BORRADOR")
+                self.assertIsNone(progress.consume_preflight(report_id, "normal"))
+                output.write_bytes(b"%PDF-1.4\n")
+                return output
+            with patch.object(progress.core, "build_pdf", side_effect=fake_build):
+                started = progress.start_job(777, token)
+                job = self.wait_job(started["id"])
+        self.assertEqual(job["status"], "completed")
+
+    def test_stalled_flag_uses_last_progress_time(self):
+        now = time.time()
+        job_id = "a" * 32
+        with progress._LOCK:
+            progress._JOBS[job_id] = {
+                "id": job_id, "report_id": 778, "status": "running",
+                "progress": 10, "stage": "Preparando contenido académico",
+                "detail": "", "error": "", "path": "", "steps": [],
+                "created_at": now - 700, "updated_at": now - 10,
+                "last_progress_at": now - progress._STALL_WARNING_SECONDS - 1,
+            }
+        try:
+            public = progress.get_job(job_id)
+        finally:
+            with progress._LOCK:
+                progress._JOBS.pop(job_id, None)
+        self.assertTrue(public["stalled"])
+        self.assertGreaterEqual(public["seconds_without_progress"], progress._STALL_WARNING_SECONDS)
+
     def test_pdf_builds_are_serialized_across_reports(self):
         active = 0
         max_active = 0
@@ -135,6 +170,8 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         self.assertIn("Generando resultados de Núcleos", runtime)
         self.assertIn("report_read_snapshot", runtime)
         self.assertIn("Etapa completada en", runtime)
+        self.assertIn("store_preflight", runtime)
+        self.assertIn("export/pdf", runtime)
 
 
 if __name__ == "__main__":

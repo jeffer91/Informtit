@@ -246,7 +246,8 @@ def automatic_actions_integrity(data: dict[str, Any]) -> list[dict[str, str]]:
     report_id = int(report.get("id") or 0)
     if not report_id:
         return []
-    audit = integrity.audit_report(report_id, resolve_resources=False)
+    primed = _primed_validation(report_id)
+    audit = (primed or {}).get("audit") or integrity.audit_report(report_id, resolve_resources=False)
     if audit["mode"] == "no_population":
         return []
     metrics = audit["metrics"]
@@ -350,7 +351,8 @@ def complexive_tie_text(report: dict[str, Any]) -> str:
 def conclusions_integrity(report_id: int, report: dict[str, Any]) -> list[str]:
     if _BASE_CONCLUSIONS is None:
         return []
-    audit = integrity.audit_report(report_id, resolve_resources=False)
+    primed = _primed_validation(report_id)
+    audit = (primed or {}).get("audit") or integrity.audit_report(report_id, resolve_resources=False)
     if audit["mode"] == "no_population":
         return ["No se identificaron hallazgos cuantificables con la información disponible."]
     tie_text = complexive_tie_text(report)

@@ -16,6 +16,7 @@ import report_full_detail as full
 import report_integrity_core as integrity
 import report_integrity_hooks as hooks
 import report_quality
+import pdf_progress_runtime
 
 
 _LOCAL = threading.local()
@@ -51,6 +52,15 @@ def configure(
 
 def current_audit() -> dict[str, Any] | None:
     return getattr(_LOCAL, "audit", None)
+
+
+def current_audit_for(report_id: int) -> dict[str, Any] | None:
+    audit = current_audit()
+    if not isinstance(audit, dict):
+        return None
+    if int(audit.get("report_id") or 0) != int(report_id):
+        return None
+    return audit
 
 
 def display_report_integrity(report: dict[str, Any]) -> dict[str, Any]:
@@ -132,7 +142,8 @@ def pdf_bullet_integrity(story: list[Any], styles: Any, text: str) -> Any:
 
 
 def _reconciliation_section(story: list[Any], context: Any, styles: Any, report_id: int) -> None:
-    data = integrity.reconciliation(report_id)
+    audit = current_audit_for(report_id)
+    data = (audit or {}).get("reconciliation") or integrity.reconciliation(report_id)
     report_quality._pdf_heading(story, context, styles, 2, "Conciliación de datos importados")
     report_quality._pdf_body(
         story,
@@ -202,7 +213,7 @@ def _paragraph_rows(rows: list[list[Any]], styles: Any) -> list[list[Any]]:
 
 
 def formula_traceability(story: list[Any], context: Any, styles: Any, report_id: int) -> None:
-    audit = integrity.audit_report(report_id, resolve_resources=False)
+    audit = current_audit_for(report_id) or integrity.audit_report(report_id, resolve_resources=False)
     report_quality._pdf_heading(story, context, styles, 1, "Trazabilidad de fórmulas e indicadores")
     report_quality._pdf_body(
         story,
@@ -315,7 +326,10 @@ def build_pdf_integrity(report_id: int) -> Path:
     # Un solo preflight completo por generación. El generador base vuelve a llamar
     # validate_pdf_report por diseño; prime_validation hace que esa segunda llamada
     # reutilice exactamente el mismo resultado en este hilo.
-    validation = hooks.validation_integrity(report_id)
+    validation = (
+        pdf_progress_runtime.consume_preflight(report_id, "normal")
+        or hooks.validation_integrity(report_id)
+    )
     audit = validation.get("audit") or integrity.audit_report(report_id)
     errors = list(validation.get("errors") or [])
     if errors or not audit["can_generate_pdf"]:

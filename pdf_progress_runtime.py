@@ -4,6 +4,7 @@ import threading
 import time
 import uuid
 from contextlib import nullcontext
+from copy import deepcopy
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
@@ -17,16 +18,78 @@ _LOCK = threading.RLock()
 _BUILD_LOCK = threading.Lock()
 _JOBS: dict[str, dict[str, Any]] = {}
 _ACTIVE_BY_REPORT: dict[int, str] = {}
+_PREFLIGHTS: dict[str, dict[str, Any]] = {}
 _LOCAL = threading.local()
+
+_PREFLIGHT_TTL_SECONDS = 300.0
+_STALL_WARNING_SECONDS = 300.0
 
 
 def _now() -> float:
     return time.time()
 
 
+def _cleanup_preflights() -> None:
+    now = _now()
+    with _LOCK:
+        expired = [
+            token
+            for token, item in _PREFLIGHTS.items()
+            if now - float(item.get("created_at") or 0) > _PREFLIGHT_TTL_SECONDS
+        ]
+        for token in expired:
+            _PREFLIGHTS.pop(token, None)
+        if len(_PREFLIGHTS) > 30:
+            ordered = sorted(
+                _PREFLIGHTS.items(),
+                key=lambda pair: float(pair[1].get("created_at") or 0),
+            )
+            for token, _item in ordered[:-30]:
+                _PREFLIGHTS.pop(token, None)
+
+
+def store_preflight(report_id: int, kind: str, payload: dict[str, Any]) -> str:
+    """Guarda temporalmente el preflight que el usuario acaba de revisar."""
+    _cleanup_preflights()
+    token = uuid.uuid4().hex
+    with _LOCK:
+        _PREFLIGHTS[token] = {
+            "report_id": int(report_id),
+            "kind": str(kind),
+            "payload": deepcopy(payload),
+            "created_at": _now(),
+        }
+    return token
+
+
+def consume_preflight(report_id: int, kind: str) -> dict[str, Any] | None:
+    """Consume una sola vez el preflight asociado al job PDF actual."""
+    token = str(getattr(_LOCAL, "preflight_token", "") or "")
+    if not token:
+        return None
+    _cleanup_preflights()
+    with _LOCK:
+        item = _PREFLIGHTS.pop(token, None)
+    if not item:
+        return None
+    if int(item.get("report_id") or 0) != int(report_id):
+        return None
+    if str(item.get("kind") or "") != str(kind):
+        return None
+    return deepcopy(item.get("payload") or {})
+
+
 def _public_job(job: dict[str, Any]) -> dict[str, Any]:
     finished = job.get("duration_seconds")
     elapsed = float(finished) if finished is not None else max(0.0, _now() - float(job.get("created_at") or _now()))
+    last_progress = float(
+        job.get("last_progress_at")
+        or job.get("updated_at")
+        or job.get("created_at")
+        or _now()
+    )
+    without_progress = 0.0 if finished is not None else max(0.0, _now() - last_progress)
+    stalled = job.get("status") == "running" and without_progress >= _STALL_WARNING_SECONDS
     return {
         "id": job["id"],
         "report_id": job["report_id"],
@@ -40,6 +103,8 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
         "updated_at": job["updated_at"],
         "elapsed_seconds": round(elapsed, 1),
         "duration_seconds": round(float(finished), 1) if finished is not None else None,
+        "stalled": bool(stalled),
+        "seconds_without_progress": round(without_progress, 1),
         "steps": [dict(item) for item in list(job.get("steps") or [])[-16:]],
     }
 
@@ -73,6 +138,7 @@ def _set_progress(percent: int | float, stage: str, detail: str = "") -> None:
                 steps[-1]["detail"] = detail
             steps[-1]["at"] = now
         job["updated_at"] = now
+        job["last_progress_at"] = now
 
 
 def _wrap_stage(
@@ -112,6 +178,9 @@ def _cleanup_jobs() -> None:
 
 def _run_job(job_id: str, report_id: int) -> None:
     _LOCAL.job_id = job_id
+    with _LOCK:
+        job_info = dict(_JOBS.get(job_id) or {})
+    _LOCAL.preflight_token = str(job_info.get("preflight_token") or "")
     try:
         _set_progress(
             2,
@@ -176,11 +245,14 @@ def _run_job(job_id: str, report_id: int) -> None:
             if _ACTIVE_BY_REPORT.get(report_id) == job_id:
                 _ACTIVE_BY_REPORT.pop(report_id, None)
         _LOCAL.job_id = None
+        _LOCAL.preflight_token = ""
         _cleanup_jobs()
+        _cleanup_preflights()
 
 
-def start_job(report_id: int) -> dict[str, Any]:
+def start_job(report_id: int, preflight_token: str = "") -> dict[str, Any]:
     _cleanup_jobs()
+    _cleanup_preflights()
     with _LOCK:
         active_id = _ACTIVE_BY_REPORT.get(report_id)
         if active_id:
@@ -199,6 +271,8 @@ def start_job(report_id: int) -> dict[str, Any]:
             "detail": "Se está preparando el proceso de exportación.",
             "error": "",
             "path": "",
+            "preflight_token": str(preflight_token or ""),
+            "last_progress_at": now,
             "steps": [{
                 "stage": "Preparando generación",
                 "progress": 1,
@@ -296,6 +370,14 @@ def install() -> None:
     def progress_get(self: Any, path: str, query: dict[str, list[str]]) -> None:
         import re
 
+        direct = re.fullmatch(r"/api/reports/(\d+)/export/pdf", path)
+        if direct:
+            self._send_error_json(
+                "La exportación PDF directa está deshabilitada por seguridad. Use el botón PDF para iniciar un proceso controlado.",
+                409,
+            )
+            return
+
         match = re.fullmatch(r"/api/pdf-jobs/([a-f0-9]{32})", path)
         if match:
             job = get_job(match.group(1))
@@ -321,7 +403,10 @@ def install() -> None:
 
         match = re.fullmatch(r"/api/reports/(\d+)/pdf-jobs", path)
         if method == "POST" and match:
-            job = start_job(int(match.group(1)))
+            job = start_job(
+                int(match.group(1)),
+                str(payload.get("preflight_token") or ""),
+            )
             self._send_json({"ok": True, "job": job}, 202)
             return
         previous_write(self, method, path, payload)
