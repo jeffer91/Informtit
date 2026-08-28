@@ -24,6 +24,21 @@ class StudentReportIntegrationTests(unittest.TestCase):
         self.assertEqual(first, third)
         self.assertEqual(students_mock.call_count, 2)
 
+    @patch("student_report_integration._manual_grade_decisions")
+    def test_snapshot_uses_one_bulk_manual_grade_map(self, decisions_mock):
+        decisions_mock.return_value = {
+            ("GRADE_NUCLEI", "student:101:nucleus:1"): 8.5,
+            ("GRADE_THESIS", "student:102"): 9.0,
+        }
+        with integration.report_read_snapshot():
+            first = integration._selected_grade(1, "NUCLEI", 101, 1)
+            second = integration._selected_grade(1, "NUCLEI", 101, 1)
+            thesis = integration._selected_grade(1, "THESIS", 102)
+        self.assertEqual(first, 8.5)
+        self.assertEqual(second, 8.5)
+        self.assertEqual(thesis, 9.0)
+        self.assertEqual(decisions_mock.call_count, 2)
+
     def test_report_admission_requires_current_requirements_and_no_master_conflict(self):
         base = {
             "route": integration.ROUTE_COMPLEXIVE,

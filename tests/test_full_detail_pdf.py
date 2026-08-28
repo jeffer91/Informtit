@@ -53,6 +53,17 @@ class FullDetailPdfTests(unittest.TestCase):
         self.assertIn("progressbar", ui)
         self.assertIn("Tiempo transcurrido", ui)
 
+    def test_pdf_read_paths_do_not_keep_known_n_plus_one_patterns(self) -> None:
+        integration = (ROOT / "student_report_integration.py").read_text(encoding="utf-8")
+        process = (ROOT / "process_service.py").read_text(encoding="utf-8")
+        service = (ROOT / "report_service.py").read_text(encoding="utf-8")
+        self.assertIn("def _manual_grade_decisions", integration)
+        self.assertIn("decision_type='GRADE'", integration)
+        self.assertIn("def _source_projects", integration)
+        self.assertIn("def _source_report_data", integration)
+        self.assertIn("WHERE project_id IN", process)
+        self.assertIn("WHERE career_id IN", service)
+
     def test_desktop_installs_detail_after_old_overhaul(self) -> None:
         source = (ROOT / "desktop_entry.py").read_text(encoding="utf-8")
         self.assertLess(source.index("report_final_overhaul.install()"), source.index("report_full_detail.install()"))

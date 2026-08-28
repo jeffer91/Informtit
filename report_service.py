@@ -58,23 +58,61 @@ def load_report_data(report_id: int) -> dict[str, Any]:
                 "SELECT * FROM careers WHERE report_id = ? ORDER BY sort_order, name", (report_id,)
             ).fetchall()
         )
+        students_by_career: dict[int, list[dict[str, Any]]] = {
+            int(career["id"]): [] for career in careers
+        }
+        analyses_by_career: dict[int, dict[str, dict[str, Any]]] = {
+            int(career["id"]): {} for career in careers
+        }
+        images_by_career: dict[int, list[dict[str, Any]]] = {
+            int(career["id"]): [] for career in careers
+        }
+        if careers:
+            career_ids = [int(career["id"]) for career in careers]
+            for start in range(0, len(career_ids), 400):
+                chunk = career_ids[start:start + 400]
+                placeholders = ",".join("?" for _ in chunk)
+
+                student_rows = rows_to_dicts(conn.execute(
+                    f"""
+                    SELECT * FROM students
+                    WHERE career_id IN ({placeholders})
+                    ORDER BY career_id, full_name, id
+                    """,
+                    tuple(chunk),
+                ).fetchall())
+                for student in student_rows:
+                    students_by_career.setdefault(int(student["career_id"]), []).append(student)
+
+                analysis_rows = rows_to_dicts(conn.execute(
+                    f"""
+                    SELECT * FROM analyses
+                    WHERE career_id IN ({placeholders})
+                    ORDER BY career_id, id
+                    """,
+                    tuple(chunk),
+                ).fetchall())
+                for analysis in analysis_rows:
+                    analyses_by_career.setdefault(int(analysis["career_id"]), {})[
+                        str(analysis["section"])
+                    ] = dict(analysis)
+
+                image_rows = rows_to_dicts(conn.execute(
+                    f"""
+                    SELECT * FROM images
+                    WHERE career_id IN ({placeholders})
+                    ORDER BY career_id, sort_order, id
+                    """,
+                    tuple(chunk),
+                ).fetchall())
+                for image in image_rows:
+                    images_by_career.setdefault(int(image["career_id"]), []).append(image)
+
         for career in careers:
-            career["students"] = rows_to_dicts(
-                conn.execute(
-                    "SELECT * FROM students WHERE career_id = ? ORDER BY full_name", (career["id"],)
-                ).fetchall()
-            )
-            career["analyses"] = {
-                row["section"]: dict(row)
-                for row in conn.execute(
-                    "SELECT * FROM analyses WHERE career_id = ?", (career["id"],)
-                ).fetchall()
-            }
-            career["images"] = rows_to_dicts(
-                conn.execute(
-                    "SELECT * FROM images WHERE career_id = ? ORDER BY sort_order, id", (career["id"],)
-                ).fetchall()
-            )
+            career_id = int(career["id"])
+            career["students"] = students_by_career.get(career_id, [])
+            career["analyses"] = analyses_by_career.get(career_id, {})
+            career["images"] = images_by_career.get(career_id, [])
         report["careers"] = careers
         report["general_images"] = rows_to_dicts(
             conn.execute(

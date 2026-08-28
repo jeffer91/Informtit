@@ -121,25 +121,68 @@ def _project_report_ids(report_id: int) -> list[int]:
     return ids or [report_id]
 
 
-@_snapshot_cached("selected_grade")
-def _selected_grade(report_id: int, module: str, student_id: int, nucleus_number: int = 0) -> float | None:
-    """Lee una resolución manual de nota sin alterar las evidencias originales."""
+@_snapshot_cached("period_project_id")
+def _period_project_id(report_id: int) -> int | None:
+    with connection() as conn:
+        report_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(reports)").fetchall()}
+        if "period_project_id" not in report_columns:
+            return None
+        row = conn.execute(
+            "SELECT period_project_id FROM reports WHERE id=?",
+            (report_id,),
+        ).fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+@_snapshot_cached("manual_grade_decisions")
+def _manual_grade_decisions(report_id: int) -> dict[tuple[str, str], float | None]:
+    """Carga todas las decisiones de nota del período en una sola consulta."""
+    project_id = _period_project_id(report_id)
+    if project_id is None:
+        return {}
     with connection() as conn:
         decision_table = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='student_manual_decisions'"
         ).fetchone()
-        report_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(reports)").fetchall()}
-        if not decision_table or "period_project_id" not in report_columns:
-            return None
-        project = conn.execute(
-            "SELECT period_project_id FROM reports WHERE id=?", (report_id,)
+        if not decision_table:
+            return {}
+        rows = conn.execute(
+            """
+            SELECT id, source_module, identity_key, decision_value
+            FROM student_manual_decisions
+            WHERE period_project_id=? AND decision_type='GRADE'
+            ORDER BY id
+            """,
+            (project_id,),
+        ).fetchall()
+    decisions: dict[tuple[str, str], float | None] = {}
+    for row in rows:
+        decisions[(str(row["source_module"]), str(row["identity_key"]))] = _grade(row["decision_value"])
+    return decisions
+
+
+@_snapshot_cached("selected_grade")
+def _selected_grade(report_id: int, module: str, student_id: int, nucleus_number: int = 0) -> float | None:
+    """Lee una resolución manual de nota sin N+1 durante la generación del informe."""
+    identity = (
+        f"student:{student_id}:nucleus:{int(nucleus_number)}"
+        if module == "NUCLEI" else f"student:{student_id}"
+    )
+    cache = getattr(_READ_LOCAL, "cache", None)
+    if cache is not None:
+        return _manual_grade_decisions(report_id).get((f"GRADE_{module}", identity))
+
+    # Fuera de un snapshot (acciones puntuales de interfaz) conserva una consulta
+    # exacta para no mantener decisiones obsoletas entre solicitudes.
+    project_id = _period_project_id(report_id)
+    if project_id is None:
+        return None
+    with connection() as conn:
+        decision_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='student_manual_decisions'"
         ).fetchone()
-        if not project or project[0] is None:
+        if not decision_table:
             return None
-        identity = (
-            f"student:{student_id}:nucleus:{int(nucleus_number)}"
-            if module == "NUCLEI" else f"student:{student_id}"
-        )
         row = conn.execute(
             """
             SELECT decision_value FROM student_manual_decisions
@@ -147,7 +190,7 @@ def _selected_grade(report_id: int, module: str, student_id: int, nucleus_number
               AND decision_type='GRADE'
             ORDER BY id DESC LIMIT 1
             """,
-            (int(project[0]), f"GRADE_{module}", identity),
+            (project_id, f"GRADE_{module}", identity),
         ).fetchone()
     return _grade(row[0]) if row else None
 
@@ -187,21 +230,27 @@ def _recalculate_nucleus(course: dict[str, Any]) -> None:
         for item in course.get("activity_averages", [])
         if isinstance(item, dict)
     }
+    values_by_id: dict[int, list[float]] = {}
+    values_by_name: dict[str, list[float]] = {}
+    for student in students:
+        for score in student.get("scores", []):
+            value = _grade(score.get("grade"))
+            if value is None:
+                continue
+            assessment_id = int(score.get("assessment_id") or 0)
+            assessment_name = str(score.get("assessment_name") or "")
+            if assessment_id:
+                values_by_id.setdefault(assessment_id, []).append(value)
+            if assessment_name:
+                values_by_name.setdefault(assessment_name, []).append(value)
+
     recalculated: list[dict[str, Any]] = []
     for assessment in course.get("assessments", []):
         assessment_id = int(assessment.get("id") or 0)
         name = str(assessment.get("name") or "")
-        values: list[float] = []
-        for student in students:
-            for score in student.get("scores", []):
-                same_id = assessment_id and int(score.get("assessment_id") or 0) == assessment_id
-                same_name = name and str(score.get("assessment_name") or "") == name
-                if not (same_id or same_name):
-                    continue
-                value = _grade(score.get("grade"))
-                if value is not None:
-                    values.append(value)
-                break
+        values = values_by_id.get(assessment_id, []) if assessment_id else []
+        if not values and name:
+            values = values_by_name.get(name, [])
         average = round(mean(values), 2) if values else None
         assessment["average"] = average
         recalculated.append(
@@ -350,14 +399,26 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
     }
 
 
+@_snapshot_cached("source_projects")
+def _source_projects(report_id: int) -> dict[str, Any]:
+    return raw_get_projects(report_id)
+
+
+@_snapshot_cached("source_report_data")
+def _source_report_data(report_id: int) -> dict[str, Any]:
+    if _BASE_REPORT_DATA is None:
+        raise RuntimeError("La integración del dominio de estudiantes todavía no fue instalada.")
+    return _BASE_REPORT_DATA(report_id)
+
+
 @_snapshot_cached("filtered_projects")
 def filtered_projects(report_id: int) -> dict[str, Any]:
     reconcile_all(report_id)
     masters = _master(report_id)
-    data = raw_get_projects(report_id)
+    data = _source_projects(report_id)
     source_projects: list[dict[str, Any]] = []
     for source_report_id in _project_report_ids(report_id):
-        source_projects.extend(raw_get_projects(source_report_id).get("projects", []))
+        source_projects.extend(_source_projects(source_report_id).get("projects", []))
 
     eligible: list[dict[str, Any]] = []
     omitted_route_conflicts = 0
@@ -450,9 +511,7 @@ def filtered_report_data(report_id: int) -> dict[str, Any]:
     """Complexivo: solo ruta Complexivo y estudiantes habilitados por requisitos."""
     reconcile_all(report_id)
     masters = _master(report_id)
-    if _BASE_REPORT_DATA is None:
-        raise RuntimeError("La integración del dominio de estudiantes todavía no fue instalada.")
-    report = _BASE_REPORT_DATA(report_id)
+    report = _source_report_data(report_id)
     target_templates = {
         str(career.get("name") or "").strip().casefold(): dict(career)
         for career in report.get("careers", [])
@@ -460,7 +519,7 @@ def filtered_report_data(report_id: int) -> dict[str, Any]:
 
     source_careers: list[dict[str, Any]] = []
     for source_report_id in _project_report_ids(report_id):
-        for raw_career in _BASE_REPORT_DATA(source_report_id).get("careers", []):
+        for raw_career in _source_report_data(source_report_id).get("careers", []):
             tagged = dict(raw_career)
             tagged["_source_report_id"] = source_report_id
             source_careers.append(tagged)

@@ -450,11 +450,26 @@ def get_projects(report_id: int) -> dict[str, Any]:
             "SELECT * FROM thesis_projects WHERE report_id=? ORDER BY full_name",
             (report_id,),
         ).fetchall())
+        scores_by_project: dict[int, list[dict[str, Any]]] = {
+            int(project["id"]): [] for project in projects
+        }
+        if projects:
+            project_ids = [int(project["id"]) for project in projects]
+            for start in range(0, len(project_ids), 400):
+                chunk = project_ids[start:start + 400]
+                placeholders = ",".join("?" for _ in chunk)
+                score_rows = rows_to_dicts(conn.execute(
+                    f"""
+                    SELECT * FROM thesis_scores
+                    WHERE project_id IN ({placeholders})
+                    ORDER BY project_id, evaluation_type, sort_order, id
+                    """,
+                    tuple(chunk),
+                ).fetchall())
+                for score in score_rows:
+                    scores_by_project.setdefault(int(score["project_id"]), []).append(score)
         for project in projects:
-            project["scores"] = rows_to_dicts(conn.execute(
-                "SELECT * FROM thesis_scores WHERE project_id=? ORDER BY evaluation_type, sort_order",
-                (project["id"],),
-            ).fetchall())
+            project["scores"] = scores_by_project.get(int(project["id"]), [])
     finals = [p["final_grade"] for p in projects if p["final_grade"] is not None]
     return {
         "projects": projects,
