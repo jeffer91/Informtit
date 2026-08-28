@@ -882,6 +882,54 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(remaining, [])
 
 
+    def test_project_overview_removes_legacy_reconciliation_alert(self):
+        original_overview = reliability._FINAL_BASE_PROJECT_OVERVIEW
+        original_summary = reliability._final_case_summary
+        reliability._FINAL_BASE_PROJECT_OVERVIEW = lambda _pid: {
+            "ok": True,
+            "alerts": [
+                "Presencial · Conciliación: Existen 6 casos únicos que requieren atención (15 evidencias técnicas agrupadas): 6 fuera de población.",
+                "Presencial · Logo institucional: Falta el logo.",
+            ],
+            "audits": {
+                "presencial": {
+                    "controls": [
+                        {"name": "Conciliación", "status": "warning", "detail": "legacy"},
+                        {"name": "Logo institucional", "status": "warning", "detail": "Falta el logo."},
+                    ]
+                },
+                "en_linea": {"controls": []},
+            },
+        }
+        reliability._final_case_summary = lambda _pid: {
+            "total_cases": 4,
+            "outside_population": 0,
+            "identity_review": 3,
+            "official_review": 1,
+            "route_conflicts": 0,
+            "grade_conflicts": 0,
+            "auto_resolved": 1774,
+            "raw_pending": 15,
+        }
+        try:
+            overview = reliability._project_overview_final(77)
+        finally:
+            reliability._FINAL_BASE_PROJECT_OVERVIEW = original_overview
+            reliability._final_case_summary = original_summary
+
+        joined = " ".join(overview["alerts"])
+        self.assertNotIn("casos únicos", joined)
+        self.assertNotIn("evidencias técnicas", joined)
+        self.assertIn("4 casos reales", joined)
+        self.assertIn("3 identidades por confirmar", joined)
+        self.assertIn("1 inconsistencias de Requisitos", joined)
+        self.assertEqual(
+            [item["name"] for item in overview["audits"]["presencial"]["controls"]],
+            ["Logo institucional"],
+        )
+        self.assertEqual(overview["reconciliation_summary"]["total_cases"], 4)
+
+
     def test_frontend_only_marks_ranked_candidate_as_suggested(self):
         source = Path("static/students-period-ui.js").read_text(encoding="utf-8")
         summary = Path("static/smart-reconciliation-ui.js").read_text(encoding="utf-8")

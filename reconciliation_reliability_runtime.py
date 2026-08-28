@@ -12,6 +12,7 @@ from typing import Any, Callable
 import analytics
 import app as core
 import project_wide_reconciliation_runtime as project_wide
+import period_unified_runtime as unified
 import smart_reconciliation_performance_runtime as perf
 import student_report_integration as report_integration
 import read_performance_runtime as fast_read
@@ -442,6 +443,7 @@ _FINAL_BASE_WRITE: Callable[..., Any] | None = None
 _FINAL_BASE_COMPLEXIVE_RECORDS: Callable[[int], dict[int, list[dict[str, Any]]]] | None = None
 _FINAL_BASE_THESIS_RECORDS: Callable[[int], dict[int, list[dict[str, Any]]]] | None = None
 _FINAL_BASE_NUCLEI_RECORDS: Callable[[int], dict[int, list[dict[str, Any]]]] | None = None
+_FINAL_BASE_PROJECT_OVERVIEW: Callable[[int], dict[str, Any]] | None = None
 _DECISION_LOCAL = threading.local()
 
 DECISION_MATCH = "MATCH"
@@ -2620,6 +2622,76 @@ def _summary_from_report_ids(report_ids: list[int]) -> dict[str, int]:
     return _final_case_summary(project_id) if project_id else smart._case_summary(report_ids)
 
 
+def _final_reconciliation_alert(period_project_id: int) -> tuple[dict[str, int], str]:
+    """Devuelve el único resumen visible de conciliación para todo el período."""
+    summary = _final_case_summary(period_project_id)
+    total = int(summary.get("total_cases") or 0)
+    if not total:
+        return summary, ""
+
+    parts: list[str] = []
+    outside = int(summary.get("outside_population") or 0)
+    identity = int(summary.get("identity_review") or 0)
+    official = int(summary.get("official_review") or 0)
+    route = int(summary.get("route_conflicts") or 0)
+    grade = int(summary.get("grade_conflicts") or 0)
+
+    if identity:
+        parts.append(f"{identity} identidades por confirmar")
+    if official:
+        parts.append(f"{official} inconsistencias de Requisitos")
+    if outside:
+        parts.append(f"{outside} fuera de población confirmados")
+    if route:
+        parts.append(f"{route} conflictos de ruta")
+    if grade:
+        parts.append(f"{grade} conflictos de nota")
+
+    detail = f"Conciliación del período: {total} casos reales requieren atención"
+    if parts:
+        detail += ": " + ", ".join(parts)
+    return summary, detail + "."
+
+
+def _project_overview_final(period_project_id: int) -> dict[str, Any]:
+    """Evita que la cabecera recalcule conciliación con la lógica antigua por modalidad."""
+    if _FINAL_BASE_PROJECT_OVERVIEW is None:
+        raise RuntimeError("La vista general del período no está disponible.")
+
+    data = _FINAL_BASE_PROJECT_OVERVIEW(period_project_id)
+    summary, final_alert = _final_reconciliation_alert(period_project_id)
+
+    # Los audit_report individuales todavía pueden traer el control legacy
+    # "Conciliación". Se elimina aquí para que Presencial/Online no dupliquen ni
+    # contradigan el caso único calculado a nivel del período.
+    audits = data.get("audits") or {}
+    for audit_data in audits.values():
+        if not isinstance(audit_data, dict):
+            continue
+        audit_data["controls"] = [
+            item for item in list(audit_data.get("controls") or [])
+            if str(item.get("name") or "").strip().casefold() != "conciliación".casefold()
+        ]
+        audit_data["case_summary"] = dict(summary)
+
+    alerts: list[str] = []
+    for alert in list(data.get("alerts") or []):
+        text = str(alert or "").strip()
+        folded = text.casefold()
+        # Retira tanto "Presencial · Conciliación: ..." como cualquier texto viejo
+        # de "casos únicos/evidencias técnicas" generado por smart_reconciliation.
+        if "conciliación:" in folded or "conciliación del período:" in folded:
+            continue
+        alerts.append(text)
+
+    if final_alert:
+        alerts.append(final_alert)
+
+    data["alerts"] = list(dict.fromkeys(item for item in alerts if item))
+    data["reconciliation_summary"] = dict(summary)
+    return data
+
+
 def _period_read_final(period_project_id: int) -> dict[str, Any]:
     assert _FINAL_BASE_PERIOD_READ is not None
     started = time.perf_counter()
@@ -2944,6 +3016,7 @@ def _install_final_contract() -> None:
     global _FINAL_INSTALLED, _FINAL_BASE_MATCH, _FINAL_BASE_SYNC
     global _FINAL_BASE_PERIOD_READ, _FINAL_BASE_GET, _FINAL_BASE_WRITE
     global _FINAL_BASE_COMPLEXIVE_RECORDS, _FINAL_BASE_THESIS_RECORDS, _FINAL_BASE_NUCLEI_RECORDS
+    global _FINAL_BASE_PROJECT_OVERVIEW
     if _FINAL_INSTALLED:
         return
     _ensure_final_schema()
@@ -2956,6 +3029,7 @@ def _install_final_contract() -> None:
     _FINAL_BASE_COMPLEXIVE_RECORDS = read_model._complexive_records
     _FINAL_BASE_THESIS_RECORDS = read_model._thesis_records
     _FINAL_BASE_NUCLEI_RECORDS = read_model._nuclei_records
+    _FINAL_BASE_PROJECT_OVERVIEW = unified.project_overview
 
     # Requisitos gobierna identidad/nombre/carrera/modalidad y conserva la entidad
     # aunque cambie de dataset en una carga posterior. Se actualizan también las
@@ -2988,6 +3062,10 @@ def _install_final_contract() -> None:
 
     # Lectura única de casos para tabla, contadores y acciones manuales.
     fast_read._period_students_read = _period_read_final
+
+    # La cabecera y la auditoría Presencial/Online deben consumir exactamente el
+    # mismo resumen final que Estudiantes; se elimina el cálculo legacy por dataset.
+    unified.project_overview = _project_overview_final
 
     # Los informes deben consumir la conciliación persistida, no volver a escribir
     # miles de filas al generar una salida.
