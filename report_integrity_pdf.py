@@ -311,18 +311,30 @@ def build_no_population_pdf(report_id: int, audit: dict[str, Any]) -> Path:
 def build_pdf_integrity(report_id: int) -> Path:
     if _BASE_BUILD_PDF is None:
         raise RuntimeError("Integridad PDF no configurada.")
-    audit = integrity.audit_report(report_id)
-    if not audit["can_generate_pdf"]:
-        details = "; ".join(item["detail"] for item in audit["blocking_errors"]) or "El informe contiene errores bloqueantes."
+
+    # Un solo preflight completo por generación. El generador base vuelve a llamar
+    # validate_pdf_report por diseño; prime_validation hace que esa segunda llamada
+    # reutilice exactamente el mismo resultado en este hilo.
+    validation = hooks.validation_integrity(report_id)
+    audit = validation.get("audit") or integrity.audit_report(report_id)
+    errors = list(validation.get("errors") or [])
+    if errors or not audit["can_generate_pdf"]:
+        details = "; ".join(
+            str(item.get("detail") or item.get("name") or "Error de validación")
+            for item in (errors or audit["blocking_errors"])
+        ) or "El informe contiene errores bloqueantes."
         raise ValueError("No se puede generar el PDF: " + details)
+
     previous_audit = current_audit()
     previous_report = getattr(_LOCAL, "report_id", None)
     _LOCAL.audit = audit
     _LOCAL.report_id = report_id
+    hooks.prime_validation(report_id, validation)
     try:
         if audit["mode"] == "no_population":
             return build_no_population_pdf(report_id, audit)
         return Path(_BASE_BUILD_PDF(report_id))
     finally:
+        hooks.clear_primed_validation()
         _LOCAL.audit = previous_audit
         _LOCAL.report_id = previous_report

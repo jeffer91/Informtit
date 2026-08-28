@@ -24,6 +24,8 @@ def _now() -> float:
 
 
 def _public_job(job: dict[str, Any]) -> dict[str, Any]:
+    finished = job.get("duration_seconds")
+    elapsed = float(finished) if finished is not None else max(0.0, _now() - float(job.get("created_at") or _now()))
     return {
         "id": job["id"],
         "report_id": job["report_id"],
@@ -35,6 +37,9 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
         "download_ready": bool(job.get("path")) and job["status"] == "completed",
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
+        "elapsed_seconds": round(elapsed, 1),
+        "duration_seconds": round(float(finished), 1) if finished is not None else None,
+        "steps": [dict(item) for item in list(job.get("steps") or [])[-16:]],
     }
 
 
@@ -50,7 +55,23 @@ def _set_progress(percent: int | float, stage: str, detail: str = "") -> None:
         job["stage"] = stage
         if detail:
             job["detail"] = detail
-        job["updated_at"] = _now()
+        now = _now()
+        steps = job.setdefault("steps", [])
+        if not steps or str(steps[-1].get("stage") or "") != str(stage):
+            steps.append({
+                "stage": stage,
+                "progress": int(job["progress"]),
+                "detail": detail or job.get("detail", ""),
+                "at": now,
+            })
+            if len(steps) > 24:
+                del steps[:-24]
+        else:
+            steps[-1]["progress"] = int(job["progress"])
+            if detail:
+                steps[-1]["detail"] = detail
+            steps[-1]["at"] = now
+        job["updated_at"] = now
 
 
 def _wrap_stage(
@@ -89,30 +110,34 @@ def _cleanup_jobs() -> None:
 def _run_job(job_id: str, report_id: int) -> None:
     _LOCAL.job_id = job_id
     try:
-        _set_progress(2, "Esperando turno de generación", "Informtit genera un PDF a la vez para evitar colisiones entre modalidades.")
+        _set_progress(
+            2,
+            "Esperando turno de generación",
+            "Informtit genera un PDF a la vez para evitar colisiones entre Presencial y Online.",
+        )
         with _BUILD_LOCK:
-            _set_progress(3, "Validando información", "Comprobando que el informe tenga los datos necesarios.")
-            validation = report_full_detail.validate_pdf_report(report_id)
-            if validation.get("errors"):
-                raise ValueError(
-                    "; ".join(str(item.get("detail") or item.get("name") or "Error de validación") for item in validation["errors"])
-                )
-            warnings = validation.get("warnings") or []
-            detail = "Validación completada."
-            if warnings:
-                detail += f" Se detectaron {len(warnings)} advertencias no bloqueantes."
-            _set_progress(8, "Validación completada", detail)
-
+            # La validación completa ya forma parte de core.build_pdf. Antes se
+            # ejecutaba también aquí y luego otra vez dentro del generador, lo que
+            # repetía consultas y cálculos costosos sin aportar seguridad adicional.
+            _set_progress(
+                5,
+                "Preparando datos del informe",
+                "Usando la conciliación ya guardada y preparando las secciones del documento.",
+            )
             output = core.build_pdf(report_id)
+            _set_progress(96, "Verificando archivo generado", "Comprobando integridad y tamaño del PDF.")
             path = Path(output)
             if not path.exists() or not path.is_file() or path.stat().st_size < 5:
                 raise ValueError("El generador no produjo un archivo PDF válido.")
             with path.open("rb") as handle:
                 if handle.read(5) != b"%PDF-":
                     raise ValueError("El archivo generado no contiene una cabecera PDF válida.")
+            _set_progress(99, "Preparando descarga", "El PDF está listo; preparando la descarga automática.")
 
+        _set_progress(100, "PDF listo", "El informe fue generado correctamente y está listo para descargar.")
         with _LOCK:
             job = _JOBS[job_id]
+            duration = max(0.0, _now() - float(job.get("created_at") or _now()))
             job.update(
                 status="completed",
                 progress=100,
@@ -120,17 +145,20 @@ def _run_job(job_id: str, report_id: int) -> None:
                 detail="El informe fue generado correctamente y está listo para descargar.",
                 path=str(path),
                 error="",
+                duration_seconds=duration,
                 updated_at=_now(),
             )
     except Exception as exc:
         with _LOCK:
             job = _JOBS.get(job_id)
             if job:
+                duration = max(0.0, _now() - float(job.get("created_at") or _now()))
                 job.update(
                     status="error",
                     stage="No se pudo generar el PDF",
-                    detail="Revise la validación y vuelva a intentarlo.",
+                    detail="La generación se detuvo en la etapa indicada. Revise el detalle y vuelva a intentarlo.",
                     error=str(exc),
+                    duration_seconds=duration,
                     updated_at=_now(),
                 )
     finally:
@@ -161,6 +189,12 @@ def start_job(report_id: int) -> dict[str, Any]:
             "detail": "Se está preparando el proceso de exportación.",
             "error": "",
             "path": "",
+            "steps": [{
+                "stage": "Preparando generación",
+                "progress": 1,
+                "detail": "Se está preparando el proceso de exportación.",
+                "at": now,
+            }],
             "created_at": now,
             "updated_at": now,
         }

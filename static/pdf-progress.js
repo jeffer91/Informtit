@@ -6,6 +6,8 @@
   const POLL_MS = 550;
   let activeJobId = null;
   let polling = false;
+  let progressStartedAt = 0;
+  let timerHandle = null;
 
   function ensureStyles() {
     if (document.getElementById('pdf-progress-style')) return;
@@ -47,6 +49,14 @@
       .pdf-progress-fill { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #244a73, #2f719f); transition: width .45s ease; }
       .pdf-progress-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 9px; color: #627486; font-size: 13px; }
       .pdf-progress-percent { color: #18364f; font-size: 20px; font-weight: 900; }
+      .pdf-progress-timing { display:flex; justify-content:space-between; gap:12px; margin-top:14px; padding:10px 12px; border-radius:10px; background:#f5f8fa; color:#536a7d; font-size:12px; }
+      .pdf-progress-timing strong { color:#18364f; }
+      .pdf-progress-steps { margin-top:16px; display:grid; gap:7px; }
+      .pdf-progress-step { display:grid; grid-template-columns:24px 1fr auto; align-items:center; gap:8px; padding:8px 10px; border-radius:9px; background:#f8fafc; color:#5d7184; font-size:12px; }
+      .pdf-progress-step.current { background:#edf4fa; color:#244a73; font-weight:700; }
+      .pdf-progress-step.done { color:#356b52; }
+      .pdf-progress-step-icon { text-align:center; font-weight:900; }
+      .pdf-progress-step-percent { color:#768898; font-variant-numeric:tabular-nums; }
       .pdf-progress-actions, .report-audit-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
       .pdf-progress-card.error .pdf-progress-stage { color: #a73a3a; }
       .pdf-progress-card.error .pdf-progress-fill { background: #b94b4b; }
@@ -99,9 +109,14 @@
             <div class="pdf-progress-fill" id="pdf-progress-fill"></div>
           </div>
           <div class="pdf-progress-meta">
-            <span>Puede tardar varios minutos en informes extensos.</span>
+            <span>El porcentaje corresponde a etapas reales del generador.</span>
             <strong class="pdf-progress-percent" id="pdf-progress-percent">0 %</strong>
           </div>
+          <div class="pdf-progress-timing">
+            <span><strong id="pdf-progress-elapsed">Tiempo transcurrido: 00:00</strong></span>
+            <span>No cierre Informtit mientras se genera el documento.</span>
+          </div>
+          <div class="pdf-progress-steps" id="pdf-progress-steps"></div>
           <div class="pdf-progress-actions">
             <button type="button" class="button secondary" id="pdf-progress-close" hidden>Cerrar</button>
           </div>
@@ -212,6 +227,57 @@
     });
   }
 
+  function formatElapsed(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds || 0)));
+    const minutes = Math.floor(total / 60);
+    const remaining = total % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`;
+  }
+
+  function updateElapsed(explicitSeconds = null) {
+    const node = document.getElementById('pdf-progress-elapsed');
+    if (!node) return;
+    const seconds = explicitSeconds == null
+      ? (progressStartedAt ? (Date.now() - progressStartedAt) / 1000 : 0)
+      : Number(explicitSeconds || 0);
+    node.textContent = `Tiempo transcurrido: ${formatElapsed(seconds)}`;
+  }
+
+  function startElapsedTimer() {
+    progressStartedAt = Date.now();
+    if (timerHandle) clearInterval(timerHandle);
+    updateElapsed(0);
+    timerHandle = setInterval(() => updateElapsed(), 500);
+  }
+
+  function stopElapsedTimer(explicitSeconds = null) {
+    if (timerHandle) clearInterval(timerHandle);
+    timerHandle = null;
+    updateElapsed(explicitSeconds);
+  }
+
+  function renderProgressSteps(job) {
+    const host = document.getElementById('pdf-progress-steps');
+    if (!host) return;
+    const steps = Array.isArray(job.steps) ? job.steps.slice(-8) : [];
+    if (!steps.length) {
+      const stage = job.stage || 'Preparando generación';
+      host.innerHTML = `<div class="pdf-progress-step current"><span class="pdf-progress-step-icon">→</span><span>${escapeHtml(stage)}</span><span class="pdf-progress-step-percent">${Math.round(Number(job.progress || 0))}%</span></div>`;
+      return;
+    }
+    host.innerHTML = steps.map((step, index) => {
+      const isCurrent = index === steps.length - 1 && !['completed', 'error'].includes(job.status);
+      const isDone = !isCurrent && job.status !== 'error';
+      const icon = isCurrent ? '→' : isDone ? '✓' : '•';
+      const klass = isCurrent ? 'current' : isDone ? 'done' : '';
+      return `<div class="pdf-progress-step ${klass}">
+        <span class="pdf-progress-step-icon">${icon}</span>
+        <span>${escapeHtml(step.stage || '')}</span>
+        <span class="pdf-progress-step-percent">${Math.round(Number(step.progress || 0))}%</span>
+      </div>`;
+    }).join('');
+  }
+
   function setProgress(job) {
     const overlay = ensureProgressUI();
     const card = overlay.querySelector('.pdf-progress-card');
@@ -225,6 +291,12 @@
     document.getElementById('pdf-progress-fill').style.width = `${progress}%`;
     document.getElementById('pdf-progress-percent').textContent = `${Math.round(progress)} %`;
     track.setAttribute('aria-valuenow', String(Math.round(progress)));
+    renderProgressSteps(job);
+    if (job.status === 'completed' || job.status === 'error') {
+      stopElapsedTimer(job.duration_seconds ?? job.elapsed_seconds ?? null);
+    } else if (job.elapsed_seconds != null) {
+      updateElapsed(job.elapsed_seconds);
+    }
     document.getElementById('pdf-progress-close').hidden = !['completed', 'error'].includes(job.status);
   }
 
@@ -233,12 +305,14 @@
     const card = overlay.querySelector('.pdf-progress-card');
     card.classList.remove('error', 'done');
     overlay.hidden = false;
+    startElapsedTimer();
     document.getElementById('pdf-progress-stage').textContent = 'Preparando generación';
     document.getElementById('pdf-progress-detail').textContent = 'Se está preparando el proceso de exportación.';
     document.getElementById('pdf-progress-fill').style.width = '1%';
     document.getElementById('pdf-progress-percent').textContent = '1 %';
     overlay.querySelector('.pdf-progress-track').setAttribute('aria-valuenow', '1');
     document.getElementById('pdf-progress-close').hidden = true;
+    renderProgressSteps({status: 'running', progress: 1, stage: 'Preparando generación', steps: []});
   }
 
   async function downloadJob(jobId) {
@@ -291,7 +365,7 @@
           polling = false;
           await downloadJob(jobId);
           activeJobId = null;
-          setProgress({ ...job, detail: 'PDF generado y descarga iniciada.' });
+          setProgress({ ...job, detail: `PDF generado y descarga iniciada en ${formatElapsed(job.duration_seconds ?? job.elapsed_seconds ?? 0)}.` });
           toast('PDF generado correctamente.');
           return;
         }
@@ -327,8 +401,22 @@
     startingPdf = true;
     const originalText = button?.textContent || label;
     try {
+      // Feedback inmediato: la auditoría previa también puede tardar en informes
+      // grandes y antes el usuario veía la pantalla inmóvil durante ese tiempo.
+      resetProgress();
+      document.getElementById('pdf-progress-title').textContent = `Preparando PDF ${label}`;
+      setProgress({
+        status: 'running',
+        progress: 2,
+        stage: 'Validando informe',
+        detail: 'Revisando datos, balances y requisitos antes de iniciar la generación.',
+        steps: [{stage: 'Validando informe', progress: 2}],
+      });
+
       const auditResult = await api(`/api/reports/${id}/audit`);
       if (!auditResult?.audit) throw new Error('No se pudo validar el informe antes de generar el PDF.');
+      stopElapsedTimer();
+      ensureProgressUI().hidden = true;
       const proceed = await confirmAudit(auditResult.audit);
       if (!proceed) return;
 

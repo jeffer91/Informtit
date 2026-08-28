@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pdf_progress_runtime as progress
+import report_integrity_hooks as integrity_hooks
 
 
 class PdfProgressRuntimeTests(unittest.TestCase):
@@ -30,7 +31,7 @@ class PdfProgressRuntimeTests(unittest.TestCase):
                 output.write_bytes(b"%PDF-1.4\n")
                 return output
 
-            with patch.object(progress.report_full_detail, "validate_pdf_report", return_value={"errors": [], "warnings": []}), patch.object(progress.core, "build_pdf", side_effect=fake_build):
+            with patch.object(progress.core, "build_pdf", side_effect=fake_build):
                 started = progress.start_job(91)
                 job = self.wait_job(started["id"])
 
@@ -38,20 +39,51 @@ class PdfProgressRuntimeTests(unittest.TestCase):
             self.assertEqual(job["progress"], 100)
             self.assertEqual(job["stage"], "PDF listo")
             self.assertTrue(job["download_ready"])
+            self.assertGreaterEqual(job["elapsed_seconds"], 0)
+            self.assertTrue(job["steps"])
             self.assertEqual(progress.get_job_path(started["id"]), output)
 
-    def test_validation_error_stops_generation(self):
-        validation = {
-            "errors": [{"name": "Consolidados finales", "detail": "Falta un consolidado final."}],
-            "warnings": [],
-        }
-        with patch.object(progress.report_full_detail, "validate_pdf_report", return_value=validation), patch.object(progress.core, "build_pdf") as build:
+    def test_build_validation_error_is_reported_by_progress_job(self):
+        with patch.object(
+            progress.core,
+            "build_pdf",
+            side_effect=ValueError("No se puede generar el PDF: Falta un consolidado final."),
+        ):
             started = progress.start_job(92)
             job = self.wait_job(started["id"])
 
         self.assertEqual(job["status"], "error")
         self.assertIn("Falta un consolidado final", job["error"])
-        build.assert_not_called()
+        self.assertIsNotNone(job["duration_seconds"])
+
+    def test_progress_job_does_not_run_a_duplicate_prevalidation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "informe.pdf"
+            output.write_bytes(b"%PDF-1.4\n")
+            with patch.object(progress.report_full_detail, "validate_pdf_report") as validation, patch.object(
+                progress.core, "build_pdf", return_value=output
+            ):
+                started = progress.start_job(93)
+                job = self.wait_job(started["id"])
+
+        self.assertEqual(job["status"], "completed")
+        validation.assert_not_called()
+
+    def test_primed_integrity_validation_is_reused_in_same_thread(self):
+        cached = {
+            "ok": True,
+            "checks": [],
+            "errors": [],
+            "warnings": [],
+            "audit": {"can_generate_pdf": True, "state": "BORRADOR"},
+        }
+        integrity_hooks.prime_validation(501, cached)
+        try:
+            with patch.object(integrity_hooks.integrity, "audit_report", side_effect=AssertionError("no debe recalcular")):
+                result = integrity_hooks.validation_integrity(501)
+        finally:
+            integrity_hooks.clear_primed_validation()
+        self.assertEqual(result["audit"]["state"], "BORRADOR")
 
     def test_pdf_builds_are_serialized_across_reports(self):
         active = 0
@@ -73,7 +105,7 @@ class PdfProgressRuntimeTests(unittest.TestCase):
                     with guard:
                         active -= 1
 
-            with patch.object(progress.report_full_detail, "validate_pdf_report", return_value={"errors": [], "warnings": []}), patch.object(progress.core, "build_pdf", side_effect=fake_build):
+            with patch.object(progress.core, "build_pdf", side_effect=fake_build):
                 first = progress.start_job(201)
                 second = progress.start_job(202)
                 first_job = self.wait_job(first["id"])
@@ -91,6 +123,10 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         self.assertIn("role=\"progressbar\"", source)
         self.assertIn("/download", source)
         self.assertIn("await downloadJob(jobId)", source)
+        self.assertIn("Tiempo transcurrido", source)
+        self.assertIn("No cierre Informtit", source)
+        self.assertIn("pdf-progress-steps", source)
+        self.assertIn("Validando informe", source)
         self.assertIn('/pdf-progress.js?', html)
         self.assertIn("data-pdf-report-id", period)
         self.assertNotIn("/export/presencial", period)

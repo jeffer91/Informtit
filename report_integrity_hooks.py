@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from collections import defaultdict
 from typing import Any, Callable
 
@@ -20,6 +21,26 @@ _BASE_CONCLUSIONS: Callable[[int, dict[str, Any]], list[str]] | None = None
 _BASE_REPLACE_SCHEDULE: Callable[..., dict[str, Any]] | None = None
 _BASE_REPLACE_SCHEDULE_EXTENDED: Callable[..., dict[str, Any]] | None = None
 _BASE_IMPORT_NUCLEI_EXCEL: Callable[..., dict[str, Any]] | None = None
+_VALIDATION_LOCAL = threading.local()
+
+
+def prime_validation(report_id: int, result: dict[str, Any]) -> None:
+    """Reutiliza una validación únicamente dentro del hilo que genera un PDF."""
+    _VALIDATION_LOCAL.report_id = int(report_id)
+    _VALIDATION_LOCAL.result = dict(result)
+
+
+def clear_primed_validation() -> None:
+    for name in ("report_id", "result"):
+        if hasattr(_VALIDATION_LOCAL, name):
+            delattr(_VALIDATION_LOCAL, name)
+
+
+def _primed_validation(report_id: int) -> dict[str, Any] | None:
+    if int(getattr(_VALIDATION_LOCAL, "report_id", 0) or 0) != int(report_id):
+        return None
+    result = getattr(_VALIDATION_LOCAL, "result", None)
+    return dict(result) if isinstance(result, dict) else None
 
 
 def configure(
@@ -366,6 +387,10 @@ def _normalized_old_validation(report_id: int) -> dict[str, Any]:
 
 
 def validation_integrity(report_id: int) -> dict[str, Any]:
+    cached = _primed_validation(report_id)
+    if cached is not None:
+        return cached
+
     audit = integrity.audit_report(report_id)
     result = (
         {"ok": True, "checks": [], "errors": [], "warnings": []}
