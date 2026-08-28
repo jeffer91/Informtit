@@ -53,6 +53,12 @@ class PdfPolishTests(unittest.TestCase):
         self.assertIn('"Heading2": 1', toc_source)
         self.assertNotIn('"Heading3"', toc_source)
 
+    def test_header_has_single_pagination_and_hides_it_on_cover(self) -> None:
+        source = inspect.getsource(polish._draw_header)
+        self.assertIn("if page > 1", source)
+        self.assertNotIn("drawRightString", source)
+        self.assertIn("Fecha de Elaboración:", source)
+
     def test_polish_is_installed_before_progress_runtime(self) -> None:
         source = (ROOT / "desktop_entry.py").read_text(encoding="utf-8")
         self.assertLess(source.index("report_full_detail.install()"), source.index("report_pdf_polish.install()"))

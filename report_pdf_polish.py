@@ -555,32 +555,84 @@ def _draw_header(canvas: Any, report: dict[str, Any], page: int, pages: int) -> 
     width, height = A4
     x = 1.25 * cm
     top = height - .70 * cm
-    row = 1.08 * cm
+    row = 1.10 * cm
     total = width - 2.5 * cm
     left = 4.35 * cm
     right = 4.15 * cm
     middle = total - left - right
     bottom = top - 2 * row
+
     canvas.saveState()
     canvas.setLineWidth(.7)
     canvas.rect(x, bottom, total, 2 * row)
     canvas.line(x, top - row, x + total, top - row)
     canvas.line(x + left, bottom, x + left, top)
     canvas.line(x + left + middle, bottom, x + left + middle, top)
+
     logo = base.image_path(base.image_for(report, base.LOGO))
     if logo:
-        canvas.drawImage(str(logo), x + .03 * cm, top - row + .03 * cm, width=left - .06 * cm, height=row - .06 * cm, preserveAspectRatio=True, anchor="c", mask="auto")
+        canvas.drawImage(
+            str(logo),
+            x + .08 * cm,
+            top - row + .06 * cm,
+            width=left - .16 * cm,
+            height=row - .12 * cm,
+            preserveAspectRatio=True,
+            anchor="c",
+            mask="auto",
+        )
     else:
-        base.centered(canvas, "LOGO INSTITUCIONAL NO CARGADO", x, top - row + .30 * cm, left, 6.5, True)
-    base.centered(canvas, "Unidad Titulación y Eficiencia Terminal", x + left, top - row + .32 * cm, middle, 8.2)
-    base.centered(canvas, f"Código: {report.get('code','')}  Versión: {report.get('version','1.0')}", x + left + middle, top - row + .24 * cm, right, 6.5)
-    base.centered(canvas, f"Fecha de Elaboración: {base.format_date(report.get('elaboration_date'))}", x, bottom + .30 * cm, left, 6.8, False, 2)
-    base.centered(canvas, base.header_title(report), x + left, bottom + .24 * cm, middle, 6.8, True)
-    base.centered(canvas, f"Página {page} de {pages}", x + left + middle, bottom + .34 * cm, right, 7.2, False, 1)
-    canvas.setFont("Helvetica", 8)
-    canvas.drawRightString(width - 1.35 * cm, .65 * cm, f"Página {page} de {pages}")
-    canvas.restoreState()
+        base.centered(canvas, "LOGO INSTITUCIONAL NO CARGADO", x, top - row + .56 * cm, left, 6.5, True)
 
+    base.centered(
+        canvas,
+        "Unidad Titulación y Eficiencia Terminal",
+        x + left,
+        top - row + .60 * cm,
+        middle,
+        8.4,
+    )
+
+    right_center = x + left + middle + right / 2
+    canvas.setFont("Helvetica", 6.7)
+    canvas.drawCentredString(right_center, top - .45 * cm, f"Código: {report.get('code','')}")
+    canvas.drawCentredString(right_center, top - .83 * cm, f"Versión: {report.get('version','1.0')}")
+
+    left_center = x + left / 2
+    canvas.setFont("Helvetica", 6.8)
+    canvas.drawCentredString(left_center, bottom + .68 * cm, "Fecha de Elaboración:")
+    canvas.drawCentredString(
+        left_center,
+        bottom + .29 * cm,
+        base.format_date(report.get("elaboration_date")),
+    )
+
+    base.centered(
+        canvas,
+        base.header_title(report),
+        x + left,
+        bottom + .68 * cm,
+        middle,
+        6.5,
+        True,
+        2,
+    )
+
+    # La portada conserva el encabezado institucional pero oculta la numeración.
+    # Desde la segunda página hay un único número visible dentro del encabezado.
+    if page > 1:
+        base.centered(
+            canvas,
+            f"Página {page} de {pages}",
+            x + left + middle,
+            bottom + .48 * cm,
+            right,
+            7.2,
+            False,
+            1,
+        )
+
+    canvas.restoreState()
 
 class TocTwoLevels(report_structure.TocDocTemplate):
     def afterFlowable(self, flowable: Any) -> None:
