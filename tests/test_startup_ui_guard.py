@@ -65,6 +65,15 @@ class StartupUiGuardTests(unittest.TestCase):
         self.assertIn("const activeId = Number(state?.activeReport?.id || 0);", rescue)
         self.assertIn("await openReportSafe(activeId);", rescue)
 
+    def test_pvc_report_ui_is_loaded_after_unified_and_before_rescue(self) -> None:
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        scripts = re.findall(r'<script\s+src="([^"]+)"', html)
+        unified = next(i for i, item in enumerate(scripts) if item.startswith('/period-unified-ui.js?'))
+        pvc = next(i for i, item in enumerate(scripts) if item.startswith('/pvc-report-ui.js?'))
+        rescue = next(i for i, item in enumerate(scripts) if item.startswith('/desktop-ui-rescue.js?'))
+        self.assertGreater(pvc, unified)
+        self.assertLess(pvc, rescue)
+
     def test_desktop_rescue_is_last_after_unified_layer(self) -> None:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
         scripts = re.findall(r'<script\s+src="([^"]+)"', html)

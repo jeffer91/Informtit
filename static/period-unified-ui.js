@@ -77,7 +77,7 @@
     grid.innerHTML = reports.map(report => {
       const pvc = String(report.report_type || '').toLowerCase() === 'pvc';
       const split = pvc
-        ? `<div class="period-split single"><div><span>Programa</span><strong>${Number(report.presencial_students || 0)} estudiantes</strong><span>${Number(report.presencial_complexive || 0)} registros en Complexivo</span></div></div>`
+        ? `<div class="period-split single"><div><span>Requisitos PVC</span><strong>${Number(report.presencial_students || 0)} estudiantes</strong><span>${Number(report.pvc_records || 0)} resultados PVC cargados</span></div></div>`
         : `<div class="period-split">
             <div><span>Presencial</span><strong>${Number(report.presencial_students || 0)} estudiantes</strong><span>${Number(report.presencial_complexive || 0)} registros en Complexivo</span></div>
             <div><span>Online</span><strong>${Number(report.online_students || 0)} estudiantes</strong><span>${Number(report.online_complexive || 0)} registros en Complexivo</span></div>

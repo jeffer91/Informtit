@@ -196,9 +196,10 @@
       .filter(([, count]) => Number(count) > 0)
       .map(([reason, count]) => `${reason}: ${count}`)
       .join(' · ');
+    const reconciliationLabel = audit.reconciliation_label || 'Conciliación de Núcleos';
     document.getElementById('report-audit-reconciliation').textContent = rec.imported !== undefined
-      ? `Conciliación de Núcleos: ${rec.imported} importados = ${rec.included} incluidos + ${rec.excluded} excluidos.${reasonText ? ` ${reasonText}.` : ''}`
-      : 'Sin conciliación de Núcleos disponible.';
+      ? `${reconciliationLabel}: ${rec.imported} importados = ${rec.included} incluidos + ${rec.excluded} excluidos.${reasonText ? ` ${reasonText}.` : ''}`
+      : `Sin ${reconciliationLabel.toLowerCase()} disponible.`;
 
     const continueButton = document.getElementById('report-audit-continue');
     continueButton.hidden = !audit.can_generate_pdf;

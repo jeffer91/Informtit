@@ -34,6 +34,7 @@ import period_unified_runtime
 import process_export
 import process_routes
 import project_wide_reconciliation_runtime
+import pvc_report_runtime
 import read_performance_runtime
 import reconciliation_reliability_runtime
 import report_catalog_independent
@@ -232,6 +233,10 @@ def prepare() -> None:
     # Última barrera del backend: los endpoints de conciliación siempre responden
     # JSON y la desvinculación manual limpia el vínculo real sin borrar evidencia.
     reconciliation_reliability_runtime.install()
+
+    # PVC es un informe independiente de los regulares: una sola salida PDF,
+    # Base PVC propia, fórmula 70/30 y narrativa visual contexto -> elemento -> análisis.
+    pvc_report_runtime.install()
 
 
 def main() -> None:
