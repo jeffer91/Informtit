@@ -35,7 +35,8 @@
       </div>
       <div class="top-actions">
         <button class="button secondary" id="refresh-btn">Actualizar</button>
-        <button class="button primary" id="new-report-btn">Nuevo informe</button>
+        <button class="button secondary" id="new-pvc-report-btn">Nuevo PVC</button>
+        <button class="button primary" id="new-report-btn">Nuevo informe regular</button>
       </div>
     </header>
 
@@ -43,7 +44,7 @@
       <div class="metrics" id="dashboard-metrics"></div>
       <div class="panel">
         <div class="panel-head">
-          <div><h2>Informes</h2><p>Cada período académico se gestiona como un único proyecto con datos Presencial y Online.</p></div>
+          <div><h2>Informes</h2><p>Los informes regulares manejan Presencial + Online; PVC se crea como un informe independiente de Artículo Científico.</p></div>
         </div>
         <div id="reports-grid" class="reports-grid"></div>
       </div>
@@ -94,11 +95,18 @@
 
   <dialog id="report-dialog">
     <form method="dialog" id="report-form" class="dialog-form">
-      <div class="dialog-head"><div><h2>Crear informe</h2><p>Defina la información básica del nuevo período académico.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
+      <div class="dialog-head"><div><h2>Crear informe</h2><p>Seleccione primero si creará un informe regular o un PVC.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
       <label>Nombre del informe<input name="name" required placeholder="Informe final del proceso de titulación"></label>
       <div class="form-grid">
+        <label>Tipo de informe
+          <select name="report_type" id="report-type-select">
+            <option value="normal">Regular</option>
+            <option value="pvc">PVC – Artículo Científico</option>
+          </select>
+          <small id="report-type-help">Regular genera las salidas Presencial y Online.</small>
+        </label>
+        <label>Salidas<div class="fixed-responsibles-note" id="report-output-note">Presencial + Online</div></label>
         <label>Periodo académico<input name="period" required placeholder="Octubre 2025 - Marzo 2026"></label>
-        <label>Modalidades<div class="fixed-responsibles-note">Presencial + Online</div></label>
         <label>Código<input name="code" placeholder="UTET-INF-..."></label>
         <label>Versión<input name="version" value="1.0"></label>
         <label>Fecha de elaboración<input type="date" name="elaboration_date"></label>
@@ -150,7 +158,7 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=4.4"></script>
+  <script src="/app.js?v=4.5"></script>
   <script src="/startup-guard.js?v=4.3"></script>
   <script src="/forms-hotfix.js?v=4.3"></script>
   <script src="/no-sections.js?v=4.3"></script>
@@ -176,7 +184,7 @@
   <script src="/smart-reconciliation-ui.js?v=1.1"></script>
   <script src="/coordinator-admin-ui.js?v=4.3"></script>
   <script src="/firebase-ui.js?v=1.0"></script>
-  <script src="/pvc-report-ui.js?v=1.0"></script>
-  <script src="/desktop-ui-rescue.js?v=4.3"></script>
+  <script src="/pvc-report-ui.js?v=1.1"></script>
+  <script src="/desktop-ui-rescue.js?v=4.4"></script>
 </body>
 </html>

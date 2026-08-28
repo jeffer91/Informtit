@@ -331,6 +331,31 @@ async function deleteImage(id) {
   await openReport(state.activeReport.id);
 }
 
+function setReportDialogType(type = 'normal') {
+  const form = $('#report-form');
+  const select = form?.elements?.report_type;
+  const normalized = type === 'pvc' ? 'pvc' : 'normal';
+  if (select) select.value = normalized;
+  const note = $('#report-output-note');
+  const help = $('#report-type-help');
+  if (note) note.textContent = normalized === 'pvc' ? 'PVC · un solo informe' : 'Presencial + Online';
+  if (help) {
+    help.textContent = normalized === 'pvc'
+      ? 'PVC genera un único informe de Titulación – Modalidad Artículo Científico.'
+      : 'Regular genera dos salidas del mismo período: Presencial y Online.';
+  }
+}
+
+function openReportDialog(type = 'normal') {
+  setReportDialogType(type);
+  const dialog = $('#report-dialog');
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+$('#report-type-select')?.addEventListener('change', event => {
+  setReportDialogType(event.currentTarget.value);
+});
+
 $('#report-form').addEventListener('submit', async event => {
   event.preventDefault();
   const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
@@ -338,7 +363,8 @@ $('#report-form').addEventListener('submit', async event => {
     const result = await api('/api/reports', {method:'POST',body:JSON.stringify(payload)});
     $('#report-dialog').close();
     event.currentTarget.reset();
-    toast('Informe creado.');
+    setReportDialogType('normal');
+    toast(result.report_type === 'pvc' ? 'Informe PVC creado.' : 'Informe regular creado.');
     await loadReports();
     await openReport(result.report_id);
   } catch (error) { toast(error.message, true); }
@@ -403,7 +429,8 @@ $('#image-form').addEventListener('submit', async event => {
 });
 
 $$('.nav-item').forEach(item => item.onclick = () => showView(item.dataset.view));
-$('#new-report-btn').onclick = () => $('#report-dialog').showModal();
+$('#new-report-btn').onclick = () => openReportDialog('normal');
+$('#new-pvc-report-btn').onclick = () => openReportDialog('pvc');
 $('#refresh-btn').onclick = async () => { await loadReports(); if (state.activeReport) await openReport(state.activeReport.id); toast('Información actualizada.'); };
 $('#report-tabs').onclick = event => {
   const button = event.target.closest('.tab'); if (!button) return;

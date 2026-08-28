@@ -156,6 +156,17 @@
     clearStatus();
   }
 
+  function openCreateDialog(type) {
+    const dialog = q('#report-dialog');
+    const select = q('#report-type-select');
+    if (select) {
+      select.value = type === 'pvc' ? 'pvc' : 'normal';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (dialog && !dialog.open) dialog.showModal();
+    else if (!dialog) showStatus('No se encontró el formulario para crear informes.', true);
+  }
+
   document.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
@@ -164,9 +175,15 @@
     if (newReport) {
       event.preventDefault();
       event.stopPropagation();
-      const dialog = q('#report-dialog');
-      if (dialog && !dialog.open) dialog.showModal();
-      else if (!dialog) showStatus('No se encontró el formulario de Nuevo informe.', true);
+      openCreateDialog('normal');
+      return;
+    }
+
+    const newPvcReport = target.closest('#new-pvc-report-btn');
+    if (newPvcReport) {
+      event.preventDefault();
+      event.stopPropagation();
+      openCreateDialog('pvc');
       return;
     }
 
@@ -214,7 +231,7 @@
 
   async function boot() {
     // Fuerza interactividad aunque otra capa haya reemplazado propiedades onclick.
-    ['#new-report-btn', '#refresh-btn'].forEach((selector) => {
+    ['#new-report-btn', '#new-pvc-report-btn', '#refresh-btn'].forEach((selector) => {
       const node = q(selector);
       if (node) {
         node.disabled = false;

@@ -66,7 +66,7 @@
       projects.textContent = 'Resultados PVC';
     }
     const modality = document.getElementById('report-modality');
-    if (modality) modality.textContent = 'PVC · Artículo Académico';
+    if (modality) modality.textContent = 'PVC · Artículo Científico';
     const pdf = document.getElementById('export-pdf');
     if (pdf) {
       pdf.style.display = '';
@@ -144,7 +144,7 @@
       const workTypes = Object.keys(data.work_types || {}).filter(Boolean).join(' · ') || 'No detectado';
       tab.innerHTML =
         '<div class="pvc-shell">' +
-          '<section class="pvc-hero"><h2>Resultados PVC · Artículo Académico</h2>' +
+          '<section class="pvc-hero"><h2>Resultados PVC · Artículo Científico</h2>' +
           '<p>Requisitos conserva la identidad, carrera y sede oficiales. La Base PVC aporta acta, tutor, lector, tribunal, rúbricas, defensa y calificación final.</p>' +
           '<div class="pvc-contract">' +
             '<div><strong>Fórmula de validación</strong><br>70 % trabajo escrito + 30 % defensa oral.</div>' +

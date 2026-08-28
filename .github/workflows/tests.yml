@@ -102,6 +102,6 @@ jobs:
           grep -q '/students-period-ui.js?v=1.1' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-final-audit-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/smart-reconciliation-ui.js?v=1.1' out/Informtit-linux-x64/resources/app/static/index.html
-          grep -q '/pvc-report-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
+          grep -q '/pvc-report-ui.js?v=1.1' out/Informtit-linux-x64/resources/app/static/index.html
 
 # Verificación directa de integridad sobre main.
