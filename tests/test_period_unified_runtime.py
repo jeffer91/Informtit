@@ -74,6 +74,24 @@ class PeriodUnifiedRuntimeTests(unittest.TestCase):
         import_service.DATA_DIR = self.original_import_data_dir
         self.temporary.cleanup()
 
+    def test_explicit_pvc_can_use_same_calendar_months_as_regular(self):
+        created = period_policy_runtime._create_manual_reports(
+            {
+                "name": "Informe PVC - Artículo Científico",
+                "period": "Octubre 2025 - Marzo 2026",
+                "report_type": "pvc",
+                "code": "UTET-INF-PVC-01",
+                "version": "1.0",
+            }
+        )
+        self.assertEqual(created["report_type"], "pvc")
+        self.assertEqual(set(created["report_ids"]), {"pvc"})
+        pvc_id = int(created["report_ids"]["pvc"])
+        with db.connection() as conn:
+            row = conn.execute("SELECT report_type, modality FROM reports WHERE id=?", (pvc_id,)).fetchone()
+        self.assertEqual(row["report_type"], "pvc")
+        self.assertEqual(row["modality"], "presencial")
+
     def test_visible_projects_exposes_one_card_for_two_modalities(self):
         unified.reconcile_projects()
         projects = unified.visible_projects()

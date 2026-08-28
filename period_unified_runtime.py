@@ -617,7 +617,7 @@ def _sync_shared_general(report_id: int, payload: dict[str, Any]) -> dict[str, A
                 params.append(clean_cell(values[key]))
         if "period" in values:
             assignments.extend(["period_key=?", "report_type=?"])
-            params.extend([new_key, period_policy_runtime.classify_period(period)])
+            params.extend([new_key, kind])
         assignments.append("updated_at=?")
         params.append(now)
         params.append(project_id)
@@ -631,7 +631,7 @@ def _sync_shared_general(report_id: int, payload: dict[str, Any]) -> dict[str, A
                 report_params.append(clean_cell(values[key]))
         if "period" in values:
             report_assignments.append("report_type=?")
-            report_params.append(period_policy_runtime.classify_period(period))
+            report_params.append(kind)
             report_assignments.append("firebase_period_id=?")
             report_params.append(period_policy_runtime.canonical_period_id(period))
         report_assignments.append("updated_at=?")

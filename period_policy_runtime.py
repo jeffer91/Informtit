@@ -171,11 +171,11 @@ def ensure_schema() -> None:
 
         rows = conn.execute("SELECT id, period, report_type FROM reports").fetchall()
         for row in rows:
-            kind = classify_period(row["period"])
-            if clean_cell(row["report_type"]) != kind:
+            current = clean_cell(row["report_type"]).lower()
+            if current not in {"normal", "pvc"}:
                 conn.execute(
                     "UPDATE reports SET report_type=? WHERE id=?",
-                    (kind, int(row["id"])),
+                    (classify_period(row["period"]), int(row["id"])),
                 )
 
 
@@ -261,9 +261,6 @@ def _commit_pvc(
         period = clean_cell(
             payload.get("period") or preview.get("period") or active["period"]
         )
-        if classify_period(period) != "pvc":
-            raise ValueError("El período indicado no corresponde a un informe PVC.")
-
         version = clean_cell(payload.get("version") or active["version"] or "1.0")
         elaboration_date = clean_cell(
             payload.get("elaboration_date") or active["elaboration_date"]
@@ -401,7 +398,8 @@ def _create_manual_reports(payload: dict[str, Any]) -> dict[str, Any]:
     period = clean_cell(payload.get("period"))
     if not name or not period:
         raise ValueError("Nombre y periodo son obligatorios.")
-    kind = classify_period(period)
+    explicit_kind = clean_cell(payload.get("report_type")).lower()
+    kind = explicit_kind if explicit_kind in {"normal", "pvc"} else classify_period(period)
     requested = clean_cell(payload.get("modality")) or "presencial"
     if requested not in {"presencial", "en_linea"}:
         requested = "presencial"
@@ -514,7 +512,7 @@ def install() -> None:
             preview = parsed.get("preview") or {}
             with connection() as conn:
                 active = conn.execute(
-                    "SELECT period FROM reports WHERE id=?",
+                    "SELECT period, report_type FROM reports WHERE id=?",
                     (int(import_match.group(1)),),
                 ).fetchone()
             period = clean_cell(
@@ -522,7 +520,8 @@ def install() -> None:
                 or preview.get("period")
                 or (active["period"] if active else "")
             )
-            if classify_period(period) == "pvc":
+            active_kind = _report_kind(active) if active else classify_period(period)
+            if active_kind == "pvc":
                 result = _commit_pvc(
                     import_match.group(2),
                     int(import_match.group(1)),
@@ -532,8 +531,14 @@ def install() -> None:
                 return
 
         update_match = re.fullmatch(r"/api/reports/(\d+)", path)
-        if update_match and method == "PUT" and "period" in payload:
-            if classify_period(payload.get("period")) == "pvc":
+        if update_match and method == "PUT":
+            report_id = int(update_match.group(1))
+            with connection() as conn:
+                before = conn.execute(
+                    "SELECT period, report_type FROM reports WHERE id=?",
+                    (report_id,),
+                ).fetchone()
+            if before and _report_kind(before) == "pvc":
                 payload = dict(payload)
                 payload["modality"] = "presencial"
 
@@ -543,11 +548,11 @@ def install() -> None:
             report_id = int(update_match.group(1))
             with connection() as conn:
                 row = conn.execute(
-                    "SELECT period FROM reports WHERE id=?",
+                    "SELECT period, report_type FROM reports WHERE id=?",
                     (report_id,),
                 ).fetchone()
                 if row:
-                    kind = classify_period(row["period"])
+                    kind = _report_kind(row)
                     conn.execute(
                         """
                         UPDATE reports SET report_type=?,
