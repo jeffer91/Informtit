@@ -453,6 +453,85 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         self.assertEqual(len(guarded["candidates"]), 2)
 
 
+    def test_name_only_repeated_across_modules_groups_into_one_real_case(self):
+        with db.connection() as conn:
+            for module, key in (
+                ("NUCLEI", "nuclei:1:tania"),
+                ("NUCLEI", "nuclei:2:tania"),
+                ("NUCLEI", "nuclei:3:tania"),
+                ("NUCLEI", "nuclei:4:tania"),
+                ("COMPLEXIVE", "complexive:tania"),
+            ):
+                conn.execute(
+                    """
+                    INSERT INTO student_source_links
+                    (report_id, period_student_id, source_module, source_key, source_name,
+                     source_email, source_identification, source_career, match_status,
+                     match_method, match_confidence, candidates_json, detail, source_active,
+                     created_at, updated_at)
+                    VALUES (?, NULL, ?, ?, ?, '', '', 'RIESGOS LABORALES',
+                            'OUT_OF_POPULATION', 'FUERA_POBLACION', 0, '[]', '', 1, 'x', 'x')
+                    """,
+                    (
+                        self.report_id,
+                        module,
+                        key,
+                        "CUEVA ABAD TANIA ALEXANDRA" if module == "NUCLEI" else "TANIA ALEXANDRA CUEVA ABAD",
+                    ),
+                )
+
+        cases = [
+            case for case in reliability._identity_cases(77)
+            if "TANIA" in case["source_name"]
+        ]
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]["occurrences"], 5)
+        self.assertEqual(set(cases[0]["source_modules"]), {"NUCLEI", "COMPLEXIVE"})
+        self.assertEqual(cases[0]["match_status"], domain.MATCH_REVIEW)
+
+    def test_blank_candidate_search_ranks_by_real_name_similarity(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO student_source_links
+                (report_id, period_student_id, source_module, source_key, source_name,
+                 source_email, source_identification, source_career, match_status,
+                 match_method, match_confidence, candidates_json, detail, source_active,
+                 created_at, updated_at)
+                VALUES (?, NULL, 'NUCLEI', 'nuclei:search-bayron',
+                        'JAVIER BAYRON PAZMIÑO ALOMOTO', '', '',
+                        'DESARROLLO DE SOFTWARE', 'REVIEW_REQUIRED',
+                        'NOMBRE_POSIBLE', 90, '[]', '', 1, 'x', 'x')
+                """,
+                (self.report_id,),
+            )
+            link_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+        result = reliability._candidate_search(77, link_id, "")
+        self.assertTrue(result["candidates"])
+        first = result["candidates"][0]
+        self.assertEqual(first["student_id"], self.student_id)
+        self.assertTrue(first["suggested"])
+        self.assertGreaterEqual(first["similarity"], 98)
+
+    def test_official_case_explains_missing_requirements(self):
+        with db.connection() as conn:
+            conn.execute(
+                """
+                UPDATE period_students
+                SET reconciliation_status='OFFICIAL_DATA_CONFLICT',
+                    reconciliation_detail='Titulación consta CUMPLE pese a existir requisitos habilitantes pendientes.',
+                    missing_requirements_json='["Inglés","Vinculación"]'
+                WHERE id=?
+                """,
+                (self.student_id,),
+            )
+
+        cases = reliability._official_cases(77)
+        case = next(item for item in cases if item["student_id"] == self.student_id)
+        self.assertEqual(case["missing_requirements"], ["Inglés", "Vinculación"])
+        self.assertIn("Pendientes: Inglés, Vinculación", case["detail"])
+
     def test_name_only_homonyms_are_not_grouped_into_one_manual_case(self):
         with db.connection() as conn:
             conn.execute(
@@ -801,6 +880,15 @@ class ReconciliationReliabilityTests(unittest.TestCase):
             if case["source_module"] == "COMPLEXIVE"
         ]
         self.assertEqual(remaining, [])
+
+
+    def test_frontend_only_marks_ranked_candidate_as_suggested(self):
+        source = Path("static/students-period-ui.js").read_text(encoding="utf-8")
+        summary = Path("static/smart-reconciliation-ui.js").read_text(encoding="utf-8")
+        self.assertIn("candidate.suggested ? 'Sugerido · ' : ''", source)
+        self.assertNotIn("index === 0 ? 'Sugerido · ' : ''", source)
+        self.assertIn("inconsistencias de Requisitos", summary)
+        self.assertIn("casos reales", summary)
 
 
 if __name__ == "__main__":

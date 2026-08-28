@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from collections import Counter, defaultdict
+from difflib import SequenceMatcher
 from typing import Any, Callable
 
 import analytics
@@ -529,6 +530,72 @@ def _identity_key_link(link: dict[str, Any]) -> str:
     if source_key:
         return f"source:{source_key}"
     return f"link:{int(link.get('id') or 0)}"
+
+
+def _project_master_name_counts(period_project_id: int) -> Counter[str]:
+    """Cuenta homónimos reales en Requisitos para no agruparlos por nombre."""
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT full_name FROM period_students
+                WHERE period_project_id=? AND COALESCE(requirements_present,1)=1
+                """,
+                (period_project_id,),
+            ).fetchall()
+        )
+    return Counter(
+        key
+        for key in (_weak_name_key(row.get("full_name")) for row in rows)
+        if key
+    )
+
+
+def _identity_case_groups(
+    period_project_id: int,
+    rows: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Agrupa evidencias por persona sin convertir el nombre en identidad oficial.
+
+    La agrupación solo reduce tarjetas repetidas. La confirmación contra Requisitos
+    sigue siendo una decisión separada. Si existen homónimos reales en Requisitos,
+    carreras contradictorias o ninguna carrera de contexto, se conserva cada
+    evidencia por separado para evitar asociaciones masivas inseguras.
+    """
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    weak_buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for row in rows:
+        strong = _strong_identity_key(
+            row.get("source_identification"),
+            row.get("source_email"),
+        )
+        if strong:
+            groups[f"strong:{strong}"].append(row)
+            continue
+        weak = _weak_name_key(row.get("source_name"))
+        if weak:
+            weak_buckets[weak].append(row)
+        else:
+            groups[f"link:{int(row.get('id') or 0)}"].append(row)
+
+    master_counts = _project_master_name_counts(period_project_id)
+    for weak, items in weak_buckets.items():
+        careers = {
+            bridge.normalize(item.get("source_career"))
+            for item in items
+            if bridge.normalize(item.get("source_career"))
+        }
+        safe_to_group = master_counts.get(weak, 0) <= 1 and len(careers) == 1
+        if safe_to_group:
+            groups[f"weak:{weak}"].extend(items)
+            continue
+        for item in items:
+            source_key = str(item.get("source_key") or "").strip()
+            fallback = source_key or str(int(item.get("id") or 0))
+            groups[f"source:{item.get('source_module') or ''}:{fallback}"].append(item)
+
+    return dict(groups)
 
 
 def _decision_cache() -> dict[Any, Any]:
@@ -1360,22 +1427,46 @@ def _group_project_links(period_project_id: int, link: dict[str, Any]) -> list[d
     if not report_ids:
         return [link]
     placeholders = ",".join("?" for _ in report_ids)
-    identity = _identity_key_link(link)
-    module = str(link.get("source_module") or "")
+
+    # Un vínculo ya confirmado se desvincula con el alcance histórico del módulo.
+    # Los casos pendientes sí se agrupan por persona a nivel de todo el período.
+    if str(link.get("match_status") or "") == domain.MATCH_OK:
+        identity = _identity_key_link(link)
+        module = str(link.get("source_module") or "")
+        with connection() as conn:
+            rows = rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT * FROM student_source_links
+                    WHERE report_id IN ({placeholders}) AND source_module=?
+                      AND COALESCE(source_active,1)=1
+                    ORDER BY id
+                    """,
+                    (*report_ids, module),
+                ).fetchall()
+            )
+        siblings = [row for row in rows if _identity_key_link(row) == identity]
+        return siblings or [link]
+
     with connection() as conn:
         rows = rows_to_dicts(
             conn.execute(
                 f"""
                 SELECT * FROM student_source_links
-                WHERE report_id IN ({placeholders}) AND source_module=?
+                WHERE report_id IN ({placeholders})
                   AND COALESCE(source_active,1)=1
+                  AND COALESCE(match_status,'UNMATCHED')<>'OK'
+                  AND COALESCE(match_status,'') NOT IN ('ROUTE_CONFLICT','GRADE_CONFLICT')
                 ORDER BY id
                 """,
-                (*report_ids, module),
+                tuple(report_ids),
             ).fetchall()
         )
-    siblings = [row for row in rows if _identity_key_link(row) == identity]
-    return siblings or [link]
+    link_id = int(link.get("id") or 0)
+    for items in _identity_case_groups(period_project_id, rows).values():
+        if any(int(item.get("id") or 0) == link_id for item in items):
+            return items
+    return [link]
 
 
 def _apply_source_rows(
@@ -1489,11 +1580,11 @@ def _confirm_project_case(period_project_id: int, link_id: int, student_id: int)
         raise ValueError("El estudiante seleccionado no pertenece a Requisitos de este período.")
 
     siblings = _group_project_links(period_project_id, link)
-    identity = _identity_key_link(link)
-    module = str(link.get("source_module") or "")
     now = utcnow()
-    grouped: dict[int, set[str]] = defaultdict(set)
+    grouped: dict[tuple[int, str], set[str]] = defaultdict(set)
+    decision_keys: set[tuple[str, str]] = set()
     ids = [int(row["id"]) for row in siblings]
+
     with sqlite_guard._WRITE_LOCK:
         with connection() as conn:
             placeholders = ",".join("?" for _ in ids)
@@ -1509,7 +1600,10 @@ def _confirm_project_case(period_project_id: int, link_id: int, student_id: int)
                 (student_id, now, *ids),
             )
             for row in siblings:
-                grouped[int(row["report_id"])].add(str(row.get("source_key") or ""))
+                module = str(row.get("source_module") or "")
+                grouped[(int(row["report_id"]), module)].add(str(row.get("source_key") or ""))
+                decision_keys.add((module, _identity_key_link(row)))
+            modules = sorted({module for _, module in decision_keys if module})
             conn.execute(
                 """
                 INSERT INTO student_audit_log
@@ -1519,38 +1613,47 @@ def _confirm_project_case(period_project_id: int, link_id: int, student_id: int)
                 (
                     int(link["report_id"]), student_id, ",".join(str(item) for item in ids),
                     str(student_id),
-                    f"{module}: se confirmaron {len(ids)} evidencias agrupadas a nivel de período.",
+                    f"{', '.join(modules) or 'Evidencias'}: se confirmaron {len(ids)} evidencias agrupadas a nivel de período.",
                     now,
                 ),
             )
-        # Una nueva confirmación humana sustituye el descarte anterior del mismo
-        # destino y cualquier asociación manual previa para esa identidad.
-        _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
-        _delete_decisions(
-            period_project_id, module, identity, DECISION_DO_NOT_MATCH,
-            target_student_id=student_id,
-        )
-        _store_decision(
-            period_project_id, module, identity, DECISION_MATCH,
-            target_student_id=student_id, decision_value=str(student_id),
-            detail="Asociación manual persistente; sobrevive a futuras recargas.",
-        )
-        for report_id, keys in grouped.items():
+
+        # Cada evidencia conserva su llave técnica para que la decisión manual
+        # sobreviva a una nueva carga, aunque el caso visual abarque varios módulos.
+        for module, identity in decision_keys:
+            _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
+            _delete_decisions(
+                period_project_id, module, identity, DECISION_DO_NOT_MATCH,
+                target_student_id=student_id,
+            )
+            _store_decision(
+                period_project_id, module, identity, DECISION_MATCH,
+                target_student_id=student_id, decision_value=str(student_id),
+                detail="Asociación manual persistente; sobrevive a futuras recargas.",
+            )
+
+        for (report_id, module), keys in grouped.items():
             _apply_source_rows(report_id, module, keys, student_id)
-    return {"ok": True, "student_id": student_id, "confirmed_links": len(ids), "module": module}
+
+    return {
+        "ok": True,
+        "student_id": student_id,
+        "confirmed_links": len(ids),
+        "modules": sorted({module for _, module in decision_keys if module}),
+    }
 
 
 def _unlink_project_case(period_project_id: int, link_id: int) -> dict[str, Any]:
     link = _project_link(period_project_id, link_id)
     siblings = _group_project_links(period_project_id, link)
-    identity = _identity_key_link(link)
-    module = str(link.get("source_module") or "")
     old_targets = {
         int(row["period_student_id"]) for row in siblings if row.get("period_student_id")
     }
     now = utcnow()
-    grouped: dict[int, set[str]] = defaultdict(set)
+    grouped: dict[tuple[int, str], set[str]] = defaultdict(set)
+    decision_keys: set[tuple[str, str]] = set()
     ids = [int(row["id"]) for row in siblings]
+
     with sqlite_guard._WRITE_LOCK:
         with connection() as conn:
             placeholders = ",".join("?" for _ in ids)
@@ -1566,7 +1669,10 @@ def _unlink_project_case(period_project_id: int, link_id: int) -> dict[str, Any]
                 (domain.MATCH_REVIEW, now, *ids),
             )
             for row in siblings:
-                grouped[int(row["report_id"])].add(str(row.get("source_key") or ""))
+                module = str(row.get("source_module") or "")
+                grouped[(int(row["report_id"]), module)].add(str(row.get("source_key") or ""))
+                decision_keys.add((module, _identity_key_link(row)))
+            modules = sorted({module for _, module in decision_keys if module})
             conn.execute(
                 """
                 INSERT INTO student_audit_log
@@ -1576,23 +1682,27 @@ def _unlink_project_case(period_project_id: int, link_id: int) -> dict[str, Any]
                 (
                     int(link["report_id"]), next(iter(old_targets), None),
                     ",".join(str(item) for item in ids),
-                    f"{module}: se descartó manualmente la asociación de {len(ids)} evidencias agrupadas.",
+                    f"{', '.join(modules) or 'Evidencias'}: se descartó manualmente la asociación de {len(ids)} evidencias agrupadas.",
                     now,
                 ),
             )
-        # Desvincular invalida una confirmación positiva previa; de otro modo el
-        # siguiente Reconciliar volvería a enlazarla antes de mirar el veto.
-        _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
-        for target_id in old_targets:
-            _store_decision(
-                period_project_id, module, identity, DECISION_DO_NOT_MATCH,
-                decision_scope=str(target_id), target_student_id=target_id,
-                detail="El usuario indicó que esta evidencia no pertenece a este estudiante.",
-            )
-        for report_id, keys in grouped.items():
+
+        for module, identity in decision_keys:
+            _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
+            for target_id in old_targets:
+                _store_decision(
+                    period_project_id, module, identity, DECISION_DO_NOT_MATCH,
+                    decision_scope=str(target_id), target_student_id=target_id,
+                    detail="El usuario indicó que esta evidencia no pertenece a este estudiante.",
+                )
+
+        for (report_id, module), keys in grouped.items():
             _apply_source_rows(report_id, module, keys, None, manual_review=True)
+
     return {
-        "ok": True, "link_id": link_id, "module": module,
+        "ok": True,
+        "link_id": link_id,
+        "modules": sorted({module for _, module in decision_keys if module}),
         "unlinked_links": len(ids),
         "unlinked_source_rows": sum(len(keys) for keys in grouped.values()),
     }
@@ -1602,14 +1712,17 @@ def _reset_manual_case(period_project_id: int, link_id: int) -> dict[str, Any]:
     """Permite revertir explícitamente una desvinculación manual previa."""
     link = _project_link(period_project_id, link_id)
     siblings = _group_project_links(period_project_id, link)
-    identity = _identity_key_link(link)
-    module = str(link.get("source_module") or "")
+    decision_keys = {
+        (str(row.get("source_module") or ""), _identity_key_link(row))
+        for row in siblings
+    }
     ids = [int(row["id"]) for row in siblings]
     now = utcnow()
 
     with sqlite_guard._WRITE_LOCK:
-        _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
-        _delete_decisions(period_project_id, module, identity, DECISION_DO_NOT_MATCH)
+        for module, identity in decision_keys:
+            _delete_decisions(period_project_id, module, identity, DECISION_MATCH)
+            _delete_decisions(period_project_id, module, identity, DECISION_DO_NOT_MATCH)
 
         with connection() as conn:
             placeholders = ",".join("?" for _ in ids)
@@ -1645,7 +1758,7 @@ def _reset_manual_case(period_project_id: int, link_id: int) -> dict[str, Any]:
     return {
         "ok": True,
         "link_id": link_id,
-        "module": module,
+        "modules": sorted({module for module, _ in decision_keys if module}),
         "reset_links": len(ids),
     }
 
@@ -2295,37 +2408,79 @@ def _identity_cases(period_project_id: int) -> list[dict[str, Any]]:
         smart.MATCH_OUTSIDE_POPULATION: 70,
         domain.MATCH_UNMATCHED: 60,
     }
-    groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        groups[(str(row.get("source_module") or ""), _identity_key_link(row))].append(row)
 
     cases: list[dict[str, Any]] = []
-    for (module, identity), items in groups.items():
+    for identity, items in _identity_case_groups(period_project_id, rows).items():
         representative = max(
             items, key=lambda row: priority.get(str(row.get("match_status") or ""), 50)
         )
         item = dict(representative)
-        try:
-            candidates = json.loads(item.get("candidates_json") or "[]")
-        except (TypeError, json.JSONDecodeError):
-            candidates = []
-        blocked = _blocked_targets(period_project_id, module, identity)
-        candidates = [
-            candidate for candidate in candidates
-            if int(candidate.get("student_id") or 0) not in blocked
-        ][:3]
+        modules = sorted({str(row.get("source_module") or "") for row in items if row.get("source_module")})
+        blocked: set[int] = set()
+        merged_candidates: dict[int, dict[str, Any]] = {}
+
+        for row in items:
+            module = str(row.get("source_module") or "")
+            blocked.update(
+                _blocked_targets(period_project_id, module, _identity_key_link(row))
+            )
+            try:
+                row_candidates = json.loads(row.get("candidates_json") or "[]")
+            except (TypeError, json.JSONDecodeError):
+                row_candidates = []
+            for candidate in row_candidates:
+                student_id = int(candidate.get("student_id") or 0)
+                if not student_id or student_id in blocked:
+                    continue
+                current = merged_candidates.get(student_id)
+                similarity = float(candidate.get("similarity") or 0.0)
+                if current is None or similarity > float(current.get("similarity") or 0.0):
+                    merged_candidates[student_id] = dict(candidate)
+
+        candidates = sorted(
+            merged_candidates.values(),
+            key=lambda candidate: (
+                -float(candidate.get("similarity") or 0.0),
+                str(candidate.get("full_name") or "").casefold(),
+            ),
+        )[:3]
+        if candidates:
+            top = float(candidates[0].get("similarity") or 0.0)
+            second = float(candidates[1].get("similarity") or 0.0) if len(candidates) > 1 else 0.0
+            candidates[0]["suggested"] = bool(top >= 80.0 and (top - second) >= 5.0)
+
         item.update({
-            "case_id": f"identity:{module.lower()}:{int(item['id'])}",
+            "case_id": f"identity:{int(item['id'])}",
             "case_type": "IDENTITY",
             "occurrences": len(items),
             "group_link_ids": [int(row["id"]) for row in items],
+            "source_modules": modules,
+            "source_module": modules[0] if len(modules) == 1 else "MULTIPLE",
             "candidates": candidates,
-            "suggestion": candidates[0] if candidates else None,
+            "suggestion": candidates[0] if candidates and candidates[0].get("suggested") else None,
         })
+
+        # Sin cédula/correo no afirmamos que alguien esté realmente fuera de la
+        # población: solo sabemos que la identidad aún no pudo confirmarse.
+        if (
+            str(item.get("match_status") or "") == smart.MATCH_OUTSIDE_POPULATION
+            and not _strong_identity_key(
+                item.get("source_identification"),
+                item.get("source_email"),
+            )
+        ):
+            item["match_status"] = domain.MATCH_REVIEW
+            item["match_method"] = "NOMBRE_SIN_COINCIDENCIA"
+            item["detail"] = (
+                "No se encontró una coincidencia suficientemente segura en Requisitos. "
+                "Las evidencias con el mismo nombre y contexto se presentan juntas para resolverlas una sola vez."
+            )
+
         if len(items) > 1:
+            base_detail = str(item.get("detail") or "").strip()
             item["detail"] = (
                 f"{len(items)} evidencias de la misma persona se agruparon en este caso. "
-                + str(item.get("detail") or "")
+                f"{base_detail}"
             ).strip()
         cases.append(item)
     return cases
@@ -2344,8 +2499,21 @@ def _official_cases(period_project_id: int) -> list[dict[str, Any]]:
                 (period_project_id,),
             ).fetchall()
         )
-    return [
-        {
+
+    cases: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            missing = [
+                str(value).strip()
+                for value in json.loads(row.get("missing_requirements_json") or "[]")
+                if str(value).strip()
+            ]
+        except (TypeError, json.JSONDecodeError):
+            missing = []
+        detail = str(row.get("reconciliation_detail") or "Revise los datos oficiales de Requisitos.").strip()
+        if missing and "Pendientes:" not in detail:
+            detail = f"{detail} Pendientes: {', '.join(missing)}."
+        cases.append({
             "case_id": f"official:{int(row['id'])}",
             "case_type": "OFFICIAL",
             "match_status": str(row.get("reconciliation_status") or domain.MATCH_REVIEW),
@@ -2353,11 +2521,11 @@ def _official_cases(period_project_id: int) -> list[dict[str, Any]]:
             "student_id": int(row["id"]),
             "source_name": row.get("full_name") or "",
             "source_identification": audit._public_identification(row.get("identification")),
-            "detail": row.get("reconciliation_detail") or "Revise los datos oficiales de Requisitos.",
+            "detail": detail,
+            "missing_requirements": missing,
             "suggestion": None,
-        }
-        for row in rows
-    ]
+        })
+    return cases
 
 
 def _project_cases(period_project_id: int) -> list[dict[str, Any]]:
@@ -2508,16 +2676,106 @@ def _period_read_final(period_project_id: int) -> dict[str, Any]:
 
 
 def _candidate_search(period_project_id: int, link_id: int, query: str) -> dict[str, Any]:
-    result = project_wide._search_project_candidates(period_project_id, link_id, query)
     link = _project_link(period_project_id, link_id)
-    blocked = _blocked_targets(
-        period_project_id, str(link.get("source_module") or ""), _identity_key_link(link)
+    report_ids = _project_report_ids(period_project_id)
+    if not report_ids:
+        return {"ok": True, "candidates": []}
+    placeholders = ",".join("?" for _ in report_ids)
+    with connection() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT * FROM period_students
+                WHERE report_id IN ({placeholders})
+                  AND COALESCE(requirements_present,1)=1
+                ORDER BY full_name, id
+                """,
+                tuple(report_ids),
+            ).fetchall()
+        )
+
+    siblings = _group_project_links(period_project_id, link)
+    blocked: set[int] = set()
+    for sibling in siblings:
+        blocked.update(
+            _blocked_targets(
+                period_project_id,
+                str(sibling.get("source_module") or ""),
+                _identity_key_link(sibling),
+            )
+        )
+
+    source_name = project_wide._identity_fold(link.get("source_name"))
+    source_tokens = " ".join(sorted(source_name.split()))
+    source_career = bridge.normalize(link.get("source_career"))
+    q = str(query or "").strip().casefold()
+    q_fold = project_wide._identity_fold(q)
+
+    def name_similarity(row: dict[str, Any]) -> float:
+        target_name = project_wide._identity_fold(row.get("full_name"))
+        if not source_name or not target_name:
+            return 0.0
+        direct = SequenceMatcher(None, source_name, target_name).ratio()
+        token_score = SequenceMatcher(
+            None,
+            source_tokens,
+            " ".join(sorted(target_name.split())),
+        ).ratio()
+        score = max(direct, token_score)
+        target_career = bridge.normalize(row.get("career_name"))
+        if source_career and target_career and source_career == target_career:
+            score = min(1.0, score + 0.02)
+        return score
+
+    filtered: list[tuple[float, dict[str, Any]]] = []
+    for row in rows:
+        student_id = int(row.get("id") or 0)
+        if not student_id or student_id in blocked:
+            continue
+
+        if q:
+            haystack = " ".join(
+                (
+                    str(row.get("identification") or ""),
+                    str(row.get("full_name") or ""),
+                    str(row.get("email") or ""),
+                    str(row.get("career_name") or ""),
+                    str(row.get("modality") or ""),
+                )
+            ).casefold()
+            target_fold = project_wide._identity_fold(row.get("full_name"))
+            if q not in haystack and not (q_fold and q_fold in target_fold):
+                continue
+
+        score = name_similarity(row)
+        # Una búsqueda vacía solo ofrece coincidencias nominales razonables.
+        if not q and score < 0.55:
+            continue
+        filtered.append((score, row))
+
+    filtered.sort(
+        key=lambda item: (
+            -item[0],
+            str(item[1].get("full_name") or "").casefold(),
+            int(item[1].get("id") or 0),
+        )
     )
-    result["candidates"] = [
-        row for row in list(result.get("candidates") or [])
-        if int(row.get("student_id") or 0) not in blocked
-    ][:20]
-    return result
+    top_score = filtered[0][0] if filtered else 0.0
+    second_score = filtered[1][0] if len(filtered) > 1 else 0.0
+    candidates: list[dict[str, Any]] = []
+    for index, (score, row) in enumerate(filtered[:20]):
+        candidates.append({
+            "student_id": int(row["id"]),
+            "identification": audit._public_identification(row.get("identification")),
+            "full_name": row.get("full_name") or "",
+            "email": row.get("email") or "",
+            "career_name": row.get("career_name") or "",
+            "modality": row.get("modality") or "",
+            "campus": row.get("campus") or "",
+            "similarity": round(score * 100, 1),
+            "suggested": bool(index == 0 and top_score >= 0.80 and (top_score - second_score) >= 0.05),
+        })
+    return {"ok": True, "candidates": candidates}
 
 
 def _run_final_job_core(job_id: str, period_project_id: int) -> None:

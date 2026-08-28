@@ -87,7 +87,10 @@
     const type = String(link.case_type || 'IDENTITY');
     const candidates = Array.isArray(link.candidates) ? link.candidates.slice(0, 3) : [];
     const status = String(link.match_status || 'REVIEW_REQUIRED');
-    const title = moduleLabel(link.source_module);
+    const modules = Array.isArray(link.source_modules) ? link.source_modules.filter(Boolean) : [];
+    const title = modules.length > 1
+      ? modules.map(moduleLabel).join(' + ')
+      : moduleLabel(link.source_module);
     const student = link.source_name || 'Sin nombre';
     const identification = link.source_identification || 'sin cédula';
     const occurrences = Number(link.occurrences || 1);
@@ -125,22 +128,24 @@
     }
 
     if (type === 'OFFICIAL') {
+      const missing = Array.isArray(link.missing_requirements) ? link.missing_requirements : [];
       return `<article class="student-match-card">
         <div><strong>Requisitos</strong> ${badge(status, 'warn')}</div>
         <p><strong>${escapeValue(student)}</strong> · ${escapeValue(identification)}</p>
         <p>${escapeValue(link.detail || '')}</p>
+        ${missing.length ? `<p><strong>Requisitos pendientes:</strong> ${missing.map(escapeValue).join(' · ')}</p>` : ''}
         <small>Requisitos es la fuente maestra. Corrija el dato oficial en esa fuente y vuelva a conciliar.</small>
       </article>`;
     }
 
-    const suggestion = link.suggestion || candidates[0] || null;
+    const suggestion = link.suggestion || candidates.find(candidate => candidate.suggested) || null;
     const candidateHtml = candidates.length
       ? `<div class="student-match-candidates">
           ${suggestion ? `<small><strong>Sugerencia de Informtit:</strong> ${escapeValue(suggestion.full_name || '')} · ${escapeValue(suggestion.similarity || link.match_confidence || 0)}%</small>` : ''}
-          ${candidates.map((candidate, index) => `
+          ${candidates.map(candidate => `
           <button type="button" class="button secondary compact period-match-confirm"
             data-link-id="${Number(link.id)}" data-student-id="${Number(candidate.student_id)}">
-            ${index === 0 ? 'Sugerido · ' : ''}${escapeValue(candidate.full_name)} · ${escapeValue(candidate.identification || 'sin cédula')} · ${escapeValue(candidate.similarity || 0)}%
+            ${candidate.suggested ? 'Sugerido · ' : ''}${escapeValue(candidate.full_name)} · ${escapeValue(candidate.identification || 'sin cédula')} · ${escapeValue(candidate.similarity || 0)}%
           </button>`).join('')}
         </div>`
       : '';
@@ -421,11 +426,12 @@
             const result = await apiRequest(`/api/period-projects/${pid}/students-domain/matches/${linkId}/candidates?q=${q}`);
             const candidates = result.candidates || [];
             host.innerHTML = candidates.length
-              ? candidates.slice(0, 3).map((candidate, index) => `
+              ? candidates.slice(0, 3).map(candidate => `
                 <button type="button" class="button secondary compact period-case-search-confirm"
                   data-link-id="${linkId}" data-student-id="${Number(candidate.student_id)}">
-                  ${index === 0 ? 'Sugerido · ' : ''}${escapeValue(candidate.full_name)} ·
+                  ${candidate.suggested ? 'Sugerido · ' : ''}${escapeValue(candidate.full_name)} ·
                   ${escapeValue(candidate.identification || 'sin cédula')}
+                  ${candidate.similarity != null ? ` · ${escapeValue(candidate.similarity)}%` : ''}
                 </button>`).join('')
               : '<small>No se encontraron estudiantes compatibles en Requisitos.</small>';
             host.querySelectorAll('.period-case-search-confirm').forEach(candidateButton => {

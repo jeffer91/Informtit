@@ -67,7 +67,7 @@
       .smart-reconcile-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
       .smart-reconcile-card.done .smart-reconcile-fill { background: #2c7b55; }
       .smart-reconcile-card.error .smart-reconcile-fill { background: #b94b4b; }
-      .smart-reconciliation-summary { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 10px; margin: 14px 0 18px; }
+      .smart-reconciliation-summary { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 10px; margin: 14px 0 18px; }
       .smart-summary-chip { border: 1px solid #e1e8ee; border-radius: 12px; padding: 11px 12px; background: #f8fafc; }
       .smart-summary-chip strong { display: block; color: #18364f; font-size: 18px; }
       .smart-summary-chip span { display: block; margin-top: 2px; color: #657788; font-size: 11px; }
@@ -204,6 +204,7 @@
         IDENTITY_CONFLICT: 'CONFLICTO DE IDENTIDAD',
         ROUTE_CONFLICT: 'CONFLICTO DE RUTA',
         UNMATCHED: 'SIN COINCIDENCIA',
+        OFFICIAL_DATA_CONFLICT: 'INCONSISTENCIA EN REQUISITOS',
       };
       if (labels[raw]) badge.textContent = labels[raw];
       if (raw === 'OUT_OF_POPULATION') badge.dataset.smartStatus = 'outside';
@@ -235,9 +236,10 @@
       const grid = document.createElement('div');
       grid.className = 'smart-reconciliation-summary';
       grid.innerHTML = `
-        <div class="smart-summary-chip attention"><strong>${summary.total_cases || 0}</strong><span>casos únicos</span></div>
-        <div class="smart-summary-chip outside"><strong>${summary.outside_population || 0}</strong><span>fuera de población</span></div>
-        <div class="smart-summary-chip"><strong>${summary.identity_review || 0}</strong><span>revisar identidad</span></div>
+        <div class="smart-summary-chip attention"><strong>${summary.total_cases || 0}</strong><span>casos reales</span></div>
+        <div class="smart-summary-chip outside"><strong>${summary.outside_population || 0}</strong><span>fuera de población confirmado</span></div>
+        <div class="smart-summary-chip"><strong>${summary.identity_review || 0}</strong><span>identidades por confirmar</span></div>
+        <div class="smart-summary-chip"><strong>${summary.official_review || 0}</strong><span>inconsistencias de Requisitos</span></div>
         <div class="smart-summary-chip"><strong>${summary.route_conflicts || 0}</strong><span>conflictos de ruta</span></div>
         <div class="smart-summary-chip"><strong>${summary.grade_conflicts || 0}</strong><span>conflictos de nota</span></div>
         <div class="smart-summary-chip resolved"><strong>${summary.auto_resolved || 0}</strong><span>evidencias auto-resueltas</span></div>`;
