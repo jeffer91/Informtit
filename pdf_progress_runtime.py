@@ -13,6 +13,7 @@ import report_quality
 
 
 _LOCK = threading.RLock()
+_BUILD_LOCK = threading.Lock()
 _JOBS: dict[str, dict[str, Any]] = {}
 _ACTIVE_BY_REPORT: dict[int, str] = {}
 _LOCAL = threading.local()
@@ -88,20 +89,28 @@ def _cleanup_jobs() -> None:
 def _run_job(job_id: str, report_id: int) -> None:
     _LOCAL.job_id = job_id
     try:
-        _set_progress(3, "Validando información", "Comprobando que el informe tenga los datos necesarios.")
-        validation = report_full_detail.validate_pdf_report(report_id)
-        if validation.get("errors"):
-            raise ValueError(
-                "; ".join(str(item.get("detail") or item.get("name") or "Error de validación") for item in validation["errors"])
-            )
-        warnings = validation.get("warnings") or []
-        detail = "Validación completada."
-        if warnings:
-            detail += f" Se detectaron {len(warnings)} advertencias no bloqueantes."
-        _set_progress(8, "Validación completada", detail)
+        _set_progress(2, "Esperando turno de generación", "Informtit genera un PDF a la vez para evitar colisiones entre modalidades.")
+        with _BUILD_LOCK:
+            _set_progress(3, "Validando información", "Comprobando que el informe tenga los datos necesarios.")
+            validation = report_full_detail.validate_pdf_report(report_id)
+            if validation.get("errors"):
+                raise ValueError(
+                    "; ".join(str(item.get("detail") or item.get("name") or "Error de validación") for item in validation["errors"])
+                )
+            warnings = validation.get("warnings") or []
+            detail = "Validación completada."
+            if warnings:
+                detail += f" Se detectaron {len(warnings)} advertencias no bloqueantes."
+            _set_progress(8, "Validación completada", detail)
 
-        output = core.build_pdf(report_id)
-        path = Path(output)
+            output = core.build_pdf(report_id)
+            path = Path(output)
+            if not path.exists() or not path.is_file() or path.stat().st_size < 5:
+                raise ValueError("El generador no produjo un archivo PDF válido.")
+            with path.open("rb") as handle:
+                if handle.read(5) != b"%PDF-":
+                    raise ValueError("El archivo generado no contiene una cabecera PDF válida.")
+
         with _LOCK:
             job = _JOBS[job_id]
             job.update(

@@ -87,12 +87,14 @@ jobs:
           test -f out/Informtit-linux-x64/resources/app/student_report_integration.py
           test -f out/Informtit-linux-x64/resources/app/student_final_audit.py
           test -f out/Informtit-linux-x64/resources/app/static/students-ui.js
+          test -f out/Informtit-linux-x64/resources/app/static/pdf-progress.js
           test -f out/Informtit-linux-x64/resources/app/static/students-period-ui.js
           test -f out/Informtit-linux-x64/resources/app/static/students-final-audit-ui.js
           test -f out/Informtit-linux-x64/resources/app/static/smart-reconciliation-ui.js
           test -f out/Informtit-linux-x64/resources/app/static/students-ui.css
           test -f out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/firebase-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
+          grep -q '/pdf-progress.js?v=4.4' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-period-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-final-audit-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html

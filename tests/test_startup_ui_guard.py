@@ -23,6 +23,13 @@ class StartupUiGuardTests(unittest.TestCase):
         self.assertIn('/period-unified-ui.js?', html)
         self.assertIn('/desktop-ui-rescue.js?', html)
 
+    def test_pdf_progress_is_loaded_before_unified_period_ui(self) -> None:
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        scripts = re.findall(r'<script\s+src="([^"]+)"', html)
+        pdf_index = next(i for i, item in enumerate(scripts) if item.startswith('/pdf-progress.js?'))
+        unified_index = next(i for i, item in enumerate(scripts) if item.startswith('/period-unified-ui.js?'))
+        self.assertLess(pdf_index, unified_index)
+
     def test_import_helpers_do_not_observe_document_body(self) -> None:
         for filename in ("pdf-validation-ui.js", "import-modality-guard-ui.js", "robust-import-ui.js"):
             source = (STATIC / filename).read_text(encoding="utf-8")

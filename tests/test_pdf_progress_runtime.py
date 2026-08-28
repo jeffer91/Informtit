@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -52,11 +53,48 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         self.assertIn("Falta un consolidado final", job["error"])
         build.assert_not_called()
 
+    def test_pdf_builds_are_serialized_across_reports(self):
+        active = 0
+        max_active = 0
+        guard = threading.Lock()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            def fake_build(report_id: int):
+                nonlocal active, max_active
+                with guard:
+                    active += 1
+                    max_active = max(max_active, active)
+                try:
+                    time.sleep(0.08)
+                    output = Path(tmp) / f"informe_{report_id}.pdf"
+                    output.write_bytes(b"%PDF-1.4\n")
+                    return output
+                finally:
+                    with guard:
+                        active -= 1
+
+            with patch.object(progress.report_full_detail, "validate_pdf_report", return_value={"errors": [], "warnings": []}), patch.object(progress.core, "build_pdf", side_effect=fake_build):
+                first = progress.start_job(201)
+                second = progress.start_job(202)
+                first_job = self.wait_job(first["id"])
+                second_job = self.wait_job(second["id"])
+
+        self.assertEqual(first_job["status"], "completed")
+        self.assertEqual(second_job["status"], "completed")
+        self.assertEqual(max_active, 1)
+
     def test_frontend_uses_job_progress_endpoints(self):
         source = Path("static/pdf-progress.js").read_text(encoding="utf-8")
+        html = Path("static/index.html").read_text(encoding="utf-8")
+        period = Path("static/period-unified-ui.js").read_text(encoding="utf-8")
         self.assertIn("pdf-jobs", source)
         self.assertIn("role=\"progressbar\"", source)
         self.assertIn("/download", source)
+        self.assertIn("await downloadJob(jobId)", source)
+        self.assertIn('/pdf-progress.js?', html)
+        self.assertIn("data-pdf-report-id", period)
+        self.assertNotIn("/export/presencial", period)
+        self.assertNotIn("/export/online", period)
         self.assertIn("Generando resultados de Núcleos", Path("pdf_progress_runtime.py").read_text(encoding="utf-8"))
 
 

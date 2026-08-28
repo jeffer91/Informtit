@@ -3,14 +3,32 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
-  const type = response.headers.get('content-type') || '';
-  const data = type.includes('application/json') ? await response.json() : null;
-  if (!response.ok || (data && data.ok === false)) throw new Error(data?.error || `Error ${response.status}`);
-  return data;
+  const method = String(options.method || 'GET').toUpperCase();
+  const maxAttempts = method === 'GET' ? 2 : 1;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(path, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options,
+      });
+      const type = response.headers.get('content-type') || '';
+      const data = type.includes('application/json') ? await response.json() : null;
+      if (!response.ok || (data && data.ok === false)) throw new Error(data?.error || `Error ${response.status}`);
+      return data;
+    } catch (error) {
+      lastError = error;
+      const networkFailure = error instanceof TypeError;
+      if (!networkFailure || attempt + 1 >= maxAttempts) break;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  }
+
+  if (lastError instanceof TypeError) {
+    throw new Error('No se pudo conectar con el servicio local de Informtit. Intente Actualizar; si continúa, reinicie la aplicación.');
+  }
+  throw lastError;
 }
 
 function toast(message, error = false) {

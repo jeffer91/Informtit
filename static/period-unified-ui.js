@@ -17,7 +17,7 @@
     .period-filter{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}
     .period-filter .button.active{background:#fff;color:#185f96;box-shadow:inset 0 0 0 2px rgba(255,255,255,.7)}
     .period-pdf-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .period-pdf-actions a[aria-disabled="true"]{opacity:.45;pointer-events:none}
+    .period-pdf-actions [aria-disabled="true"]{opacity:.45;pointer-events:none}
     .period-audit-strip{display:grid;grid-template-columns:repeat(2,minmax(190px,1fr));gap:8px;margin:12px 0}
     .period-audit-card{border:1px solid #d9e2eb;border-radius:10px;padding:9px 11px;background:#fff}
     .period-audit-card span{display:block;font-size:11px;color:#63778c}.period-audit-card strong{font-size:13px}
@@ -182,8 +182,8 @@
     const presencialDisabled = !project.presencial_report_id || Number(project.presencial_students || 0) === 0;
     const onlineDisabled = !project.online_report_id || Number(project.online_students || 0) === 0;
     pdfActions.innerHTML = `
-      <a class="button secondary" ${presencialDisabled ? 'aria-disabled="true"' : ''} href="/api/period-projects/${project.period_project_id}/export/presencial">PDF Presencial</a>
-      <a class="button secondary" ${onlineDisabled ? 'aria-disabled="true"' : ''} href="/api/period-projects/${project.period_project_id}/export/online">PDF Online</a>`;
+      <button type="button" class="button secondary" data-pdf-report-id="${Number(project.presencial_report_id || 0)}" data-pdf-label="Presencial" ${presencialDisabled ? 'disabled aria-disabled="true"' : ''}>PDF Presencial</button>
+      <button type="button" class="button secondary" data-pdf-report-id="${Number(project.online_report_id || 0)}" data-pdf-label="Online" ${onlineDisabled ? 'disabled aria-disabled="true"' : ''}>PDF Online</button>`;
 
     const alerts = document.createElement('div');
     alerts.id = 'period-project-alerts';

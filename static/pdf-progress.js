@@ -241,14 +241,43 @@
     document.getElementById('pdf-progress-close').hidden = true;
   }
 
-  function downloadJob(jobId) {
+  async function downloadJob(jobId) {
+    const response = await fetch(`/api/pdf-jobs/${jobId}/download`, { cache: 'no-store' });
+    if (!response.ok) {
+      let message = `Error ${response.status} al descargar el PDF.`;
+      const type = response.headers.get('content-type') || '';
+      if (type.includes('application/json')) {
+        const data = await response.json().catch(() => ({}));
+        if (data?.error) message = data.error;
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    if (!blob.size) throw new Error('El PDF generado está vacío.');
+
+    const disposition = response.headers.get('content-disposition') || '';
+    let filename = 'Informe_Titulacion.pdf';
+    const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    const regular = disposition.match(/filename="?([^";]+)"?/i);
+    if (encoded?.[1]) {
+      try { filename = decodeURIComponent(encoded[1]); } catch (_error) { filename = encoded[1]; }
+    } else if (regular?.[1]) {
+      filename = regular[1];
+    }
+
+    const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = `/api/pdf-jobs/${jobId}/download`;
-    link.download = '';
+    link.href = objectUrl;
+    link.download = filename;
     link.style.display = 'none';
     document.body.appendChild(link);
-    link.click();
-    link.remove();
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+    }
   }
 
   async function pollJob(jobId) {
@@ -260,8 +289,9 @@
         setProgress(job);
         if (job.status === 'completed') {
           polling = false;
+          await downloadJob(jobId);
           activeJobId = null;
-          downloadJob(jobId);
+          setProgress({ ...job, detail: 'PDF generado y descarga iniciada.' });
           toast('PDF generado correctamente.');
           return;
         }
@@ -276,34 +306,43 @@
     } catch (error) {
       polling = false;
       activeJobId = null;
-      setProgress({ status: 'error', progress: 0, stage: 'No se pudo consultar el progreso', error: error.message });
+      setProgress({ status: 'error', progress: 0, stage: 'No se pudo completar la descarga', error: error.message });
       toast(error.message, true);
     }
   }
 
-  async function startPdf(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (activeJobId) return;
-    const reportId = Number(state.activeReport?.id || 0);
-    if (!reportId) {
+  let startingPdf = false;
+
+  async function generatePdf(reportId, button = null, label = 'PDF') {
+    const id = Number(reportId || 0);
+    if (!id) {
       toast('Abra un informe antes de generar el PDF.', true);
       return;
     }
+    if (startingPdf || activeJobId) {
+      toast('Ya se está generando un PDF. Espere a que termine.', true);
+      return;
+    }
 
-    const button = document.getElementById('export-pdf');
+    startingPdf = true;
+    const originalText = button?.textContent || label;
     try {
-      const auditResult = await api(`/api/reports/${reportId}/audit`);
+      const auditResult = await api(`/api/reports/${id}/audit`);
+      if (!auditResult?.audit) throw new Error('No se pudo validar el informe antes de generar el PDF.');
       const proceed = await confirmAudit(auditResult.audit);
       if (!proceed) return;
 
       resetProgress();
+      document.getElementById('pdf-progress-title').textContent = `Generando PDF ${label}`;
       if (button) {
         button.setAttribute('aria-disabled', 'true');
         button.style.pointerEvents = 'none';
+        if ('disabled' in button) button.disabled = true;
         button.textContent = 'Generando PDF…';
       }
-      const result = await api(`/api/reports/${reportId}/pdf-jobs`, { method: 'POST', body: '{}' });
+
+      const result = await api(`/api/reports/${id}/pdf-jobs`, { method: 'POST', body: '{}' });
+      if (!result?.job?.id) throw new Error('El backend no devolvió un proceso de generación válido.');
       activeJobId = result.job.id;
       setProgress(result.job);
       await pollJob(activeJobId);
@@ -313,16 +352,29 @@
       setProgress({ status: 'error', progress: 0, stage: 'No se pudo iniciar la generación', error: error.message });
       toast(error.message, true);
     } finally {
+      startingPdf = false;
       if (button) {
         button.removeAttribute('aria-disabled');
         button.style.pointerEvents = '';
-        button.textContent = 'PDF';
+        if ('disabled' in button) button.disabled = false;
+        button.textContent = originalText;
       }
     }
   }
 
+  window.informtitGeneratePdf = generatePdf;
+
   document.addEventListener('click', event => {
-    const button = event.target.closest('#export-pdf');
-    if (button) startPdf(event);
+    const target = event.target instanceof Element ? event.target : null;
+    const button = target?.closest('#export-pdf, [data-pdf-report-id]');
+    if (!button) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const explicitId = Number(button.dataset.pdfReportId || 0);
+    const reportId = explicitId || Number(state.activeReport?.id || 0);
+    const label = button.dataset.pdfLabel || (explicitId ? 'del período' : 'del informe');
+    void generatePdf(reportId, button, label);
   }, true);
 })();
