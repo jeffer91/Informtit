@@ -41,13 +41,17 @@ class FullDetailPdfTests(unittest.TestCase):
     def test_validation_is_integrated_before_progress_export(self) -> None:
         validation_runtime = (ROOT / "pdf_validation_runtime.py").read_text(encoding="utf-8")
         progress_runtime = (ROOT / "pdf_progress_runtime.py").read_text(encoding="utf-8")
+        integrity_pdf = (ROOT / "report_integrity_pdf.py").read_text(encoding="utf-8")
+        hooks = (ROOT / "report_integrity_hooks.py").read_text(encoding="utf-8")
         ui = (ROOT / "static" / "pdf-progress.js").read_text(encoding="utf-8")
         self.assertIn("validate-pdf", validation_runtime)
-        self.assertIn("validate_pdf_report", progress_runtime)
-        self.assertIn('validation.get("errors")', progress_runtime)
-        self.assertIn('validation.get("warnings")', progress_runtime)
+        self.assertIn("hooks.validation_integrity(report_id)", integrity_pdf)
+        self.assertIn("prime_validation", integrity_pdf)
+        self.assertIn("_primed_validation", hooks)
+        self.assertNotIn("report_full_detail.validate_pdf_report(report_id)", progress_runtime)
         self.assertIn("pdf-jobs", ui)
         self.assertIn("progressbar", ui)
+        self.assertIn("Tiempo transcurrido", ui)
 
     def test_desktop_installs_detail_after_old_overhaul(self) -> None:
         source = (ROOT / "desktop_entry.py").read_text(encoding="utf-8")
