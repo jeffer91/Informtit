@@ -288,7 +288,10 @@
     card.classList.toggle('error', job.status === 'error');
     card.classList.toggle('done', job.status === 'completed');
     document.getElementById('pdf-progress-stage').textContent = job.stage || 'Generando PDF';
-    document.getElementById('pdf-progress-detail').textContent = job.error || job.detail || 'Procesando el informe.';
+    const stalledDetail = job.stalled
+      ? `La etapa no ha informado avances durante ${formatElapsed(job.seconds_without_progress || 0)}. Informtit sigue protegiendo el archivo; si continúa así, registre esta etapa para diagnóstico.`
+      : '';
+    document.getElementById('pdf-progress-detail').textContent = job.error || stalledDetail || job.detail || 'Procesando el informe.';
     document.getElementById('pdf-progress-fill').style.width = `${progress}%`;
     document.getElementById('pdf-progress-percent').textContent = `${Math.round(progress)} %`;
     track.setAttribute('aria-valuenow', String(Math.round(progress)));
@@ -416,6 +419,7 @@
 
       const auditResult = await api(`/api/reports/${id}/audit`);
       if (!auditResult?.audit) throw new Error('No se pudo validar el informe antes de generar el PDF.');
+      const preflightToken = String(auditResult.preflight_token || '');
       stopElapsedTimer();
       ensureProgressUI().hidden = true;
       const proceed = await confirmAudit(auditResult.audit);
@@ -430,7 +434,10 @@
         button.textContent = 'Generando PDF…';
       }
 
-      const result = await api(`/api/reports/${id}/pdf-jobs`, { method: 'POST', body: '{}' });
+      const result = await api(`/api/reports/${id}/pdf-jobs`, {
+        method: 'POST',
+        body: JSON.stringify({ preflight_token: preflightToken }),
+      });
       if (!result?.job?.id) throw new Error('El backend no devolvió un proceso de generación válido.');
       activeJobId = result.job.id;
       setProgress(result.job);

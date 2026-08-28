@@ -172,6 +172,8 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         self.assertIn("Etapa completada en", runtime)
         self.assertIn("store_preflight", runtime)
         self.assertIn("export/pdf", runtime)
+        self.assertIn("preflight_token", source)
+        self.assertIn("job.stalled", source)
 
 
 if __name__ == "__main__":
