@@ -131,7 +131,10 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         self.assertIn("data-pdf-report-id", period)
         self.assertNotIn("/export/presencial", period)
         self.assertNotIn("/export/online", period)
-        self.assertIn("Generando resultados de Núcleos", Path("pdf_progress_runtime.py").read_text(encoding="utf-8"))
+        runtime = Path("pdf_progress_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("Generando resultados de Núcleos", runtime)
+        self.assertIn("report_read_snapshot", runtime)
+        self.assertIn("Etapa completada en", runtime)
 
 
 if __name__ == "__main__":

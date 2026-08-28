@@ -12,6 +12,18 @@ class StudentReportIntegrationTests(unittest.TestCase):
             {"id": 103, "route": "COMPLEXIVO", "process_status": "RETIRADO", "identification": "333", "full_name": "CARLA", "official_graduated": 0, "official_titulation_completed": 0},
         ]
 
+    @patch("student_report_integration.get_period_students")
+    def test_report_snapshot_reuses_master_read_and_expires_after_build(self, students_mock):
+        students_mock.return_value = {"students": self.master_rows}
+        with integration.report_read_snapshot():
+            first = integration._master(1)
+            second = integration._master(1)
+        third = integration._master(1)
+
+        self.assertIs(first, second)
+        self.assertEqual(first, third)
+        self.assertEqual(students_mock.call_count, 2)
+
     def test_report_admission_requires_current_requirements_and_no_master_conflict(self):
         base = {
             "route": integration.ROUTE_COMPLEXIVE,

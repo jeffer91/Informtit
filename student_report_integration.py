@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from functools import wraps
 from statistics import mean
+import threading
 
 import analytics
 from typing import Any, Callable
@@ -24,6 +27,7 @@ _BASE_INTEGRITY_PROCESS_SERVICE: Any = None
 _BASE_NUCLEI_CONSOLIDATED: Callable[[int], dict[str, Any]] | None = None
 _BASE_DOCX_POST: Callable[..., Any] | None = None
 _BASE_PDF_POST: Callable[..., Any] | None = None
+_READ_LOCAL = threading.local()
 
 _OLD_INDEPENDENCE_SENTENCE = (
     "Los resultados de las cuatro secciones son independientes y no implican "
@@ -36,6 +40,40 @@ _INTEGRATED_SENTENCE = (
 )
 
 
+@contextmanager
+def report_read_snapshot():
+    """Reutiliza lecturas costosas solo durante una generación de informe."""
+    existing = getattr(_READ_LOCAL, "cache", None)
+    owner = existing is None
+    if owner:
+        _READ_LOCAL.cache = {}
+    try:
+        yield
+    finally:
+        if owner and hasattr(_READ_LOCAL, "cache"):
+            delattr(_READ_LOCAL, "cache")
+
+
+def _snapshot_cached(namespace: str):
+    def decorator(function):
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            cache = getattr(_READ_LOCAL, "cache", None)
+            if cache is None:
+                return function(*args, **kwargs)
+            try:
+                key = (namespace, args, tuple(sorted(kwargs.items())))
+                hash(key)
+            except (TypeError, ValueError):
+                return function(*args, **kwargs)
+            if key not in cache:
+                cache[key] = function(*args, **kwargs)
+            return cache[key]
+        return wrapped
+    return decorator
+
+
+@_snapshot_cached("master")
 def _master(report_id: int) -> dict[int, dict[str, Any]]:
     return {int(row["id"]): row for row in get_period_students(report_id).get("students", [])}
 
@@ -61,6 +99,7 @@ def _grade(value: Any) -> float | None:
         return None
 
 
+@_snapshot_cached("project_report_ids")
 def _project_report_ids(report_id: int) -> list[int]:
     """Reports físicos que pertenecen al mismo período académico."""
     with connection() as conn:
@@ -82,6 +121,7 @@ def _project_report_ids(report_id: int) -> list[int]:
     return ids or [report_id]
 
 
+@_snapshot_cached("selected_grade")
 def _selected_grade(report_id: int, module: str, student_id: int, nucleus_number: int = 0) -> float | None:
     """Lee una resolución manual de nota sin alterar las evidencias originales."""
     with connection() as conn:
@@ -175,6 +215,7 @@ def _recalculate_nucleus(course: dict[str, Any]) -> None:
         course["activity_averages"] = recalculated
 
 
+@_snapshot_cached("filtered_nuclei")
 def filtered_nuclei(report_id: int) -> dict[str, Any]:
     """Filtra Núcleos por identidad/ruta y deja una nota efectiva por estudiante+número."""
     reconcile_all(report_id)
@@ -309,6 +350,7 @@ def filtered_nuclei(report_id: int) -> dict[str, Any]:
     }
 
 
+@_snapshot_cached("filtered_projects")
 def filtered_projects(report_id: int) -> dict[str, Any]:
     reconcile_all(report_id)
     masters = _master(report_id)
@@ -403,6 +445,7 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
     return result
 
 
+@_snapshot_cached("filtered_report_data")
 def filtered_report_data(report_id: int) -> dict[str, Any]:
     """Complexivo: solo ruta Complexivo y estudiantes habilitados por requisitos."""
     reconcile_all(report_id)

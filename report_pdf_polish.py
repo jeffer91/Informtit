@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import html
+import json
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -29,6 +31,7 @@ import report_structure
 from completion_service import get_schedules_extended
 from coordinator_registry import normalize
 from nuclei_catalog import catalog_for_career, create_cycle_diagram
+from nuclei_multicampus import get_nuclei_career_names
 from optional_content import is_present
 from process_service import get_projects
 
@@ -311,8 +314,12 @@ def _safe_heading(story: list[Any], context: Any, styles: Any, level: int, title
 
 
 def _catalogs_for_pdf(report: dict[str, Any], report_id: int) -> list[dict[str, Any]]:
-    names = [career.get("name") for career in report.get("careers", [])]
-    names.extend(course.get("career_name") for course in _filtered_nuclei_data(report_id)["courses"])
+    # El contenido académico necesita nombres de carreras, no miles de notas.
+    # La población reconciliada del informe es la fuente principal. Solo si está
+    # vacía se consulta el catálogo mínimo de carreras de Núcleos.
+    names = [career.get("name") for career in report.get("careers", []) if career.get("name")]
+    if not names:
+        names.extend(get_nuclei_career_names(report_id))
     found: list[dict[str, Any]] = []
     seen: set[str] = set()
     for name in names:
@@ -357,9 +364,14 @@ def _pdf_methodology(story: list[Any], context: Any, styles: Any, report: dict[s
             styles,
             "La carrera organiza su preparación académica en cuatro núcleos estructurantes vinculados con los principales campos de integración curricular y el perfil de egreso.",
         )
-        diagram = enh._chart_path(int(report["id"]), f"catalogo_{normalize(catalog['career']).replace(' ', '_')}")
-        create_cycle_diagram(catalog, diagram)
-        temp_paths.append(diagram)
+        catalog_json = json.dumps(catalog, ensure_ascii=False, sort_keys=True)
+        catalog_hash = hashlib.sha1(catalog_json.encode("utf-8")).hexdigest()[:10]
+        diagram = enh._chart_path(
+            int(report["id"]),
+            f"catalogo_{normalize(catalog['career']).replace(' ', '_')}_{catalog_hash}",
+        )
+        if not diagram.exists() or diagram.stat().st_size < 128:
+            create_cycle_diagram(catalog, diagram)
         report_quality._pdf_caption(story, styles, context.figure_caption(f"Núcleos de {_display_career(catalog['career'])}"))
         story += [report_quality.base.fit_image(diagram, 16.2 * cm, 11.2 * cm), Spacer(1, .1 * cm)]
         report_quality._pdf_caption(story, styles, "Nota. Elaboración propia con base en la guía curricular de la carrera.")

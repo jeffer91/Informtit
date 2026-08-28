@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from contextlib import nullcontext
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
@@ -83,9 +84,11 @@ def _wrap_stage(
 ) -> Callable[..., Any]:
     @wraps(original)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
+        started = _now()
         _set_progress(before, before_stage)
         result = original(*args, **kwargs)
-        _set_progress(after, after_stage)
+        elapsed = max(0.0, _now() - started)
+        _set_progress(after, after_stage, f"Etapa completada en {elapsed:.1f} s.")
         return result
 
     return wrapped
@@ -124,7 +127,14 @@ def _run_job(job_id: str, report_id: int) -> None:
                 "Preparando datos del informe",
                 "Usando la conciliación ya guardada y preparando las secciones del documento.",
             )
-            output = core.build_pdf(report_id)
+            snapshot = nullcontext()
+            try:
+                import student_report_integration as report_integration
+                snapshot = report_integration.report_read_snapshot()
+            except (ImportError, AttributeError):
+                pass
+            with snapshot:
+                output = core.build_pdf(report_id)
             _set_progress(96, "Verificando archivo generado", "Comprobando integridad y tamaño del PDF.")
             path = Path(output)
             if not path.exists() or not path.is_file() or path.stat().st_size < 5:

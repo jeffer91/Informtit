@@ -108,6 +108,40 @@ class NucleiMulticampusTests(unittest.TestCase):
             {"JOICE MAYLIN SANCHEZ FRANCO", "DOCENTE QUITO"},
         )
 
+    def test_batch_loader_preserves_assessments_students_and_scores(self):
+        save_nucleus(
+            self.report_id,
+            {
+                "grades_text": grades("Manta", 13, 3, "8,80"),
+                "participants_text": PARTICIPANT_TEMPLATE.format(
+                    teacher="JOICE MAYLIN SANCHEZ FRANCO",
+                    teacher_email="jsanchezf@itsqmet.edu.ec",
+                ),
+            },
+        )
+        save_nucleus(
+            self.report_id,
+            {
+                "grades_text": grades("Quito", 23, 3, "9,10"),
+                "participants_text": PARTICIPANT_TEMPLATE.format(
+                    teacher="DOCENTE QUITO",
+                    teacher_email="docentequito@itsqmet.edu.ec",
+                ),
+            },
+        )
+
+        courses = get_nuclei(self.report_id)["courses"]
+        self.assertEqual(len(courses), 2)
+        for course in courses:
+            self.assertTrue(course["assessments"])
+            self.assertEqual(len(course["students"]), 1)
+            student = course["students"][0]
+            self.assertTrue(student["scores"])
+            self.assertEqual(
+                student["scores"][0]["assessment_name"],
+                course["assessments"][0]["name"],
+            )
+
     def test_reimporting_same_moodle_course_updates_instead_of_duplicating(self):
         payload = {
             "grades_text": grades("Manta", 13, 3, "8,80"),

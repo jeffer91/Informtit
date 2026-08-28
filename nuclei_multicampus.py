@@ -368,7 +368,14 @@ def save_nucleus(report_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "course_id": course_id, "analysis": data}
 
 
+def _id_chunks(values: list[int], size: int = 400):
+    """Divide ids para respetar el límite de parámetros de SQLite."""
+    for start in range(0, len(values), size):
+        yield values[start:start + size]
+
+
 def get_nuclei(report_id: int) -> dict[str, Any]:
+    """Carga Núcleos en lotes, evitando consultas por curso y por estudiante."""
     ensure_multicampus_schema()
     with connection() as conn:
         courses = rows_to_dicts(
@@ -381,36 +388,119 @@ def get_nuclei(report_id: int) -> dict[str, Any]:
                 (report_id,),
             ).fetchall()
         )
+        if not courses:
+            return {"courses": []}
+
         for course in courses:
             course["teacher_candidates"] = json.loads(course.get("teacher_candidates") or "[]")
             course["activity_averages"] = json.loads(course.get("activity_averages") or "[]")
+
+        course_ids = [int(course["id"]) for course in courses]
+        assessments_by_course: dict[int, list[dict[str, Any]]] = {
+            course_id: [] for course_id in course_ids
+        }
+        students_by_course: dict[int, list[dict[str, Any]]] = {
+            course_id: [] for course_id in course_ids
+        }
+
+        for chunk in _id_chunks(course_ids):
+            placeholders = ",".join("?" for _ in chunk)
             assessments = rows_to_dicts(
                 conn.execute(
-                    "SELECT * FROM nucleus_instance_assessments WHERE course_id=? ORDER BY sort_order, id",
-                    (course["id"],),
+                    f"""
+                    SELECT * FROM nucleus_instance_assessments
+                    WHERE course_id IN ({placeholders})
+                    ORDER BY course_id, sort_order, id
+                    """,
+                    tuple(chunk),
                 ).fetchall()
             )
+            for assessment in assessments:
+                assessments_by_course.setdefault(int(assessment["course_id"]), []).append(assessment)
+
             students = rows_to_dicts(
                 conn.execute(
-                    "SELECT * FROM nucleus_instance_students WHERE course_id=? ORDER BY full_name",
-                    (course["id"],),
+                    f"""
+                    SELECT * FROM nucleus_instance_students
+                    WHERE course_id IN ({placeholders})
+                    ORDER BY course_id, full_name, id
+                    """,
+                    tuple(chunk),
                 ).fetchall()
             )
             for student in students:
-                student["scores"] = rows_to_dicts(
-                    conn.execute(
-                        """
-                        SELECT s.*, a.name AS assessment_name, a.sort_order
-                        FROM nucleus_instance_scores s
-                        JOIN nucleus_instance_assessments a ON a.id=s.assessment_id
-                        WHERE s.nucleus_student_id=? ORDER BY a.sort_order, a.id
-                        """,
-                        (student["id"],),
-                    ).fetchall()
-                )
-            course["assessments"] = assessments
+                students_by_course.setdefault(int(student["course_id"]), []).append(student)
+
+        all_students = [
+            student
+            for course_students in students_by_course.values()
+            for student in course_students
+        ]
+        scores_by_student: dict[int, list[dict[str, Any]]] = {
+            int(student["id"]): [] for student in all_students
+        }
+        student_ids = list(scores_by_student)
+
+        for chunk in _id_chunks(student_ids):
+            placeholders = ",".join("?" for _ in chunk)
+            scores = rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT s.*, a.name AS assessment_name, a.sort_order
+                    FROM nucleus_instance_scores s
+                    JOIN nucleus_instance_assessments a ON a.id=s.assessment_id
+                    WHERE s.nucleus_student_id IN ({placeholders})
+                    ORDER BY s.nucleus_student_id, a.sort_order, a.id
+                    """,
+                    tuple(chunk),
+                ).fetchall()
+            )
+            for score in scores:
+                scores_by_student.setdefault(int(score["nucleus_student_id"]), []).append(score)
+
+        for course in courses:
+            course_id = int(course["id"])
+            students = students_by_course.get(course_id, [])
+            for student in students:
+                student["scores"] = scores_by_student.get(int(student["id"]), [])
+            course["assessments"] = assessments_by_course.get(course_id, [])
             course["students"] = students
+
     return {"courses": courses}
+
+
+def get_nuclei_career_names(report_id: int) -> list[str]:
+    """Obtiene solo las carreras de Núcleos sin cargar estudiantes ni calificaciones."""
+    ensure_multicampus_schema()
+    with connection() as conn:
+        report_ids = [int(report_id)]
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(reports)").fetchall()}
+        if "period_project_id" in columns:
+            project = conn.execute(
+                "SELECT period_project_id FROM reports WHERE id=?",
+                (report_id,),
+            ).fetchone()
+            if project and project[0] is not None:
+                report_ids = [
+                    int(row[0])
+                    for row in conn.execute(
+                        "SELECT id FROM reports WHERE period_project_id=? ORDER BY id",
+                        (int(project[0]),),
+                    ).fetchall()
+                ] or report_ids
+
+        placeholders = ",".join("?" for _ in report_ids)
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT career_name
+            FROM nucleus_course_instances
+            WHERE report_id IN ({placeholders})
+              AND TRIM(COALESCE(career_name, '')) <> ''
+            ORDER BY career_name
+            """,
+            tuple(report_ids),
+        ).fetchall()
+    return [str(row[0]) for row in rows]
 
 
 def delete_nucleus(report_id: int, course_id: int) -> dict[str, Any]:
