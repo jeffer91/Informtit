@@ -602,6 +602,11 @@ def report_metrics(report_id: int) -> dict[str, Any]:
     nuc_approved = sum(int(row["approved"]) for row in nuclei["careers"])
     nuc_failed = sum(int(row["failed"]) for row in nuclei["careers"])
     nuc_unevaluated = sum(int(row["unevaluated"]) for row in nuclei["careers"])
+    nuc_zero_noeval = sum(
+        nucleus_state(student) == "unevaluated" and number(student.get("final_grade")) == 0
+        for course in nuclei["courses"]
+        for student in course.get("students", [])
+    )
     comp = complexive["totals"]
     project = projects.get("summary") or {}
     project_total = int(project.get("total") or 0)
@@ -620,7 +625,18 @@ def report_metrics(report_id: int) -> dict[str, Any]:
     return {
         "report": report,
         "requirements": {"registered": req_total, "complete": req_complete, "pending": req_pending, "incomplete": req_incomplete},
-        "nuclei": {"courses": len(nuclei["courses"]), "records": nuc_records, "evaluated": nuc_evaluated, "approved": nuc_approved, "failed": nuc_failed, "unevaluated": nuc_unevaluated, "institutional_stats": nuclei["institutional_stats"], "careers": nuclei["careers"]},
+        "nuclei": {
+            "courses": len(nuclei["courses"]),
+            "records": nuc_records,
+            "evaluated": nuc_evaluated,
+            "approved": nuc_approved,
+            "failed": nuc_failed,
+            "unevaluated": nuc_unevaluated,
+            "zero_noeval": nuc_zero_noeval,
+            "institutional_stats": nuclei["institutional_stats"],
+            "careers": nuclei["careers"],
+            "course_rows": nuclei.get("course_rows", []),
+        },
         "complexive": {"registered": int(comp.get("registered") or 0), "approved": int(comp.get("final_approved") or 0), "failed": int(comp.get("final_failed") or 0), "not_evaluated": int(comp.get("not_evaluated") or 0), "supplementary": int(comp.get("supplementary") or 0), "recovered": int(comp.get("recovered") or 0), "careers": complexive.get("rows", [])},
         "thesis": {
             "total": project_total,
@@ -680,8 +696,8 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
     states = status_summary(report_id)
     formulas = formula_checks(metrics, reconciliation_data)
     schedules = metrics["schedules"]
-    zero_noeval = no_evaluated_zero_count(report_id)
-    refreshed = report_quality._report_data(report_id)
+    zero_noeval = int(metrics["nuclei"].get("zero_noeval") or 0)
+    refreshed = metrics["report"]
     logo_ok = bool(report_quality.base.image_path(report_quality.base.image_for(refreshed, report_quality.base.LOGO)))
 
     formula_errors = [item for item in formulas if not item["ok"]]

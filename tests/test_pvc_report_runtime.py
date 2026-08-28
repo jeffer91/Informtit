@@ -84,6 +84,18 @@ class PvcReportRuntimeTests(unittest.TestCase):
         self.assertEqual(len(row["practical"]), 4)
         self.assertEqual(len(row["defense"]), 4)
 
+    def test_duplicate_identification_is_blocked_before_import(self):
+        from openpyxl import load_workbook
+
+        loaded = load_workbook(io.BytesIO(self.workbook_bytes()))
+        sheet = loaded.active
+        sheet.append([cell.value for cell in sheet[2]])
+        stream = io.BytesIO()
+        loaded.save(stream)
+
+        with self.assertRaisesRegex(ValueError, "cédulas duplicadas"):
+            pvc.parse_pvc_workbook(stream.getvalue())
+
     def test_pvc_formula_is_70_written_30_defense(self):
         self.assertEqual(pvc.WRITTEN_WEIGHT, 0.70)
         self.assertEqual(pvc.DEFENSE_WEIGHT, 0.30)
@@ -113,6 +125,9 @@ class PvcReportRuntimeTests(unittest.TestCase):
         self.assertIn("70 % trabajo escrito + 30 % defensa oral", source)
         self.assertIn("/pvc/import", source)
         self.assertIn("Regla del informe", source)
+        runtime = Path("pvc_report_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("Modalidad Artículo Científico", runtime)
+        self.assertNotIn("REQUISTOS", runtime)
 
 
 if __name__ == "__main__":

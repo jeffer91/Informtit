@@ -511,7 +511,7 @@ def filtered_report_data(report_id: int) -> dict[str, Any]:
     """Complexivo: solo ruta Complexivo y estudiantes habilitados por requisitos."""
     reconcile_all(report_id)
     masters = _master(report_id)
-    report = _source_report_data(report_id)
+    report = dict(_source_report_data(report_id))
     target_templates = {
         str(career.get("name") or "").strip().casefold(): dict(career)
         for career in report.get("careers", [])

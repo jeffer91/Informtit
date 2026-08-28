@@ -50,8 +50,15 @@ def cover_pdf(report: dict[str, Any], styles: Any) -> list[Any]:
     return integrity_pdf.cover_pdf_integrity(effective, styles)
 
 
+def _audit(report_id: int) -> dict[str, Any]:
+    return (
+        integrity_pdf.current_audit_for(report_id)
+        or integrity.audit_report(report_id, resolve_resources=False)
+    )
+
+
 def conclusions(report_id: int, report: dict[str, Any]) -> list[str]:
-    audit = integrity.audit_report(report_id, resolve_resources=False)
+    audit = _audit(report_id)
     if audit["mode"] == "no_population":
         return ["No se identificaron hallazgos cuantificables con la información disponible."]
     if audit["mode"] == "import_error":
@@ -141,7 +148,7 @@ def conclusions(report_id: int, report: dict[str, Any]) -> list[str]:
         elif 2 <= thesis["total"] <= 9:
             out.append(f"Trabajo de Titulación presenta una población reducida (n = {thesis['total']}), por lo que sus resultados deben interpretarse con cautela.")
 
-    zero_noeval = integrity.no_evaluated_zero_count(report_id)
+    zero_noeval = int(metrics["nuclei"].get("zero_noeval") or 0)
     if zero_noeval:
         out.append(
             f"Se detectaron {zero_noeval} registros de Núcleos con estado No evaluado y nota numérica 0; esos ceros se conservaron para trazabilidad, pero fueron excluidos de promedios, mínimos, máximos, medianas, desviaciones y denominadores de aprobación."
@@ -151,7 +158,7 @@ def conclusions(report_id: int, report: dict[str, Any]) -> list[str]:
 
 
 def recommendations(report_id: int, report: dict[str, Any]) -> list[dict[str, str]]:
-    audit = integrity.audit_report(report_id, resolve_resources=False)
+    audit = _audit(report_id)
     if audit["mode"] != "normal":
         return []
     metrics = audit["metrics"]
@@ -302,7 +309,7 @@ def recommendations(report_id: int, report: dict[str, Any]) -> list[dict[str, st
 
 
 def strengths_criticals_actions(report_id: int, report: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
-    audit = integrity.audit_report(report_id, resolve_resources=False)
+    audit = _audit(report_id)
     if audit["mode"] != "normal":
         return [], ["No se identificaron hallazgos cuantificables con la información disponible."], []
 

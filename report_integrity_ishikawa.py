@@ -4,6 +4,7 @@ from typing import Any
 
 import report_final_overhaul as final
 import report_integrity_core as integrity
+import report_integrity_pdf as integrity_pdf
 
 
 def _format_names(names: list[str]) -> str:
@@ -28,7 +29,10 @@ def factors(report_id: int, report: dict[str, Any]) -> list[tuple[str, list[str]
     sin evidencia se declaran explícitamente sin inventar un tercer hallazgo.
     """
     del report
-    audit = integrity.audit_report(report_id, resolve_resources=False)
+    audit = (
+        integrity_pdf.current_audit_for(report_id)
+        or integrity.audit_report(report_id, resolve_resources=False)
+    )
     if audit["mode"] != "normal":
         empty = ["Sin hallazgos críticos cuantificables"]
         return [
@@ -56,9 +60,8 @@ def factors(report_id: int, report: dict[str, Any]) -> list[tuple[str, list[str]
         data_factors.append(f"{audit['duplicates']['unresolved_probable']} duplicados probables pendientes de resolución")
 
     academic_factors: list[str] = []
-    strict = integrity.strict_nuclei(report_id)
     low_courses = [
-        row for row in strict.get("course_rows", [])
+        row for row in nuclei.get("course_rows", [])
         if row.get("approval") is not None and float(row["approval"]) < 70
     ]
     if low_courses:

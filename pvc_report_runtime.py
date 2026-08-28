@@ -336,6 +336,31 @@ def parse_pvc_workbook(data: bytes) -> list[dict[str, Any]]:
         )
     if not result:
         raise ValueError("No se detectaron estudiantes en la Base PVC.")
+
+    seen_identifications: dict[str, int] = {}
+    duplicate_rows: list[tuple[str, int, int]] = []
+    for item in result:
+        identification = str(item.get("identification") or "").strip()
+        if not identification:
+            continue
+        previous = seen_identifications.get(identification)
+        if previous is not None:
+            duplicate_rows.append(
+                (identification, previous, int(item.get("source_row") or 0))
+            )
+        else:
+            seen_identifications[identification] = int(item.get("source_row") or 0)
+    if duplicate_rows:
+        detail = "; ".join(
+            f"{identification} (filas {first} y {second})"
+            for identification, first, second in duplicate_rows[:8]
+        )
+        if len(duplicate_rows) > 8:
+            detail += f"; y {len(duplicate_rows) - 8} duplicado(s) adicional(es)"
+        raise ValueError(
+            "La Base PVC contiene cédulas duplicadas. Corrija el archivo antes de importarlo: "
+            + detail
+        )
     return result
 
 
@@ -1146,7 +1171,7 @@ def _flow_chart(path: Path) -> None:
             nx, ny = coordinates[index + 1]
             ax.annotate("", xy=(nx, ny), xytext=(x, y),
                         arrowprops={"arrowstyle": "->", "lw": 1.2})
-    ax.set_title("Flujo institucional del proceso PVC – Artículo Académico")
+    ax.set_title("Flujo institucional del proceso PVC – Artículo Científico")
     _save(fig, path)
 
 
@@ -1154,7 +1179,7 @@ def _traceability_chart(path: Path) -> None:
     fig, ax = plt.subplots(figsize=(10, 5.8))
     ax.axis("off")
     boxes = [
-        (0.12, 0.65, "REQUISTOS\nIdentidad · carrera · sede\nrequisitos habilitantes"),
+        (0.12, 0.65, "REQUISITOS\nIdentidad · carrera · sede\nrequisitos habilitantes"),
         (0.50, 0.65, "CONCILIACIÓN\nCédula como llave principal\nvalidación de identidad"),
         (0.88, 0.65, "BASE PVC\nTutor · lector · tribunal\nrúbrica · defensa · nota"),
         (0.50, 0.22, "INFORME PVC\nIndicadores · tablas · gráficos\nconclusiones · mejora"),
@@ -1240,7 +1265,7 @@ def _cover(report: dict[str, Any], styles: Any) -> list[Any]:
         Spacer(1, 3.4 * cm),
         Paragraph("Informe Final Del Proceso De Titulación", title),
         Spacer(1, 0.25 * cm),
-        Paragraph("PVC – Modalidad Artículo Académico", title),
+        Paragraph("PVC – Modalidad Artículo Científico", title),
         Paragraph(html.escape(str(report.get("period") or "")), title),
         Spacer(1, 6.3 * cm),
     ]
@@ -1301,7 +1326,7 @@ def build_pvc_pdf(report_id: int) -> Path:
             raise RuntimeError("Generador PDF base no disponible.")
         return Path(_BASE_BUILD_PDF(report_id))
 
-    audit = pvc_audit(report_id)
+    audit = pdf_progress_runtime.consume_preflight(report_id, "pvc") or pvc_audit(report_id)
     if not audit["can_generate_pdf"]:
         detail = "; ".join(item["detail"] for item in audit["blocking_errors"])
         raise ValueError("No se puede generar el PDF PVC: " + detail)
@@ -1322,7 +1347,7 @@ def build_pvc_pdf(report_id: int) -> Path:
     _heading(body_story, context, styles, 1, "Resumen ejecutivo")
     _body(
         body_story, styles,
-        "El presente resumen sintetiza la trayectoria de la cohorte PVC desde la población registrada en Requisitos hasta los resultados de la modalidad de Artículo Académico. Los indicadores se calculan únicamente con los registros disponibles y distinguen a los estudiantes no evaluados de los reprobados."
+        "El presente resumen sintetiza la trayectoria de la cohorte PVC desde la población registrada en Requisitos hasta los resultados de la modalidad de Artículo Científico. Los indicadores se calculan únicamente con los registros disponibles y distinguen a los estudiantes no evaluados de los reprobados."
     )
     _add_table_block(
         body_story, context, styles, registry,
@@ -1357,17 +1382,17 @@ def build_pvc_pdf(report_id: int) -> Path:
     )
 
     # 2. Aspectos generales
-    pdf_progress_runtime._set_progress(16, "Redactando marco institucional PVC", "Incorporando objetivos, alcance y lineamientos del Artículo Académico.")
+    pdf_progress_runtime._set_progress(16, "Redactando marco institucional PVC", "Incorporando objetivos, alcance y lineamientos del Artículo Científico.")
     _heading(body_story, context, styles, 1, "Aspectos generales")
     _heading(body_story, context, styles, 2, "Introducción")
     _body(
         body_story, styles,
-        "El Informe Final del Proceso de Titulación PVC – Modalidad Artículo Académico consolida la información académica y administrativa del período, desde la verificación de requisitos habilitantes hasta la evaluación del artículo, la defensa oral y el cierre del proceso. El documento integra datos de Requisitos y de la Base de resultados PVC, manteniendo trazabilidad por cédula y preservando la fuente oficial de identidad, carrera y sede."
+        "El Informe Final del Proceso de Titulación PVC – Modalidad Artículo Científico consolida la información académica y administrativa del período, desde la verificación de requisitos habilitantes hasta la evaluación del artículo, la defensa oral y el cierre del proceso. El documento integra datos de Requisitos y de la Base de resultados PVC, manteniendo trazabilidad por cédula y preservando la fuente oficial de identidad, carrera y sede."
     )
     _heading(body_story, context, styles, 2, "Objetivo general")
     _body(
         body_story, styles,
-        "Evaluar la implementación del proceso de titulación PVC en la modalidad de Artículo Académico mediante el análisis de sus fases, población, resultados y desempeño por carreras, con el fin de aportar evidencia para la calidad y la mejora continua."
+        "Evaluar la implementación del proceso de titulación PVC en la modalidad de Artículo Científico mediante el análisis de sus fases, población, resultados y desempeño por carreras, con el fin de aportar evidencia para la calidad y la mejora continua."
     )
     _heading(body_story, context, styles, 2, "Objetivos específicos")
     for item in (
@@ -1381,7 +1406,7 @@ def build_pvc_pdf(report_id: int) -> Path:
     _heading(body_story, context, styles, 2, "Alcance")
     _body(
         body_story, styles,
-        "El alcance comprende exclusivamente el proceso PVC de Artículo Académico del período configurado. Incluye la población registrada en Requisitos, los registros de la Base PVC, el acompañamiento académico, las evaluaciones disponibles, la defensa y el resultado final. Los procesos de Examen Complexivo y otras rutas de titulación no forman parte de este informe."
+        "El alcance comprende exclusivamente el proceso PVC de Artículo Científico del período configurado. Incluye la población registrada en Requisitos, los registros de la Base PVC, el acompañamiento académico, las evaluaciones disponibles, la defensa y el resultado final. Los procesos de Examen Complexivo y otras rutas de titulación no forman parte de este informe."
     )
 
     _heading(body_story, context, styles, 1, "Marco normativo e institucional")
@@ -2010,7 +2035,14 @@ def install() -> None:
     def pvc_get(self: Any, path: str, query: dict[str, list[str]]) -> None:
         audit_match = re.fullmatch(r"/api/reports/(\d+)/audit", path)
         if audit_match and _is_pvc(int(audit_match.group(1))):
-            self._send_json({"ok": True, "audit": pvc_audit(int(audit_match.group(1)))})
+            report_id = int(audit_match.group(1))
+            audit = pvc_audit(report_id)
+            token = pdf_progress_runtime.store_preflight(report_id, "pvc", audit)
+            self._send_json({
+                "ok": True,
+                "audit": audit,
+                "preflight_token": token,
+            })
             return
 
         summary_match = re.fullmatch(r"/api/reports/(\d+)/pvc/summary", path)
