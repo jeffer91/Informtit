@@ -96,8 +96,8 @@ jobs:
           grep -q '/firebase-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/pdf-progress.js?v=4.4' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
-          grep -q '/students-period-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
+          grep -q '/students-period-ui.js?v=1.1' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-final-audit-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
-          grep -q '/smart-reconciliation-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
+          grep -q '/smart-reconciliation-ui.js?v=1.1' out/Informtit-linux-x64/resources/app/static/index.html
 
 # Verificación directa de integridad sobre main.
