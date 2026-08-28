@@ -30,7 +30,7 @@ SIG_APPROVED = "firma_aprobado"
 INFOGRAPHIC = "infografia_complexivo"
 NUCLEI = "diagrama_nucleos"
 RESERVED = {LOGO, SIG_PREPARED, SIG_REVIEWED, SIG_APPROVED, INFOGRAPHIC}
-MONTHS = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+MONTHS = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
 
 def modality(report: dict[str, Any]) -> str:
@@ -47,7 +47,7 @@ def format_date(value: Any) -> str:
     if len(parts) == 3 and all(part.isdigit() for part in parts):
         year, month, day = map(int, parts)
         if 1 <= month <= 12:
-            return f"{day}-{MONTHS[month]}-{year}"
+            return f"{day:02d} de {MONTHS[month]} de {year}"
     return text
 
 
@@ -217,19 +217,52 @@ def centered(canvas: pdfcanvas.Canvas, text: str, x: float, y: float, width: flo
 
 
 def draw_header(canvas: pdfcanvas.Canvas, report: dict[str, Any], page: int, pages: int) -> None:
-    width, height = A4; x = 1.25 * cm; top = height - .75 * cm; row = .95 * cm
-    total = width - 2.5 * cm; left = 4.25 * cm; right = 4.15 * cm; middle = total - left - right; bottom = top - 2 * row
-    canvas.saveState(); canvas.setLineWidth(.7); canvas.rect(x, bottom, total, 2 * row); canvas.line(x, top-row, x+total, top-row); canvas.line(x+left, bottom, x+left, top); canvas.line(x+left+middle, bottom, x+left+middle, top)
-    logo = image_path(image_for(report, LOGO))
-    if logo: canvas.drawImage(str(logo), x+.1*cm, top-row+.08*cm, width=left-.2*cm, height=row-.16*cm, preserveAspectRatio=True, anchor="c", mask="auto")
-    else: centered(canvas, "LOGO INSTITUCIONAL NO CARGADO", x, top-row+.27*cm, left, 6.5, True)
-    centered(canvas, "Unidad Titulación y Eficiencia Terminal", x+left, top-row+.27*cm, middle, 8.2)
-    centered(canvas, f"Código: {report.get('code','')}  Versión: {report.get('version','1.0')}", x+left+middle, top-row+.2*cm, right, 6.5)
-    centered(canvas, f"Fecha de Elaboración: {format_date(report.get('elaboration_date'))}", x, bottom+.25*cm, left, 6.8, False, 2)
-    centered(canvas, header_title(report), x+left, bottom+.18*cm, middle, 6.8, True)
-    centered(canvas, f"Página {page} de {pages}", x+left+middle, bottom+.28*cm, right, 7.2, False, 1)
-    canvas.setFont("Helvetica", 8); canvas.drawRightString(width-1.35*cm, .65*cm, f"Página {page} de {pages}"); canvas.restoreState()
+    width, height = A4
+    x = 1.25 * cm
+    top = height - .70 * cm
+    row = 1.10 * cm
+    total = width - 2.5 * cm
+    left = 4.35 * cm
+    right = 4.15 * cm
+    middle = total - left - right
+    bottom = top - 2 * row
 
+    canvas.saveState()
+    canvas.setLineWidth(.7)
+    canvas.rect(x, bottom, total, 2 * row)
+    canvas.line(x, top - row, x + total, top - row)
+    canvas.line(x + left, bottom, x + left, top)
+    canvas.line(x + left + middle, bottom, x + left + middle, top)
+
+    logo = image_path(image_for(report, LOGO))
+    if logo:
+        canvas.drawImage(str(logo), x + .08 * cm, top - row + .06 * cm,
+                         width=left - .16 * cm, height=row - .12 * cm,
+                         preserveAspectRatio=True, anchor="c", mask="auto")
+    else:
+        centered(canvas, "LOGO INSTITUCIONAL NO CARGADO", x, top - row + .56 * cm, left, 6.5, True)
+
+    centered(canvas, "Unidad Titulación y Eficiencia Terminal",
+             x + left, top - row + .60 * cm, middle, 8.4)
+
+    right_center = x + left + middle + right / 2
+    canvas.setFont("Helvetica", 6.7)
+    canvas.drawCentredString(right_center, top - .45 * cm, f"Código: {report.get('code','')}")
+    canvas.drawCentredString(right_center, top - .83 * cm, f"Versión: {report.get('version','1.0')}")
+
+    left_center = x + left / 2
+    canvas.setFont("Helvetica", 6.8)
+    canvas.drawCentredString(left_center, bottom + .68 * cm, "Fecha de Elaboración:")
+    canvas.drawCentredString(left_center, bottom + .29 * cm, format_date(report.get("elaboration_date")))
+
+    centered(canvas, header_title(report), x + left, bottom + .68 * cm, middle, 6.5, True, 2)
+
+    # La portada mantiene el encabezado institucional, pero no muestra numeración.
+    if page > 1:
+        centered(canvas, f"Página {page} de {pages}",
+                 x + left + middle, bottom + .48 * cm, right, 7.2, False, 1)
+
+    canvas.restoreState()
 
 class NumberedCanvas(pdfcanvas.Canvas):
     def __init__(self, *args: Any, report: dict[str, Any], **kwargs: Any):
@@ -244,23 +277,46 @@ class NumberedCanvas(pdfcanvas.Canvas):
 
 
 def signature_items(report: dict[str, Any], label: str, section: str, name: str, role: str, styles: Any) -> list[Any]:
-    style = ParagraphStyle("Sig", parent=styles["BodyText"], fontSize=7, leading=8, alignment=TA_CENTER)
-    items: list[Any] = [Paragraph(label, style)]; path = image_path(image_for(report, section))
-    items.append(fit_image(path, 4.2*cm, 2.2*cm) if path else Paragraph("FIRMA / QR<br/>NO CARGADO", style))
-    items += [Paragraph(f"<b>NOMBRE:</b> {name}", style), Paragraph(f"<b>CARGO:</b> {role}", style)]; return items
+    style = ParagraphStyle("Sig", parent=styles["BodyText"], fontName="Helvetica",
+                           fontSize=8.2, leading=10, alignment=TA_CENTER, spaceAfter=2)
+    label_style = ParagraphStyle("SigLabel", parent=style, fontName="Helvetica-Bold", fontSize=8.2)
+    items: list[Any] = [Paragraph(label, label_style)]
+    path = image_path(image_for(report, section))
+    items.append(fit_image(path, 4.6 * cm, 2.35 * cm) if path else Paragraph("FIRMA / QR<br/>NO CARGADO", style))
+    items += [
+        Paragraph(f"<b>NOMBRE:</b> {name}", style),
+        Paragraph(f"<b>CARGO:</b> {role}", style),
+    ]
+    return items
 
 
 def cover_pdf(report: dict[str, Any], styles: Any) -> list[Any]:
-    title = ParagraphStyle("Cover", parent=styles["Title"], alignment=TA_CENTER, fontName="Helvetica-Bold", fontSize=17, leading=21)
-    story: list[Any] = [Spacer(1, 4*cm), Paragraph("Informe Final Del Proceso De Titulación.", title), Paragraph(f"{report.get('period','')} Modalidad {modality(report)}", title), Spacer(1, 7*cm)]
+    title = ParagraphStyle("Cover", parent=styles["Title"], alignment=TA_CENTER,
+                           fontName="Helvetica-Bold", fontSize=16, leading=20, spaceAfter=3)
+    report_title = str(report.get("name") or "Informe del Proceso de Titulación").rstrip(".") + "."
+    story: list[Any] = [
+        Spacer(1, 3.5 * cm),
+        Paragraph(report_title, title),
+        Paragraph(str(report.get("period") or ""), title),
+        Paragraph(f"Modalidad {modality(report)}", title),
+        Spacer(1, 8.2 * cm),
+    ]
     data = [[
         signature_items(report, "ELABORADO POR:", SIG_PREPARED, str(report.get("prepared_by") or ""), str(report.get("prepared_role") or ""), styles),
         signature_items(report, "REVISADO POR:", SIG_REVIEWED, str(report.get("reviewed_by") or ""), str(report.get("reviewed_role") or ""), styles),
         signature_items(report, "APROBADO POR:", SIG_APPROVED, str(report.get("approved_by") or ""), str(report.get("approved_role") or ""), styles),
     ]]
-    table = Table(data, colWidths=[5.55*cm]*3); table.setStyle(TableStyle([("GRID",(0,0),(-1,-1),.7,colors.black),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),5)]))
-    story += [table, PageBreak()]; return story
-
+    table = Table(data, colWidths=[6.0 * cm] * 3, hAlign="CENTER")
+    table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), .7, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story += [table, PageBreak()]
+    return story
 
 def build_pdf(report_id: int) -> Path:
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
