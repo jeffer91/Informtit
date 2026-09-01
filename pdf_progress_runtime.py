@@ -919,6 +919,29 @@ def install() -> None:
             self._serve_file(pdf_path, str(meta.get("filename") or pdf_path.name))
             return
 
+        generated_list = re.fullmatch(r"/api/reports/(\d+)/generated-pdfs", path)
+        if generated_list:
+            report_id = int(generated_list.group(1))
+            self._send_json({
+                "ok": True,
+                "generated_pdfs": list_generated_pdfs(report_id),
+            })
+            return
+
+        generated_download = re.fullmatch(
+            r"/api/reports/(\d+)/generated-pdfs/([a-f0-9]{32})/download",
+            path,
+        )
+        if generated_download:
+            report_id = int(generated_download.group(1))
+            found = get_generated_pdf(report_id, generated_download.group(2))
+            if not found:
+                self._send_error_json("PDF generado no encontrado.", 404)
+                return
+            pdf_path, meta = found
+            self._serve_file(pdf_path, str(meta.get("filename") or pdf_path.name))
+            return
+
         match = re.fullmatch(r"/api/pdf-jobs/([a-f0-9]{32})", path)
         if match:
             job = get_job(match.group(1))
@@ -950,6 +973,22 @@ def install() -> None:
             )
             self._send_json({"ok": True, "job": job}, 202)
             return
+
+        generated_delete = re.fullmatch(
+            r"/api/reports/(\d+)/generated-pdfs/([a-f0-9]{32})",
+            path,
+        )
+        if method == "DELETE" and generated_delete:
+            deleted = delete_generated_pdf(
+                int(generated_delete.group(1)),
+                generated_delete.group(2),
+            )
+            if not deleted:
+                self._send_error_json("PDF generado no encontrado.", 404)
+                return
+            self._send_json({"ok": True, "deleted": True})
+            return
+
         previous_write(self, method, path, payload)
 
     core.InformtitHandler._handle_api_get = progress_get
