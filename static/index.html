@@ -96,7 +96,10 @@
   <dialog id="report-dialog">
     <form method="dialog" id="report-form" class="dialog-form">
       <div class="dialog-head"><div><h2>Crear informe</h2><p>Seleccione primero si creará un informe regular o un PVC.</p></div><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
-      <label>Nombre del informe<input name="name" required placeholder="Informe final del proceso de titulación"></label>
+      <input type="hidden" name="name" id="report-derived-name">
+      <input type="hidden" name="period" id="report-derived-period">
+      <input type="hidden" name="code" id="report-derived-code">
+
       <div class="form-grid">
         <label>Tipo de informe
           <select name="report_type" id="report-type-select">
@@ -106,8 +109,54 @@
           <small id="report-type-help">Regular genera las salidas Presencial y Online.</small>
         </label>
         <label>Salidas<div class="fixed-responsibles-note" id="report-output-note">Presencial + Online</div></label>
-        <label>Periodo académico<input name="period" required placeholder="Octubre 2025 - Marzo 2026"></label>
-        <label>Código<input name="code" placeholder="UTET-INF-..."></label>
+      </div>
+
+      <section class="report-period-builder" aria-labelledby="report-period-label">
+        <div class="report-field-label" id="report-period-label">Periodo académico</div>
+        <div class="report-period-grid">
+          <label>Mes inicial
+            <select name="period_start_month" required>
+              <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
+              <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
+              <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
+              <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select>
+          </label>
+          <label>Año inicial
+            <input type="number" name="period_start_year" min="2000" max="2100" step="1" required>
+          </label>
+          <label>Mes final
+            <select name="period_end_month" required>
+              <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
+              <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
+              <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
+              <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select>
+          </label>
+          <label>Año final
+            <input type="number" name="period_end_year" min="2000" max="2100" step="1" required>
+          </label>
+        </div>
+        <div class="report-derived-preview">
+          <span>Periodo generado</span>
+          <strong id="report-period-preview">—</strong>
+        </div>
+      </section>
+
+      <div class="report-derived-preview">
+        <span>Nombre del informe</span>
+        <strong id="report-name-preview">—</strong>
+      </div>
+
+      <div class="form-grid">
+        <label>Mes y año del código
+          <input type="month" name="code_month" min="2000-01" max="2100-12" required>
+          <small>El código conserva su estructura institucional y solo cambia año y mes.</small>
+        </label>
+        <div class="report-derived-preview compact">
+          <span>Código institucional</span>
+          <strong id="report-code-preview">—</strong>
+        </div>
         <label>Versión<input name="version" value="1.0"></label>
         <label>Fecha de elaboración<input type="date" name="elaboration_date"></label>
       </div>
