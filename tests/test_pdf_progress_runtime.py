@@ -37,7 +37,7 @@ class PdfProgressRuntimeTests(unittest.TestCase):
 
             self.assertEqual(job["status"], "completed")
             self.assertEqual(job["progress"], 100)
-            self.assertEqual(job["stage"], "PDF listo")
+            self.assertEqual(job["stage"], "PDF generado")
             self.assertTrue(job["download_ready"])
             self.assertGreaterEqual(job["elapsed_seconds"], 0)
             self.assertTrue(job["steps"])
@@ -103,42 +103,44 @@ class PdfProgressRuntimeTests(unittest.TestCase):
                 job = self.wait_job(started["id"])
         self.assertEqual(job["status"], "completed")
 
-    def test_generated_pdf_is_persisted_across_db_maintenance_and_invalidated_explicitly(self):
+    def test_generated_pdf_history_is_persisted_and_generation_never_reuses_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp)
             db_path = data_dir / "informtit.db"
             db_path.write_bytes(b"database-v1")
-            source = data_dir / "generated.pdf"
-            source.write_bytes(b"%PDF-1.4\n")
+            first = data_dir / "generated-1.pdf"
+            first.write_bytes(b"%PDF-1.4\nfirst")
+            second = data_dir / "generated-2.pdf"
+            second.write_bytes(b"%PDF-1.4\nsecond")
 
             with patch.object(progress.db, "DATA_DIR", data_dir), patch.object(
                 progress.db, "DB_PATH", db_path
             ):
-                progress._store_cached_pdf(301, source)
+                progress._store_cached_pdf(301, first)
                 status = progress.cache_status(301)
                 self.assertTrue(status["available"])
 
-                # Un cambio técnico en SQLite (por ejemplo, conciliación de arranque)
-                # no debe obligar a regenerar el mismo PDF.
-                db_path.write_bytes(b"database-v2-mantenimiento")
-                self.assertTrue(progress.cache_status(301)["available"])
-
-                with patch.object(
-                    progress.core,
-                    "build_pdf",
-                    side_effect=AssertionError("no debe regenerar un PDF vigente"),
-                ):
+                # La acción Generar debe volver a construir aunque exista un PDF vigente.
+                with patch.object(progress.core, "build_pdf", return_value=second) as build:
                     started = progress.start_job(301)
+                    job = self.wait_job(started["id"])
+                build.assert_called_once_with(301)
+                self.assertEqual(job["status"], "completed")
+                self.assertFalse(job["cached"])
+                self.assertEqual(job["stage"], "PDF generado")
 
-                self.assertEqual(started["status"], "completed")
-                self.assertTrue(started["cached"])
-                self.assertEqual(started["stage"], "PDF guardado")
+                history = progress.list_generated_pdfs(301)
+                self.assertGreaterEqual(len(history), 2)
+                self.assertEqual(history[0]["status"], "vigente")
+                self.assertIn(history[1]["status"], {"historico", "desactualizado"})
 
                 progress.invalidate_cached_pdf(301, "Cambio académico")
                 status = progress.cache_status(301)
                 self.assertTrue(status["saved"])
                 self.assertTrue(status["stale"])
                 self.assertFalse(status["available"])
+                history = progress.list_generated_pdfs(301)
+                self.assertTrue(all(item["status"] == "desactualizado" for item in history))
 
     def test_stalled_flag_uses_last_progress_time(self):
         now = time.time()
@@ -195,19 +197,20 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         period = Path("static/period-unified-ui.js").read_text(encoding="utf-8")
         self.assertIn("pdf-jobs", source)
         self.assertIn("role=\"progressbar\"", source)
-        self.assertIn("/download", source)
-        self.assertIn("triggerPendingDownload", source)
-        self.assertIn("desktop.savePdf", source)
-        self.assertIn("/pdf-cache", source)
-        self.assertIn("PDF guardado disponible", source)
-        self.assertIn("El PDF sí fue generado y está guardado en Informtit", source)
-        self.assertIn("completedOverlay.hidden = true", source)
+        self.assertIn("pdf-jobs", source)
+        self.assertIn("PDF generado y guardado en el historial", source)
+        self.assertNotIn("No fue necesario regenerar el documento", source)
+        generated_ui = Path("static/generated-pdfs-ui.js").read_text(encoding="utf-8")
+        self.assertIn("generated-pdfs", generated_ui)
+        self.assertIn("Generar nueva versión", generated_ui)
+        self.assertIn("Descargar nunca vuelve a generar", generated_ui)
+        self.assertIn("desktop.savePdf", generated_ui)
         self.assertIn("Tiempo transcurrido", source)
         self.assertIn("No cierre Informtit", source)
         self.assertIn("pdf-progress-steps", source)
         self.assertIn("Validando informe", source)
         self.assertIn('/pdf-progress.js?', html)
-        self.assertIn("data-pdf-report-id", period)
+        self.assertNotIn("data-pdf-report-id", period)
         self.assertNotIn("/export/presencial", period)
         self.assertNotIn("/export/online", period)
         runtime = Path("pdf_progress_runtime.py").read_text(encoding="utf-8")
