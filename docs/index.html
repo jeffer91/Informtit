@@ -3,116 +3,366 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Informtit · Cronograma APA 7</title>
+  <title>Informtit Web</title>
   <style>
-    :root{font-family:Arial,Helvetica,sans-serif;color:#111;background:#eef2f5}
-    *{box-sizing:border-box}
-    body{margin:0;padding:32px 18px}
-    .shell{max-width:1180px;margin:0 auto}
-    .toolbar{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}
-    .toolbar h1{font-size:18px;margin:0;color:#18364f}
-    .toolbar p{margin:4px 0 0;color:#5d7184;font-size:13px}
-    button{border:0;border-radius:9px;background:#244a73;color:#fff;font-weight:700;padding:10px 14px;cursor:pointer}
-    .page{background:#fff;box-shadow:0 14px 38px rgba(0,0,0,.12);padding:34px 38px;min-height:720px}
-    .section-title{font-size:17px;font-weight:700;margin:0 0 8px}
-    .section-text{font-size:11.5px;line-height:1.55;margin:0 0 18px;text-align:justify}
-    .table-number{font-size:11px;font-weight:700;margin:0}
-    .table-title{font-size:11px;font-style:italic;margin:2px 0 8px}
-    table{width:100%;border-collapse:collapse;table-layout:fixed;border-top:1.3px solid #000;border-bottom:1.3px solid #000;font-size:9.2px}
-    thead{border-bottom:1px solid #000}
-    th,td{padding:7px 6px;vertical-align:middle;line-height:1.28;overflow-wrap:anywhere}
-    th{font-weight:700;text-align:left}
-    td.center,th.center{text-align:center}
-    col.phase{width:11%} col.activity{width:15%} col.plan{width:12%} col.exec{width:12%}
-    col.status{width:10%} col.percent{width:10%} col.evidence{width:15%} col.obs{width:15%}
-    .note{font-size:9px;font-style:italic;margin:7px 0 16px}
-    .analysis{font-size:11.5px;line-height:1.55;text-align:justify}
-    .badge{display:inline-block;font-size:11px;font-weight:700;background:#eef5ef;color:#286442;border-radius:999px;padding:5px 9px}
-    @media(max-width:900px){.page{padding:24px 18px;overflow:auto}.table-wrap{min-width:850px}.toolbar{align-items:flex-start;flex-direction:column}}
-    @media print{
-      :root{background:#fff}
-      body{padding:0}
-      .toolbar{display:none}
-      .page{box-shadow:none;padding:12mm 14mm;min-height:auto}
-      @page{size:A4 landscape;margin:12mm}
+    :root{
+      --ink:#17324a;--muted:#6c7f91;--line:#dce5ec;--soft:#f4f7fa;
+      --brand:#244a73;--brand2:#1e5f91;--danger:#b64646;--ok:#2e7d56;
+      font-family:Arial,Helvetica,sans-serif;color:#24384a;background:#eef2f5
     }
+    *{box-sizing:border-box} body{margin:0;min-height:100vh}
+    button,input,select,textarea{font:inherit}
+    button{cursor:pointer}
+    .app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+    aside{background:#14293d;color:#fff;padding:22px 18px;position:sticky;top:0;height:100vh}
+    .brand{font-weight:800;font-size:24px;letter-spacing:.2px;margin-bottom:6px}
+    .brand-sub{font-size:12px;color:#b8c6d2;margin-bottom:26px}
+    .nav{display:grid;gap:8px}
+    .nav button{border:0;background:transparent;color:#d7e1e9;text-align:left;padding:11px 12px;border-radius:9px;font-weight:700}
+    .nav button.active,.nav button:hover{background:#244a73;color:#fff}
+    .web-note{margin-top:24px;padding:12px;border:1px solid #355069;border-radius:10px;font-size:11px;line-height:1.45;color:#c7d4de}
+    main{padding:28px}
+    .topbar{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:22px}
+    .topbar h1{margin:0;color:var(--ink);font-size:24px}.topbar p{margin:5px 0 0;color:var(--muted)}
+    .actions{display:flex;gap:9px;flex-wrap:wrap}
+    .btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:10px 14px;border-radius:9px;font-weight:700}
+    .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+    .btn.danger{color:#fff;background:var(--danger);border-color:var(--danger)}
+    .btn.small{padding:7px 10px;font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+    .metric,.panel,.card{background:#fff;border:1px solid var(--line);border-radius:13px;box-shadow:0 3px 14px rgba(24,50,74,.05)}
+    .metric{padding:16px}.metric span{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}.metric strong{font-size:23px;color:var(--ink)}
+    .panel{padding:18px}.panel-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
+    .panel-head h2,.panel-head h3{margin:0;color:var(--ink)}.panel-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}
+    .card{padding:17px}.card h3{margin:8px 0 5px;color:var(--ink)}.card p{margin:5px 0;color:var(--muted);font-size:13px}
+    .badge{display:inline-block;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#edf4fb;color:#245a85}
+    .badge.ok{background:#edf7f1;color:#2d704e}.badge.pvc{background:#f3effa;color:#674b8d}
+    .card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+    .hidden{display:none!important}
+    .workspace-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:14px}
+    .workspace-title h2{margin:0;color:var(--ink)}.workspace-title p{margin:4px 0 0;color:var(--muted)}
+    .tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow:auto}
+    .tab{border:0;background:transparent;padding:10px 12px;font-weight:700;color:#66798a;border-bottom:3px solid transparent}
+    .tab.active{color:var(--brand);border-bottom-color:var(--brand)}
+    .form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    label{display:grid;gap:6px;font-size:12px;font-weight:700;color:#43596d}
+    input,select,textarea{width:100%;border:1px solid #cbd8e2;border-radius:8px;padding:9px 10px;background:#fff;color:#24384a}
+    input[readonly]{background:#f3f6f8;color:#50677a}
+    textarea{min-height:84px;resize:vertical}
+    .schedule-table-wrap{overflow:auto}
+    table.edit{width:100%;border-collapse:collapse;min-width:1020px;font-size:11px}
+    table.edit th,table.edit td{border-bottom:1px solid #e4ebf0;padding:7px;vertical-align:top}
+    table.edit th{background:#f4f7fa;color:#385168;text-align:left;position:sticky;top:0}
+    table.edit input,table.edit select{font-size:11px;padding:6px}
+    .hint{font-size:12px;color:var(--muted);line-height:1.5}
+    .empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed #c8d5df;border-radius:12px;background:#fff}
+    dialog{border:0;border-radius:14px;padding:0;box-shadow:0 25px 80px rgba(0,0,0,.25);width:min(820px,calc(100vw - 30px))}
+    dialog::backdrop{background:rgba(15,30,45,.55)}
+    .dialog-body{padding:20px}.dialog-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:15px}
+    .dialog-head h2{margin:0;color:var(--ink)}.dialog-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
+    .dialog-footer{display:flex;justify-content:flex-end;gap:9px;border-top:1px solid var(--line);padding-top:14px;margin-top:16px}
+    .period-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .preview{padding:11px 12px;background:#f3f6f8;border-radius:9px;margin-top:10px}
+    .preview span{display:block;color:var(--muted);font-size:11px}.preview strong{display:block;margin-top:4px;color:var(--ink);font-size:13px}
+    .toast{position:fixed;right:20px;bottom:20px;background:#18364f;color:#fff;padding:11px 14px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.2);z-index:20}
+    @media(max-width:980px){.app{grid-template-columns:1fr}aside{position:static;height:auto}.nav{grid-template-columns:repeat(3,1fr)}.web-note{display:none}.metrics{grid-template-columns:repeat(2,1fr)}.form-grid{grid-template-columns:1fr 1fr}.period-grid{grid-template-columns:1fr 1fr}}
+    @media(max-width:620px){main{padding:18px}.metrics,.form-grid,.period-grid{grid-template-columns:1fr}.topbar,.workspace-title,.panel-head{flex-direction:column}}
   </style>
 </head>
 <body>
-  <main class="shell">
-    <div class="toolbar">
-      <div>
-        <h1>Vista previa corregida · Informtit</h1>
-        <p>Tabla APA 7 · Cronograma ejecutado al 99 % cuando no existen datos explícitos de ejecución.</p>
+<div class="app">
+  <aside>
+    <div class="brand">Informtit</div>
+    <div class="brand-sub">Gestión de informes de titulación</div>
+    <div class="nav">
+      <button id="nav-dashboard" class="active" onclick="showDashboard()">Panel de informes</button>
+      <button id="nav-report" onclick="showCurrentReport()">Informe activo</button>
+      <button onclick="openCreate('normal')">Nuevo informe</button>
+    </div>
+    <div class="web-note">
+      Edición web para GitHub Pages. Los datos se guardan en este navegador. La versión de escritorio continúa usando Python, SQLite y Electron.
+    </div>
+  </aside>
+
+  <main>
+    <section id="dashboard-view">
+      <div class="topbar">
+        <div><h1>Panel de informes</h1><p>Cree, gestione y exporte informes institucionales desde el navegador.</p></div>
+        <div class="actions">
+          <button class="btn" onclick="openCreate('pvc')">Nuevo PVC</button>
+          <button class="btn primary" onclick="openCreate('normal')">Nuevo informe regular</button>
+        </div>
       </div>
-      <div>
-        <span class="badge">APA 7 · 99 %</span>
-        <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
+      <div class="metrics" id="metrics"></div>
+      <div class="panel">
+        <div class="panel-head"><div><h2>Informes</h2><p>Un proyecto por período; Regular genera Presencial y Online.</p></div></div>
+        <div id="reports-grid" class="grid"></div>
       </div>
+    </section>
+
+    <section id="report-view" class="hidden">
+      <div class="topbar">
+        <div><h1 id="page-report-name">Informe activo</h1><p id="page-report-period"></p></div>
+        <div class="actions">
+          <button class="btn" onclick="showDashboard()">Volver</button>
+          <button class="btn primary" onclick="printReport('presencial')" id="pdf-presencial">PDF Presencial</button>
+          <button class="btn primary" onclick="printReport('online')" id="pdf-online">PDF Online</button>
+          <button class="btn primary hidden" onclick="printReport('pvc')" id="pdf-pvc">PDF PVC</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="workspace-title">
+          <div><h2 id="workspace-title"></h2><p id="workspace-subtitle"></p></div>
+          <span id="workspace-badge" class="badge"></span>
+        </div>
+        <div class="tabs">
+          <button class="tab active" data-tab="general" onclick="selectTab('general')">Datos generales</button>
+          <button class="tab" data-tab="schedule" onclick="selectTab('schedule')">Cronogramas</button>
+          <button class="tab" data-tab="students" onclick="selectTab('students')">Estudiantes</button>
+          <button class="tab" data-tab="nuclei" onclick="selectTab('nuclei')">Núcleos</button>
+          <button class="tab" data-tab="complexive" onclick="selectTab('complexive')">Examen Complexivo</button>
+          <button class="tab" data-tab="thesis" onclick="selectTab('thesis')">Trabajo de Titulación</button>
+        </div>
+
+        <div id="tab-general"></div>
+        <div id="tab-schedule" class="hidden"></div>
+        <div id="tab-placeholder" class="hidden"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="create-dialog">
+  <form class="dialog-body" id="create-form" method="dialog">
+    <div class="dialog-head">
+      <div><h2>Crear informe</h2><p>Seleccione el período; el nombre y el código se generan automáticamente.</p></div>
+      <button class="btn small" type="button" onclick="document.getElementById('create-dialog').close()">Cerrar</button>
     </div>
 
-    <article class="page">
-      <h2 class="section-title">Evaluación del cumplimiento de los cronogramas</h2>
-      <p class="section-text">La evaluación contrasta la planificación con la ejecución consolidada del período y presenta el avance de cada actividad del cronograma.</p>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <label>Tipo de informe
+        <select name="type" id="create-type" onchange="updateCreatePreview()">
+          <option value="normal">Regular</option>
+          <option value="pvc">PVC – Artículo Científico</option>
+        </select>
+      </label>
+      <div class="preview" style="margin:0"><span>Salidas</span><strong id="create-output">Presencial + Online</strong></div>
+    </div>
 
-      <h3 class="section-title" style="font-size:14px">Cronograma del Trabajo de Titulación</h3>
-      <p class="section-text">La tabla presenta las actividades con su fecha planificada, fecha de ejecución, estado, porcentaje de ejecución, evidencia y observación.</p>
+    <div style="margin-top:14px;font-size:12px;font-weight:700;color:#43596d">Período académico</div>
+    <div class="period-grid" style="margin-top:7px">
+      <label>Mes inicial<select name="startMonth" id="startMonth" onchange="updateCreatePreview()"></select></label>
+      <label>Año inicial<input type="number" name="startYear" id="startYear" min="2000" max="2100" onchange="updateCreatePreview()"></label>
+      <label>Mes final<select name="endMonth" id="endMonth" onchange="updateCreatePreview()"></select></label>
+      <label>Año final<input type="number" name="endYear" id="endYear" min="2000" max="2100" onchange="updateCreatePreview()"></label>
+    </div>
 
-      <p class="table-number">Tabla 4</p>
-      <p class="table-title">Planificación y ejecución: Cronograma del Trabajo de Titulación</p>
+    <div class="preview"><span>Nombre del informe</span><strong id="name-preview"></strong></div>
+    <div class="form-grid" style="margin-top:12px">
+      <label>Mes y año del código<input type="month" id="codeMonth" onchange="updateCreatePreview()"></label>
+      <label>Versión<input id="version" value="1.0"></label>
+      <label>Fecha de elaboración<input id="elaborationDate" type="date"></label>
+    </div>
+    <div class="preview"><span>Código institucional</span><strong id="code-preview"></strong></div>
 
-      <div class="table-wrap">
-        <table aria-label="Cronograma del Trabajo de Titulación en formato APA 7">
-          <colgroup>
-            <col class="phase"><col class="activity"><col class="plan"><col class="exec">
-            <col class="status"><col class="percent"><col class="evidence"><col class="obs">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Fase</th>
-              <th>Actividad</th>
-              <th class="center">Fecha planificada</th>
-              <th class="center">Fecha ejecutada</th>
-              <th class="center">Estado</th>
-              <th class="center">Ejecución (%)</th>
-              <th>Evidencia</th>
-              <th>Observación</th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
+    <div class="dialog-footer">
+      <button class="btn" type="button" onclick="document.getElementById('create-dialog').close()">Cancelar</button>
+      <button class="btn primary" type="submit">Crear informe</button>
+    </div>
+  </form>
+</dialog>
 
-      <p class="note">Nota. Elaboración propia con base en el cronograma institucional del proceso de titulación.</p>
-      <p class="analysis">Las actividades del cronograma se presentan como ejecutadas para el período analizado, con un nivel de ejecución del 99 %. La tabla elimina fondos de color, bordes verticales y cuadrículas completas para mantener una presentación compatible con el estilo de tablas de APA 7.</p>
-    </article>
-  </main>
+<div id="toast" class="toast hidden"></div>
 
-  <script>
-    const data = [
-      ["Fase 1: Inicio y planificación","Elaboración de propuesta de temas","01/02/2026","01/02/2026"],
-      ["Fase 2: Desarrollo y tutorías","Borrador 1","01/03/2026","01/03/2026"],
-      ["Fase 1: Inicio y planificación","Aprobación del tema","02/02/2026 a 04/02/2026","04/02/2026"],
-      ["Fase 2: Desarrollo y tutorías","Revisión del borrador 1 con el estudiante","01/03/2026 a 05/03/2026","05/03/2026"],
-      ["Fase 1: Inicio y planificación","Elaboración del plan de titulación","08/02/2026","08/02/2026"],
-      ["Fase 2: Desarrollo y tutorías","Borrador 2","08/03/2026","08/03/2026"],
-      ["Fase 1: Inicio y planificación","Aprobación del plan","09/02/2026 a 11/02/2026","11/02/2026"],
-      ["Fase 2: Desarrollo y tutorías","Revisión del borrador 2 con el estudiante","09/03/2026 a 13/03/2026","13/03/2026"],
-      ["Fase 2: Desarrollo y tutorías","Desarrollo del trabajo (redacción)","11/02/2026 a 28/02/2026","28/02/2026"]
-    ];
+<script>
+const MONTHS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const STORAGE_KEY='informtit-web-v2';
+const DEFAULT_SCHEDULE=[
+  ['Fase 1: Inicio y planificación','Elaboración de propuesta de temas','01/02/2026','01/02/2026'],
+  ['Fase 2: Desarrollo y tutorías','Borrador 1','01/03/2026','01/03/2026'],
+  ['Fase 1: Inicio y planificación','Aprobación del tema','02/02/2026','04/02/2026'],
+  ['Fase 2: Desarrollo y tutorías','Revisión del borrador 1 con el estudiante','01/03/2026','05/03/2026'],
+  ['Fase 1: Inicio y planificación','Elaboración del plan de titulación','08/02/2026','08/02/2026'],
+  ['Fase 2: Desarrollo y tutorías','Borrador 2','08/03/2026','08/03/2026'],
+  ['Fase 1: Inicio y planificación','Aprobación del plan','09/02/2026','11/02/2026'],
+  ['Fase 2: Desarrollo y tutorías','Revisión del borrador 2 con el estudiante','09/03/2026','13/03/2026'],
+  ['Fase 2: Desarrollo y tutorías','Desarrollo del trabajo (redacción)','11/02/2026','28/02/2026']
+].map((r,i)=>({id:i+1,phase:r[0],activity:r[1],planned:r[2],executed:r[3],status:'',percent:'',evidence:'',observation:''}));
 
-    const tbody = document.getElementById("rows");
-    tbody.innerHTML = data.map(row => `
-      <tr>
-        <td>${row[0]}</td>
-        <td>${row[1]}</td>
-        <td class="center">${row[2]}</td>
-        <td class="center">${row[3]}</td>
-        <td class="center">Ejecutado</td>
-        <td class="center">99 %</td>
-        <td>Registro institucional de ejecución</td>
-        <td>Actividad ejecutada conforme a la planificación</td>
-      </tr>`).join("");
-  </script>
+let db=loadDb();
+let activeId=null;
+
+function loadDb(){
+  try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||{reports:[]}}catch{return {reports:[]}}
+}
+function saveDb(){localStorage.setItem(STORAGE_KEY,JSON.stringify(db))}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(window.__tt);window.__tt=setTimeout(()=>t.classList.add('hidden'),2600)}
+function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function current(){return db.reports.find(r=>r.id===activeId)||null}
+
+function renderDashboard(){
+  const reports=db.reports;
+  document.getElementById('metrics').innerHTML=[
+    ['Informes',reports.length],['Proyectos regulares',reports.filter(r=>r.type==='normal').length],['PVC',reports.filter(r=>r.type==='pvc').length],['Almacenamiento','Navegador']
+  ].map(x=>`<div class="metric"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('');
+  const grid=document.getElementById('reports-grid');
+  if(!reports.length){grid.innerHTML='<div class="empty">Todavía no existen informes. Cree el primero para comenzar.</div>';return}
+  grid.innerHTML=reports.map(r=>`<article class="card">
+    <span class="badge ${r.type==='pvc'?'pvc':'ok'}">${r.type==='pvc'?'PVC · un solo informe':'Regular · Presencial + Online'}</span>
+    <h3>${esc(r.name)}</h3><p>${esc(r.period)}</p><p>${esc(r.code)}</p>
+    <div class="card-actions">
+      <button class="btn primary small" onclick="openReport(${r.id})">Abrir</button>
+      <button class="btn small" onclick="quickPdf(${r.id})">PDF</button>
+      <button class="btn danger small" onclick="deleteReport(${r.id})">Eliminar</button>
+    </div>
+  </article>`).join('');
+}
+function showDashboard(){
+  document.getElementById('dashboard-view').classList.remove('hidden');
+  document.getElementById('report-view').classList.add('hidden');
+  document.getElementById('nav-dashboard').classList.add('active');
+  document.getElementById('nav-report').classList.remove('active');
+  renderDashboard();
+}
+function showCurrentReport(){if(activeId)openReport(activeId);else toast('Abra primero un informe.')}
+function openReport(id){
+  activeId=id;const r=current();if(!r)return;
+  document.getElementById('dashboard-view').classList.add('hidden');
+  document.getElementById('report-view').classList.remove('hidden');
+  document.getElementById('nav-dashboard').classList.remove('active');
+  document.getElementById('nav-report').classList.add('active');
+  document.getElementById('page-report-name').textContent=r.name;
+  document.getElementById('page-report-period').textContent=r.period;
+  document.getElementById('workspace-title').textContent=r.name;
+  document.getElementById('workspace-subtitle').textContent=r.code+' · Versión '+r.version;
+  const badge=document.getElementById('workspace-badge');badge.textContent=r.type==='pvc'?'PVC':'Regular';badge.className='badge '+(r.type==='pvc'?'pvc':'ok');
+  document.getElementById('pdf-presencial').classList.toggle('hidden',r.type==='pvc');
+  document.getElementById('pdf-online').classList.toggle('hidden',r.type==='pvc');
+  document.getElementById('pdf-pvc').classList.toggle('hidden',r.type!=='pvc');
+  renderGeneral();renderSchedule();selectTab('general');
+}
+function selectTab(name){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  document.getElementById('tab-general').classList.toggle('hidden',name!=='general');
+  document.getElementById('tab-schedule').classList.toggle('hidden',name!=='schedule');
+  const placeholder=document.getElementById('tab-placeholder');
+  const other=!['general','schedule'].includes(name);
+  placeholder.classList.toggle('hidden',!other);
+  if(other){const labels={students:'Estudiantes',nuclei:'Núcleos',complexive:'Examen Complexivo',thesis:'Trabajo de Titulación'};placeholder.innerHTML=`<div class="empty"><strong>${labels[name]}</strong><br><br>Esta sección forma parte de Informtit. En la edición web está preparada para integrarse con la base institucional; el cronograma y la exportación solicitada ya funcionan en el navegador.</div>`}
+}
+function renderGeneral(){
+  const r=current();
+  document.getElementById('tab-general').innerHTML=`<div class="panel-head"><div><h3>Datos generales</h3><p>Nombre, período y código se mantienen derivados automáticamente.</p></div></div>
+    <div class="form-grid">
+      <label>Nombre del informe<input readonly value="${esc(r.name)}"></label>
+      <label>Período<input readonly value="${esc(r.period)}"></label>
+      <label>Código<input readonly value="${esc(r.code)}"></label>
+      <label>Versión<input id="edit-version" value="${esc(r.version)}"></label>
+      <label>Fecha de elaboración<input id="edit-date" type="date" value="${esc(r.elaborationDate||'')}"></label>
+      <label>Tipo<input readonly value="${r.type==='pvc'?'PVC – Artículo Científico':'Regular'}"></label>
+    </div>
+    <div class="card-actions"><button class="btn primary" onclick="saveGeneral()">Guardar cambios</button></div>`;
+}
+function saveGeneral(){const r=current();r.version=document.getElementById('edit-version').value||'1.0';r.elaborationDate=document.getElementById('edit-date').value;saveDb();toast('Datos generales guardados.');openReport(r.id)}
+function renderSchedule(){
+  const r=current();const rows=r.schedule||[];
+  document.getElementById('tab-schedule').innerHTML=`
+    <div class="panel-head"><div><h3>Cronograma del Trabajo de Titulación</h3><p>Si fecha ejecutada, estado o porcentaje quedan vacíos, el informe final los proyecta como Ejecutado · 99 %.</p></div>
+      <button class="btn small" onclick="addScheduleRow()">Agregar actividad</button></div>
+    <div class="schedule-table-wrap"><table class="edit"><thead><tr>
+      <th>Fase</th><th>Actividad</th><th>Fecha planificada</th><th>Fecha ejecutada</th><th>Estado</th><th>Ejecución (%)</th><th>Evidencia</th><th>Observación</th>
+    </tr></thead><tbody>${rows.map((x,i)=>`<tr>
+      <td><input value="${esc(x.phase)}" onchange="updRow(${i},'phase',this.value)"></td>
+      <td><input value="${esc(x.activity)}" onchange="updRow(${i},'activity',this.value)"></td>
+      <td><input value="${esc(x.planned)}" onchange="updRow(${i},'planned',this.value)"></td>
+      <td><input value="${esc(x.executed||'')}" placeholder="Automático" onchange="updRow(${i},'executed',this.value)"></td>
+      <td><select onchange="updRow(${i},'status',this.value)"><option value="" ${!x.status?'selected':''}>Automático: Ejecutado</option><option ${x.status==='Ejecutado'?'selected':''}>Ejecutado</option><option ${x.status==='Cumplido con retraso'?'selected':''}>Cumplido con retraso</option><option ${x.status==='Cumplido parcialmente'?'selected':''}>Cumplido parcialmente</option><option ${x.status==='No cumplido'?'selected':''}>No cumplido</option></select></td>
+      <td><input type="number" min="0" max="100" value="${esc(x.percent||'')}" placeholder="99" onchange="updRow(${i},'percent',this.value)"></td>
+      <td><input value="${esc(x.evidence||'')}" placeholder="Automático" onchange="updRow(${i},'evidence',this.value)"></td>
+      <td><input value="${esc(x.observation||'')}" placeholder="Automático" onchange="updRow(${i},'observation',this.value)"></td>
+    </tr>`).join('')}</tbody></table></div>
+    <div class="card-actions"><button class="btn primary" onclick="saveDb();toast('Cronograma guardado.')">Guardar cronograma</button><button class="btn" onclick="printReport(current().type==='pvc'?'pvc':'presencial')">Vista PDF APA 7</button></div>`;
+}
+function updRow(i,k,v){current().schedule[i][k]=v;saveDb()}
+function addScheduleRow(){const r=current();r.schedule.push({id:Date.now(),phase:'',activity:'Nueva actividad',planned:'',executed:'',status:'',percent:'',evidence:'',observation:''});saveDb();renderSchedule()}
+function deleteReport(id){if(!confirm('¿Eliminar este informe del navegador?'))return;db.reports=db.reports.filter(r=>r.id!==id);if(activeId===id)activeId=null;saveDb();renderDashboard()}
+function quickPdf(id){activeId=id;const r=current();printReport(r.type==='pvc'?'pvc':'presencial')}
+
+function fillMonthSelect(id){document.getElementById(id).innerHTML=MONTHS.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}
+function openCreate(type){
+  fillMonthSelect('startMonth');fillMonthSelect('endMonth');
+  const d=new Date(),m=d.getMonth()+1,y=d.getFullYear();
+  let sm,sy,em,ey;if(m>=4&&m<=9){sm=4;sy=y;em=9;ey=y}else if(m>=10){sm=10;sy=y;em=3;ey=y+1}else{sm=10;sy=y-1;em=3;ey=y}
+  document.getElementById('create-type').value=type;
+  document.getElementById('startMonth').value=sm;document.getElementById('startYear').value=sy;
+  document.getElementById('endMonth').value=em;document.getElementById('endYear').value=ey;
+  document.getElementById('codeMonth').value=`${y}-${String(m).padStart(2,'0')}`;
+  document.getElementById('elaborationDate').value=`${y}-${String(m).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  updateCreatePreview();document.getElementById('create-dialog').showModal();
+}
+function createValues(){
+  const sm=+document.getElementById('startMonth').value,sy=+document.getElementById('startYear').value,em=+document.getElementById('endMonth').value,ey=+document.getElementById('endYear').value;
+  const period=`${MONTHS[sm-1]} ${sy} - ${MONTHS[em-1]} ${ey}`;
+  const codeMonth=document.getElementById('codeMonth').value;
+  return {period,name:`Informe Final del Proceso de Titulación - ${period}`,code:`UTET-INF-01-PRO-95-${codeMonth}`}
+}
+function updateCreatePreview(){
+  const v=createValues(),type=document.getElementById('create-type').value;
+  document.getElementById('name-preview').textContent=v.name;document.getElementById('code-preview').textContent=v.code;
+  document.getElementById('create-output').textContent=type==='pvc'?'PVC · un solo informe':'Presencial + Online';
+}
+document.getElementById('create-form').addEventListener('submit',e=>{
+  e.preventDefault();const v=createValues(),type=document.getElementById('create-type').value;
+  const report={id:Date.now(),type,...v,version:document.getElementById('version').value||'1.0',elaborationDate:document.getElementById('elaborationDate').value,schedule:JSON.parse(JSON.stringify(DEFAULT_SCHEDULE))};
+  db.reports.unshift(report);saveDb();document.getElementById('create-dialog').close();openReport(report.id);toast('Informe creado.');
+});
+
+function effectiveRow(x){
+  const executed=(x.executed||'').trim() || inferEndDate(x.planned);
+  const status=(x.status||'').trim() || 'Ejecutado';
+  const percent=(x.percent!==''&&x.percent!=null)?Number(x.percent):99;
+  const evidence=(x.evidence||'').trim() || 'Registro institucional de ejecución';
+  const observation=(x.observation||'').trim() || 'Actividad ejecutada conforme a la planificación';
+  return {...x,executed,status,percent,evidence,observation}
+}
+function inferEndDate(planned=''){const parts=String(planned).split(/\s+a\s+/);return (parts[parts.length-1]||planned).trim()}
+function printReport(mode){
+  const r=current();if(!r)return;
+  const rows=(r.schedule||[]).map(effectiveRow);
+  const label=mode==='online'?'Online':mode==='pvc'?'PVC – Artículo Científico':'Presencial';
+  const doc=window.open('','_blank');
+  if(!doc){toast('El navegador bloqueó la ventana del PDF. Permita ventanas emergentes.');return}
+  const bodyRows=rows.map(x=>`<tr><td>${esc(x.phase)}</td><td>${esc(x.activity)}</td><td class="c">${esc(x.planned)}</td><td class="c">${esc(x.executed)}</td><td class="c">${esc(x.status)}</td><td class="c">${Number(x.percent)%1===0?Number(x.percent):Number(x.percent).toFixed(2).replace('.',',')} %</td><td>${esc(x.evidence)}</td><td>${esc(x.observation)}</td></tr>`).join('');
+  doc.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(r.name)}</title><style>
+    @page{size:A4 landscape;margin:13mm 14mm}body{font-family:Arial,sans-serif;color:#111;font-size:10.5px;margin:0}
+    h1{font-size:16px;margin:0 0 4px}p.meta{margin:0 0 14px;color:#333}.section{font-size:13px;font-weight:700;margin:12px 0 6px}
+    .intro{font-size:10px;line-height:1.5;text-align:justify;margin-bottom:12px}.tn{font-weight:700;margin:0}.tt{font-style:italic;margin:2px 0 7px}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;border-top:1.2px solid #000;border-bottom:1.2px solid #000;font-size:7.6px}
+    thead{border-bottom:.8px solid #000}th,td{padding:5px 4px;vertical-align:middle;overflow-wrap:anywhere}th{text-align:left;font-weight:700}.c{text-align:center}
+    .note{font-size:8px;font-style:italic;margin-top:5px}.analysis{font-size:9.5px;line-height:1.45;text-align:justify;margin-top:10px}
+    .tools{position:fixed;right:12px;top:12px}@media print{.tools{display:none}}
+  </style></head><body>
+    <button class="tools" onclick="window.print()">Imprimir / Guardar PDF</button>
+    <h1>${esc(r.name)}</h1><p class="meta">${esc(r.period)} · Modalidad ${esc(label)} · ${esc(r.code)}</p>
+    <div class="section">Evaluación del cumplimiento de los cronogramas</div>
+    <p class="intro">La evaluación contrasta la planificación con la ejecución consolidada del período y presenta el avance de cada actividad del cronograma.</p>
+    <div class="section">Cronograma del Trabajo de Titulación</div>
+    <p class="tn">Tabla 4</p><p class="tt">Planificación y ejecución: Cronograma del Trabajo de Titulación</p>
+    <table><thead><tr><th>Fase</th><th>Actividad</th><th>Fecha planificada</th><th>Fecha ejecutada</th><th>Estado</th><th>Ejecución (%)</th><th>Evidencia</th><th>Observación</th></tr></thead><tbody>${bodyRows}</tbody></table>
+    <p class="note">Nota. Elaboración propia con base en el cronograma institucional del proceso de titulación.</p>
+    <p class="analysis">Las actividades sin información explícita de ejecución se consolidan como ejecutadas al 99 % para la salida final. Los valores registrados manualmente se conservan y tienen prioridad.</p>
+  </body></html>`);
+  doc.document.close();setTimeout(()=>{try{doc.focus();doc.print()}catch{}},350);
+}
+
+if(!db.reports.length){
+  const now=new Date();
+  db.reports=[{id:1,type:'normal',name:'Informe Final del Proceso de Titulación - Octubre 2025 - Marzo 2026',period:'Octubre 2025 - Marzo 2026',code:'UTET-INF-01-PRO-95-2026-03',version:'1.0',elaborationDate:'2026-03-31',schedule:JSON.parse(JSON.stringify(DEFAULT_SCHEDULE))}];
+  saveDb();
+}
+renderDashboard();
+</script>
 </body>
 </html>
