@@ -54,6 +54,23 @@ def report_read_snapshot():
             delattr(_READ_LOCAL, "cache")
 
 
+def _snapshot_active() -> bool:
+    """Indica si la lectura pertenece a una auditoría o generación de informe."""
+    return getattr(_READ_LOCAL, "cache", None) is not None
+
+
+def _reconcile_for_interactive_read(report_id: int) -> None:
+    """Concilia solo fuera del snapshot de exportación.
+
+    Las importaciones, cambios manuales y el botón Reconciliar ya persisten los
+    vínculos. Durante auditoría/PDF debemos limitar esta capa a lectura pura para
+    no repetir matching, sincronización del maestro y escrituras SQLite por cada
+    sección del informe.
+    """
+    if not _snapshot_active():
+        reconcile_all(report_id)
+
+
 def _snapshot_cached(namespace: str):
     def decorator(function):
         @wraps(function)
@@ -267,7 +284,7 @@ def _recalculate_nucleus(course: dict[str, Any]) -> None:
 @_snapshot_cached("filtered_nuclei")
 def filtered_nuclei(report_id: int) -> dict[str, Any]:
     """Filtra Núcleos por identidad/ruta y deja una nota efectiva por estudiante+número."""
-    reconcile_all(report_id)
+    _reconcile_for_interactive_read(report_id)
     masters = _master(report_id)
     with connection() as conn:
         target_row = conn.execute(
@@ -413,7 +430,7 @@ def _source_report_data(report_id: int) -> dict[str, Any]:
 
 @_snapshot_cached("filtered_projects")
 def filtered_projects(report_id: int) -> dict[str, Any]:
-    reconcile_all(report_id)
+    _reconcile_for_interactive_read(report_id)
     masters = _master(report_id)
     data = _source_projects(report_id)
     source_projects: list[dict[str, Any]] = []
@@ -509,7 +526,7 @@ def filtered_projects(report_id: int) -> dict[str, Any]:
 @_snapshot_cached("filtered_report_data")
 def filtered_report_data(report_id: int) -> dict[str, Any]:
     """Complexivo: solo ruta Complexivo y estudiantes habilitados por requisitos."""
-    reconcile_all(report_id)
+    _reconcile_for_interactive_read(report_id)
     masters = _master(report_id)
     report = dict(_source_report_data(report_id))
     target_templates = {
