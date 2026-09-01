@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import shutil
 import threading
 import time
 import uuid
@@ -10,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import app as core
+import db
 import report_full_detail
 import report_quality
 
@@ -23,6 +27,129 @@ _LOCAL = threading.local()
 
 _PREFLIGHT_TTL_SECONDS = 300.0
 _STALL_WARNING_SECONDS = 300.0
+_GENERATOR_REVISION: str | None = None
+
+
+def _cache_dir() -> Path:
+    path = db.DATA_DIR / "generated_pdfs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _cache_pdf_path(report_id: int) -> Path:
+    return _cache_dir() / f"report_{int(report_id)}.pdf"
+
+
+def _cache_meta_path(report_id: int) -> Path:
+    return _cache_dir() / f"report_{int(report_id)}.json"
+
+
+def _database_revision() -> str:
+    path = Path(db.DB_PATH)
+    if not path.exists():
+        return "missing"
+    stat = path.stat()
+    return f"{stat.st_size}:{stat.st_mtime_ns}"
+
+
+def _generator_revision() -> str:
+    """Firma barata del código que puede afectar el PDF.
+
+    Se calcula una vez por ejecución. Al actualizar Informtit, los archivos Python
+    cambian y los PDF guardados dejan de considerarse vigentes automáticamente.
+    """
+    global _GENERATOR_REVISION
+    if _GENERATOR_REVISION is not None:
+        return _GENERATOR_REVISION
+    root = Path(__file__).resolve().parent
+    digest = hashlib.sha256()
+    excluded = {".git", "data", "node_modules", "out", "tests", "__pycache__"}
+    files = []
+    for candidate in root.rglob("*.py"):
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError:
+            continue
+        if any(part in excluded for part in relative.parts):
+            continue
+        files.append((str(relative).replace("\\", "/"), candidate))
+    for relative, candidate in sorted(files, key=lambda item: item[0]):
+        try:
+            stat = candidate.stat()
+        except OSError:
+            continue
+        digest.update(relative.encode("utf-8"))
+        digest.update(str(stat.st_size).encode("ascii"))
+        digest.update(str(stat.st_mtime_ns).encode("ascii"))
+    _GENERATOR_REVISION = digest.hexdigest()
+    return _GENERATOR_REVISION
+
+
+def _valid_pdf(path: Path) -> bool:
+    try:
+        if not path.exists() or not path.is_file() or path.stat().st_size < 5:
+            return False
+        with path.open("rb") as handle:
+            return handle.read(5) == b"%PDF-"
+    except OSError:
+        return False
+
+
+def _read_cache_meta(report_id: int) -> dict[str, Any]:
+    path = _cache_meta_path(report_id)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def cached_pdf(report_id: int) -> tuple[Path, dict[str, Any]] | None:
+    pdf_path = _cache_pdf_path(report_id)
+    meta = _read_cache_meta(report_id)
+    if not meta or not _valid_pdf(pdf_path):
+        return None
+    if str(meta.get("database_revision") or "") != _database_revision():
+        return None
+    if str(meta.get("generator_revision") or "") != _generator_revision():
+        return None
+    return pdf_path, meta
+
+
+def cache_status(report_id: int) -> dict[str, Any]:
+    cached = cached_pdf(report_id)
+    if not cached:
+        return {"available": False, "report_id": int(report_id)}
+    path, meta = cached
+    return {
+        "available": True,
+        "report_id": int(report_id),
+        "filename": str(meta.get("filename") or path.name),
+        "generated_at": meta.get("generated_at"),
+        "size": path.stat().st_size,
+    }
+
+
+def _store_cached_pdf(report_id: int, source: Path) -> Path:
+    target = _cache_pdf_path(report_id)
+    if source.resolve() != target.resolve():
+        shutil.copy2(source, target)
+    if not _valid_pdf(target):
+        raise ValueError("No se pudo guardar una copia persistente válida del PDF.")
+    meta = {
+        "report_id": int(report_id),
+        "filename": source.name,
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "database_revision": _database_revision(),
+        "generator_revision": _generator_revision(),
+    }
+    _cache_meta_path(report_id).write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return target
 
 
 def _now() -> float:
@@ -99,6 +226,7 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
         "detail": job.get("detail", ""),
         "error": job.get("error", ""),
         "download_ready": bool(job.get("path")) and job["status"] == "completed",
+        "cached": bool(job.get("cached")),
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
         "elapsed_seconds": round(elapsed, 1),
@@ -206,11 +334,10 @@ def _run_job(job_id: str, report_id: int) -> None:
                 output = core.build_pdf(report_id)
             _set_progress(96, "Verificando archivo generado", "Comprobando integridad y tamaño del PDF.")
             path = Path(output)
-            if not path.exists() or not path.is_file() or path.stat().st_size < 5:
+            if not _valid_pdf(path):
                 raise ValueError("El generador no produjo un archivo PDF válido.")
-            with path.open("rb") as handle:
-                if handle.read(5) != b"%PDF-":
-                    raise ValueError("El archivo generado no contiene una cabecera PDF válida.")
+            _set_progress(98, "Guardando PDF generado", "Conservando una copia para futuras descargas sin regenerar el informe.")
+            path = _store_cached_pdf(report_id, path)
             _set_progress(99, "Preparando descarga", "El PDF está listo; preparando la descarga automática.")
 
         _set_progress(100, "PDF listo", "El informe fue generado correctamente y está listo para descargar.")
@@ -223,6 +350,7 @@ def _run_job(job_id: str, report_id: int) -> None:
                 stage="PDF listo",
                 detail="El informe fue generado correctamente y está listo para descargar.",
                 path=str(path),
+                cached=False,
                 error="",
                 duration_seconds=duration,
                 updated_at=_now(),
@@ -253,6 +381,37 @@ def _run_job(job_id: str, report_id: int) -> None:
 def start_job(report_id: int, preflight_token: str = "") -> dict[str, Any]:
     _cleanup_jobs()
     _cleanup_preflights()
+
+    saved = cached_pdf(report_id)
+    if saved:
+        path, _meta = saved
+        job_id = uuid.uuid4().hex
+        now = _now()
+        job = {
+            "id": job_id,
+            "report_id": int(report_id),
+            "status": "completed",
+            "progress": 100,
+            "stage": "PDF guardado",
+            "detail": "Se reutilizó el último PDF porque la información del sistema no ha cambiado.",
+            "error": "",
+            "path": str(path),
+            "cached": True,
+            "preflight_token": "",
+            "last_progress_at": now,
+            "steps": [{
+                "stage": "PDF guardado",
+                "progress": 100,
+                "detail": "Se reutilizó el último PDF porque la información del sistema no ha cambiado.",
+                "at": now,
+            }],
+            "duration_seconds": 0.0,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with _LOCK:
+            _JOBS[job_id] = job
+        return _public_job(job)
     with _LOCK:
         active_id = _ACTIVE_BY_REPORT.get(report_id)
         if active_id:
@@ -271,6 +430,7 @@ def start_job(report_id: int, preflight_token: str = "") -> dict[str, Any]:
             "detail": "Se está preparando el proceso de exportación.",
             "error": "",
             "path": "",
+            "cached": False,
             "preflight_token": str(preflight_token or ""),
             "last_progress_at": now,
             "steps": [{
@@ -376,6 +536,22 @@ def install() -> None:
                 "La exportación PDF directa está deshabilitada por seguridad. Use el botón PDF para iniciar un proceso controlado.",
                 409,
             )
+            return
+
+        cache_match = re.fullmatch(r"/api/reports/(\d+)/pdf-cache", path)
+        if cache_match:
+            self._send_json({"ok": True, "cache": cache_status(int(cache_match.group(1)))})
+            return
+
+        cache_download = re.fullmatch(r"/api/reports/(\d+)/pdf-cache/download", path)
+        if cache_download:
+            report_id = int(cache_download.group(1))
+            saved = cached_pdf(report_id)
+            if not saved:
+                self._send_error_json("No existe un PDF guardado vigente para este informe.", 409)
+                return
+            pdf_path, meta = saved
+            self._serve_file(pdf_path, str(meta.get("filename") or pdf_path.name))
             return
 
         match = re.fullmatch(r"/api/pdf-jobs/([a-f0-9]{32})", path)
