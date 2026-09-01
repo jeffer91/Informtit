@@ -188,28 +188,33 @@ def _font_to_fit(canvas: Any, text: str, width: float, preferred: float = 6.3, m
 
 
 def _wrap_cell_lines(canvas: Any, text: Any, width: float, font: str, size: float, max_lines: int) -> list[str]:
-    words = str(text or "").split()
-    if not words:
-        return [""]
-    lines: list[str] = []
-    current = ""
+    raw = str(text or "")
     usable = max(10.0, width - 0.35 * cm)
-    for word in words:
-        candidate = f"{current} {word}".strip()
-        if not current or canvas.stringWidth(candidate, font, size) <= usable:
-            current = candidate
+    lines: list[str] = []
+
+    for paragraph in raw.splitlines() or [""]:
+        words = paragraph.split()
+        if not words:
+            lines.append("")
             continue
-        lines.append(current)
-        current = word
-    if current:
-        lines.append(current)
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if not current or canvas.stringWidth(candidate, font, size) <= usable:
+                current = candidate
+                continue
+            lines.append(current)
+            current = word
+        if current:
+            lines.append(current)
+
     if len(lines) > max_lines:
         lines = lines[:max_lines]
         last = lines[-1]
         while last and canvas.stringWidth(last + "…", font, size) > usable:
             last = last[:-1]
         lines[-1] = (last.rstrip() + "…") if last else "…"
-    return lines
+    return lines or [""]
 
 
 def _draw_cell_text(
@@ -318,7 +323,7 @@ def draw_header_safe(canvas: Any, report: dict[str, Any], page: int, pages: int)
     )
     _draw_cell_text(
         canvas,
-        f"Código: {report.get('code', '')}\nVersión: {report.get('version', '1.0')}".replace("\n", " | "),
+        f"Código: {report.get('code', '')}\nVersión: {report.get('version', '1.0')}",
         right_x,
         top - row,
         right,
@@ -346,7 +351,7 @@ def draw_header_safe(canvas: Any, report: dict[str, Any], page: int, pages: int)
         row,
         size=7.0,
         bold=True,
-        max_lines=3,
+        max_lines=4,
     )
     _draw_cell_text(
         canvas,
