@@ -334,29 +334,144 @@ function printReport(mode){
   const r=current();if(!r)return;
   const rows=(r.schedule||[]).map(effectiveRow);
   const label=mode==='online'?'Online':mode==='pvc'?'PVC – Artículo Científico':'Presencial';
+  const avg=rows.length?rows.reduce((sum,x)=>sum+Number(x.percent||0),0)/rows.length:0;
+  const avgText=(avg%1===0?String(avg):avg.toFixed(2).replace('.',','))+' %';
+  const executedCount=rows.filter(x=>String(x.status||'').toLowerCase().includes('ejecut')).length;
+  const scheduleChunks=[];
+  for(let i=0;i<rows.length;i+=4)scheduleChunks.push(rows.slice(i,i+4));
+  if(!scheduleChunks.length)scheduleChunks.push([]);
+
+  const pages=[];
+  const pageCount=4+scheduleChunks.length;
+  const formatDate=value=>{
+    const parts=String(value||'').split('-');
+    if(parts.length===3){
+      const [y,m,d]=parts;
+      const month=MONTHS[Number(m)-1]||m;
+      return `${Number(d)} de ${String(month).toLowerCase()} de ${y}`;
+    }
+    return value||'—';
+  };
+  const header=(page,total)=>`
+    <div class="inst-header">
+      <div class="hcell logo"><div class="logo-mark">ITSQMET</div><small>Instituto Superior Tecnológico</small></div>
+      <div class="hcell unit">Unidad Titulación y Eficiencia Terminal</div>
+      <div class="hcell code"><div><b>Código:</b> ${esc(r.code)}</div><div><b>Versión:</b> ${esc(r.version||'1.0')}</div></div>
+      <div class="hcell date"><b>Fecha de Elaboración:</b><br>${esc(formatDate(r.elaborationDate))}</div>
+      <div class="hcell title">Informe Final del Proceso de Titulación. ${esc(r.period)} - Modalidad ${esc(label)}</div>
+      <div class="hcell page">Página ${page} de ${total}</div>
+    </div>`;
+  const sheet=(page,content,extra='')=>`<section class="sheet ${extra}">${header(page,pageCount)}<div class="page-body">${content}</div></section>`;
+
+  pages.push(sheet(1,`
+    <div class="cover">
+      <h1>Informe Final del Proceso de Titulación</h1>
+      <h2>${esc(r.period)}</h2>
+      <h2>Modalidad ${esc(label)}</h2>
+      <div class="cover-meta"><b>Código:</b> ${esc(r.code)}<br><b>Versión:</b> ${esc(r.version||'1.0')}<br><b>Fecha de elaboración:</b> ${esc(formatDate(r.elaborationDate))}</div>
+      <div class="signatures">
+        <div><b>ELABORADO POR</b><span>Firma institucional</span><small>Nombre / Cargo</small></div>
+        <div><b>REVISADO POR</b><span>Firma institucional</span><small>Nombre / Cargo</small></div>
+        <div><b>APROBADO POR</b><span>Firma institucional</span><small>Nombre / Cargo</small></div>
+      </div>
+    </div>`));
+
+  const scheduleStart=4;
+  const conclusionsPage=4+scheduleChunks.length;
+  pages.push(sheet(2,`
+    <h1 class="major">ÍNDICE GENERAL</h1>
+    <div class="toc">
+      <div><span>Resumen ejecutivo</span><b>3</b></div>
+      <div><span>Introducción</span><b>3</b></div>
+      <div><span>Evaluación del cumplimiento de los cronogramas</span><b>${scheduleStart}</b></div>
+      <div class="sub"><span>Cronograma del Trabajo de Titulación</span><b>${scheduleStart}</b></div>
+      <div><span>Conclusiones</span><b>${conclusionsPage}</b></div>
+      <div><span>Recomendaciones</span><b>${conclusionsPage}</b></div>
+    </div>`));
+
+  pages.push(sheet(3,`
+    <h1 class="major">Resumen ejecutivo</h1>
+    <p>El presente informe consolida la información disponible del proceso de titulación correspondiente al período <b>${esc(r.period)}</b>, modalidad <b>${esc(label)}</b>. En el cronograma se registran ${rows.length} actividades; ${executedCount} se presentan con estado ejecutado y el nivel promedio de ejecución corresponde a <b>${avgText}</b>.</p>
+    <h1 class="major">Introducción</h1>
+    <p>El informe constituye un instrumento de seguimiento institucional del proceso de titulación. Su propósito es organizar la planificación, ejecución y resultados disponibles para el período académico indicado, manteniendo trazabilidad entre las actividades programadas y la información efectivamente registrada.</p>
+    <p>Para la salida final, cuando una actividad del cronograma no posee fecha ejecutada, estado o porcentaje explícitos, se utiliza la fecha final planificada, el estado <b>Ejecutado</b> y un nivel de ejecución de <b>99 %</b>. La evidencia y la observación no se generan de manera ficticia: cuando no existen datos reales, se muestran con una raya.</p>
+    <h1 class="major">Alcance de la información</h1>
+    <p>Las tablas y análisis de esta salida se construyen únicamente con los datos disponibles en este informe web. Los valores ingresados manualmente tienen prioridad sobre cualquier proyección automática.</p>`));
+
+  scheduleChunks.forEach((chunk,index)=>{
+    const page=scheduleStart+index;
+    const bodyRows=chunk.length?chunk.map(x=>`<tr><td>${esc(x.phase)}</td><td>${esc(x.activity)}</td><td class="c">${esc(x.planned)}</td><td class="c">${esc(x.executed)}</td><td class="c">${esc(x.status)}</td><td class="c">${Number(x.percent)%1===0?Number(x.percent):Number(x.percent).toFixed(2).replace('.',',')} %</td><td>${esc(x.evidence)}</td><td>${esc(x.observation)}</td></tr>`).join(''):'<tr><td colspan="8" class="c">No existen actividades registradas.</td></tr>';
+    pages.push(sheet(page,`
+      <h1 class="major">Evaluación del cumplimiento de los cronogramas</h1>
+      ${index===0?'<p>La evaluación contrasta la planificación con la ejecución consolidada del período y presenta el avance de cada actividad del cronograma.</p>':''}
+      <h2 class="section-title">Cronograma del Trabajo de Titulación</h2>
+      <p class="table-number">Tabla 4${index?' (continuación)':''}</p>
+      <p class="table-title">Planificación y ejecución: Cronograma del Trabajo de Titulación</p>
+      <table class="apa">
+        <colgroup><col style="width:12%"><col style="width:16%"><col style="width:12%"><col style="width:12%"><col style="width:10%"><col style="width:9%"><col style="width:14%"><col style="width:15%"></colgroup>
+        <thead><tr><th>Fase</th><th>Actividad</th><th>Fecha planificada</th><th>Fecha ejecutada</th><th>Estado</th><th>Ejecución (%)</th><th>Evidencia</th><th>Observación</th></tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+      <p class="note">Nota. Elaboración propia con base en el cronograma institucional del proceso de titulación.</p>
+      ${index===scheduleChunks.length-1?`<p class="analysis">Las ${rows.length} actividades presentan un nivel promedio de ejecución de <b>${avgText}</b>. Los valores explícitamente registrados se conservan; las celdas de evidencia y observación permanecen vacías cuando no existe respaldo documental real.</p>`:''}
+    `));
+  });
+
+  pages.push(sheet(conclusionsPage,`
+    <h1 class="major">Conclusiones</h1>
+    <ol class="body-list">
+      <li>El cronograma consolidado contiene ${rows.length} actividades para el período ${esc(r.period)}.</li>
+      <li>El nivel promedio de ejecución calculado con la información disponible es ${avgText}.</li>
+      <li>La salida final evita atribuir evidencia u observaciones no registradas en la fuente institucional.</li>
+    </ol>
+    <h1 class="major">Recomendaciones</h1>
+    <ol class="body-list">
+      <li>Mantener actualizados los campos de fecha ejecutada, estado y porcentaje cuando exista información institucional confirmada.</li>
+      <li>Adjuntar evidencia únicamente cuando exista un respaldo verificable del cumplimiento de la actividad.</li>
+      <li>Revisar la consistencia del cronograma antes de emitir la versión final del informe.</li>
+    </ol>
+  `));
+
   const doc=window.open('','_blank');
   if(!doc){toast('El navegador bloqueó la ventana del PDF. Permita ventanas emergentes.');return}
-  const bodyRows=rows.map(x=>`<tr><td>${esc(x.phase)}</td><td>${esc(x.activity)}</td><td class="c">${esc(x.planned)}</td><td class="c">${esc(x.executed)}</td><td class="c">${esc(x.status)}</td><td class="c">${Number(x.percent)%1===0?Number(x.percent):Number(x.percent).toFixed(2).replace('.',',')} %</td><td>${esc(x.evidence)}</td><td>${esc(x.observation)}</td></tr>`).join('');
   doc.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(r.name)}</title><style>
-    @page{size:A4 landscape;margin:13mm 14mm}body{font-family:Arial,sans-serif;color:#111;font-size:10.5px;margin:0}
-    h1{font-size:16px;margin:0 0 4px}p.meta{margin:0 0 14px;color:#333}.section{font-size:13px;font-weight:700;margin:12px 0 6px}
-    .intro{font-size:10px;line-height:1.5;text-align:justify;margin-bottom:12px}.tn{font-weight:700;margin:0}.tt{font-style:italic;margin:2px 0 7px}
-    table{width:100%;border-collapse:collapse;table-layout:fixed;border-top:1.2px solid #000;border-bottom:1.2px solid #000;font-size:7.6px}
-    thead{border-bottom:.8px solid #000}th,td{padding:5px 4px;vertical-align:middle;overflow-wrap:anywhere}th{text-align:left;font-weight:700}.c{text-align:center}
-    .note{font-size:8px;font-style:italic;margin-top:5px}.analysis{font-size:9.5px;line-height:1.45;text-align:justify;margin-top:10px}
-    .tools{position:fixed;right:12px;top:12px}@media print{.tools{display:none}}
+    @page{size:A4 portrait;margin:0}
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:#d9dde1;color:#111;font-family:Arial,Helvetica,sans-serif}
+    body{font-size:10pt}
+    .toolbar{position:fixed;right:14px;top:14px;z-index:20}
+    .toolbar button{border:0;border-radius:7px;background:#244a73;color:#fff;font-weight:700;padding:10px 14px}
+    .sheet{width:210mm;height:297mm;margin:10mm auto;background:#fff;padding:7mm 11mm 10mm;page-break-after:always;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+    .sheet:last-child{page-break-after:auto}
+    .inst-header{height:26mm;border:1px solid #000;display:grid;grid-template-columns:25% 52% 23%;grid-template-rows:13mm 13mm;margin-bottom:8mm}
+    .hcell{display:flex;align-items:center;justify-content:center;text-align:center;padding:2mm;border-right:1px solid #000;border-bottom:1px solid #000;font-size:8.2pt;line-height:1.15}
+    .hcell:nth-child(3n){border-right:0}.hcell:nth-child(n+4){border-bottom:0}
+    .logo{display:block;padding-top:1.8mm}.logo-mark{font-weight:800;font-size:11pt}.logo small{font-size:6.2pt}
+    .unit{font-size:10pt}.code{display:block;padding-top:1.7mm;font-size:7.3pt}.code div+div{margin-top:1.7mm}
+    .date{font-size:7.6pt}.title{font-weight:700;font-size:7.4pt}.page{font-size:8pt}
+    .page-body{height:calc(100% - 34mm);position:relative}
+    .cover{height:100%;display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:30mm}
+    .cover h1{font-size:17pt;margin:0 0 5mm}.cover h2{font-size:15pt;margin:1.5mm 0}.cover-meta{margin-top:12mm;font-size:10pt;line-height:1.7}
+    .signatures{margin-top:auto;margin-bottom:8mm;width:100%;display:grid;grid-template-columns:repeat(3,1fr);border:1px solid #000}
+    .signatures>div{min-height:38mm;border-right:1px solid #000;padding:4mm;display:flex;flex-direction:column;gap:8mm}.signatures>div:last-child{border-right:0}.signatures span{color:#666}.signatures small{font-size:8pt}
+    .major{font-size:14pt;margin:0 0 5mm}.section-title{font-size:11pt;margin:5mm 0 3mm}
+    p{font-size:10pt;line-height:1.55;text-align:justify;margin:0 0 4mm;text-indent:12.5mm}
+    .toc{margin-top:8mm}.toc div{display:flex;justify-content:space-between;border-bottom:1px dotted #888;padding:2.2mm 0;font-size:10pt}.toc .sub{padding-left:8mm;font-size:9.5pt}
+    .table-number{font-weight:700;text-indent:0;margin:1mm 0 0;font-size:8.6pt}.table-title{font-style:italic;text-indent:0;margin:0 0 2.5mm;font-size:8.6pt}
+    table.apa{width:100%;border-collapse:collapse;table-layout:fixed;border-top:1.2px solid #000;border-bottom:1.2px solid #000;font-size:6.9pt}
+    table.apa thead{border-bottom:.8px solid #000}table.apa th,table.apa td{padding:2.4mm 1.4mm;vertical-align:middle;overflow-wrap:anywhere;line-height:1.22}
+    table.apa th{text-align:left;font-weight:700}.c{text-align:center}
+    .note{font-size:7.6pt;font-style:italic;text-indent:0;margin-top:2mm}.analysis{font-size:9pt;text-indent:0;margin-top:4mm}
+    .body-list{font-size:10pt;line-height:1.55;padding-left:8mm}.body-list li{margin-bottom:4mm;text-align:justify}
+    @media print{
+      html,body{background:#fff}.toolbar{display:none}.sheet{margin:0;box-shadow:none}
+    }
   </style></head><body>
-    <button class="tools" onclick="window.print()">Imprimir / Guardar PDF</button>
-    <h1>${esc(r.name)}</h1><p class="meta">${esc(r.period)} · Modalidad ${esc(label)} · ${esc(r.code)}</p>
-    <div class="section">Evaluación del cumplimiento de los cronogramas</div>
-    <p class="intro">La evaluación contrasta la planificación con la ejecución consolidada del período y presenta el avance de cada actividad del cronograma.</p>
-    <div class="section">Cronograma del Trabajo de Titulación</div>
-    <p class="tn">Tabla 4</p><p class="tt">Planificación y ejecución: Cronograma del Trabajo de Titulación</p>
-    <table><thead><tr><th>Fase</th><th>Actividad</th><th>Fecha planificada</th><th>Fecha ejecutada</th><th>Estado</th><th>Ejecución (%)</th><th>Evidencia</th><th>Observación</th></tr></thead><tbody>${bodyRows}</tbody></table>
-    <p class="note">Nota. Elaboración propia con base en el cronograma institucional del proceso de titulación.</p>
-    <p class="analysis">Las actividades sin información explícita de ejecución se consolidan como ejecutadas al 99 % para la salida final. Los valores registrados manualmente se conservan y tienen prioridad.</p>
+    <div class="toolbar"><button onclick="window.print()">Imprimir / Guardar PDF</button></div>
+    ${pages.join('')}
   </body></html>`);
-  doc.document.close();setTimeout(()=>{try{doc.focus();doc.print()}catch{}},350);
+  doc.document.close();
+  setTimeout(()=>{try{doc.focus();doc.print()}catch{}},500);
 }
 
 if(!db.reports.length){
