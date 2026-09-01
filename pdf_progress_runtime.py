@@ -376,6 +376,7 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
         "error": job.get("error", ""),
         "download_ready": bool(job.get("path")) and job["status"] == "completed",
         "cached": bool(job.get("cached")),
+        "filename": str(job.get("filename") or ""),
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
         "elapsed_seconds": round(elapsed, 1),
@@ -485,6 +486,7 @@ def _run_job(job_id: str, report_id: int) -> None:
             path = Path(output)
             if not _valid_pdf(path):
                 raise ValueError("El generador no produjo un archivo PDF válido.")
+            download_name = path.name
             _set_progress(98, "Guardando PDF generado", "Conservando una copia para futuras descargas sin regenerar el informe.")
             path = _store_cached_pdf(report_id, path)
             _set_progress(99, "Preparando descarga", "El PDF está listo; preparando la descarga automática.")
@@ -499,6 +501,7 @@ def _run_job(job_id: str, report_id: int) -> None:
                 stage="PDF listo",
                 detail="El informe fue generado correctamente y está listo para descargar.",
                 path=str(path),
+                filename=download_name,
                 cached=False,
                 error="",
                 duration_seconds=duration,
@@ -545,6 +548,7 @@ def start_job(report_id: int, preflight_token: str = "") -> dict[str, Any]:
             "detail": "Se reutilizó el último PDF porque la información del sistema no ha cambiado.",
             "error": "",
             "path": str(path),
+            "filename": str(_meta.get("filename") or path.name),
             "cached": True,
             "preflight_token": "",
             "last_progress_at": now,
@@ -579,6 +583,7 @@ def start_job(report_id: int, preflight_token: str = "") -> dict[str, Any]:
             "detail": "Se está preparando el proceso de exportación.",
             "error": "",
             "path": "",
+            "filename": "",
             "cached": False,
             "preflight_token": str(preflight_token or ""),
             "last_progress_at": now,
