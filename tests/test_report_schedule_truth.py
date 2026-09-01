@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from reportlab.lib.styles import getSampleStyleSheet
+
 import report_schedule_truth as schedule
 
 
@@ -96,6 +98,29 @@ class ReportScheduleTruthTests(unittest.TestCase):
         headers, rows, _ = schedule._prune_optional_columns(headers, rows, widths)
         self.assertIn("Evidencia", headers)
         self.assertNotIn("Observación", headers)
+
+
+    def test_pruned_pdf_table_builds_with_five_columns(self):
+        headers, rows = schedule._rows(
+            [{
+                "activity": "Actividad",
+                "start_date": "01/02/2026",
+                "end_date": "01/02/2026",
+                "evidence": "",
+                "observation": "",
+            }],
+            False,
+        )
+        widths = [3.2, 2.3, 2.3, 1.9, 1.8, 2.8, 2.9]
+        headers, rows, widths = schedule._prune_optional_columns(headers, rows, widths)
+        self.assertEqual(len(headers), 5)
+        table = schedule._pdf_apa_table(
+            headers,
+            rows,
+            [width * schedule.cm for width in widths],
+            getSampleStyleSheet(),
+        )
+        self.assertEqual(len(table._colWidths), 5)
 
     def test_schedule_table_uses_apa7_minimal_rules(self):
         source = Path("report_schedule_truth.py").read_text(encoding="utf-8")
