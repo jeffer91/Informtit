@@ -323,8 +323,10 @@ function effectiveRow(x){
   const executed=(x.executed||'').trim() || inferEndDate(x.planned);
   const status=(x.status||'').trim() || 'Ejecutado';
   const percent=(x.percent!==''&&x.percent!=null)?Number(x.percent):99;
-  const evidence=(x.evidence||'').trim() || 'Registro institucional de ejecución';
-  const observation=(x.observation||'').trim() || 'Actividad ejecutada conforme a la planificación';
+  // No inventar respaldo documental: evidencia y observación quedan en raya
+  // cuando el usuario no registró información real.
+  const evidence=(x.evidence||'').trim() || '—';
+  const observation=(x.observation||'').trim() || '—';
   return {...x,executed,status,percent,evidence,observation}
 }
 function inferEndDate(planned=''){const parts=String(planned).split(/\s+a\s+/);return (parts[parts.length-1]||planned).trim()}
