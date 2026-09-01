@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld('informtitDesktop', {
   toggleDevTools: () => ipcRenderer.invoke('informtit:toggle-devtools'),
   openDevTools: () => ipcRenderer.invoke('informtit:open-devtools'),
   reload: () => ipcRenderer.invoke('informtit:reload'),
+  savePdf: (args) => ipcRenderer.invoke('informtit:save-pdf', args),
 });
