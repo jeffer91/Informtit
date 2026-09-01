@@ -369,8 +369,19 @@
           polling = false;
           await downloadJob(jobId);
           activeJobId = null;
-          setProgress({ ...job, detail: `PDF generado y descarga iniciada en ${formatElapsed(job.duration_seconds ?? job.elapsed_seconds ?? 0)}.` });
+          setProgress({
+            ...job,
+            detail: `PDF generado y descarga iniciada en ${formatElapsed(job.duration_seconds ?? job.elapsed_seconds ?? 0)}. Esta ventana se cerrará automáticamente.`,
+          });
           toast('PDF generado correctamente.');
+
+          // El trabajo ya terminó y la descarga ya fue disparada. No dejar al
+          // usuario atrapado en una pantalla al 100 %: cerramos el overlay en
+          // cuanto el navegador/Electron recibió la orden de descarga.
+          const completedOverlay = ensureProgressUI();
+          setTimeout(() => {
+            if (!polling && activeJobId === null) completedOverlay.hidden = true;
+          }, 1200);
           return;
         }
         if (job.status === 'error') {
