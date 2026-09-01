@@ -74,6 +74,28 @@ class PeriodUnifiedRuntimeTests(unittest.TestCase):
         import_service.DATA_DIR = self.original_import_data_dir
         self.temporary.cleanup()
 
+    def test_creation_derives_name_and_institutional_code_from_month(self):
+        created = period_policy_runtime._create_manual_reports(
+            {
+                "name": "ESTE NOMBRE NO DEBE USARSE",
+                "period": "Abril 2026 - Septiembre 2026",
+                "report_type": "pvc",
+                "code_month": "2026-09",
+                "version": "1.0",
+            }
+        )
+        report_id = int(created["report_ids"]["pvc"])
+        with db.connection() as conn:
+            row = conn.execute(
+                "SELECT name, code FROM reports WHERE id=?",
+                (report_id,),
+            ).fetchone()
+        self.assertEqual(
+            row["name"],
+            "Informe Final del Proceso de Titulación - Abril 2026 - Septiembre 2026",
+        )
+        self.assertEqual(row["code"], "UTET-INF-01-PRO-95-2026-09")
+
     def test_explicit_pvc_can_use_same_calendar_months_as_regular(self):
         created = period_policy_runtime._create_manual_reports(
             {
