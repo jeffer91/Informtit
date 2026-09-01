@@ -366,10 +366,56 @@
       link.remove();
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
     }
+    return { ok: true, canceled: false, path: '', filename };
   }
 
-  async function downloadJob(jobId) {
-    await downloadPdfUrl(`/api/pdf-jobs/${jobId}/download`);
+  async function savePdf(url, filename = 'Informe_Titulacion.pdf') {
+    const desktop = window.informtitDesktop;
+    if (desktop?.isElectron && typeof desktop.savePdf === 'function') {
+      const result = await desktop.savePdf({ url, filename });
+      if (result?.canceled) return { ok: false, canceled: true };
+      if (!result?.ok) throw new Error(result?.error || 'Electron no pudo guardar el PDF.');
+      return result;
+    }
+    return downloadPdfUrl(url);
+  }
+
+  function prepareDownload(url, filename = 'Informe_Titulacion.pdf') {
+    pendingDownload = { url, filename };
+    const button = document.getElementById('pdf-progress-download');
+    if (button) button.hidden = false;
+  }
+
+  async function triggerPendingDownload() {
+    if (!pendingDownload) return { ok: false, canceled: true };
+    const button = document.getElementById('pdf-progress-download');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Guardando PDF…';
+    }
+    try {
+      const result = await savePdf(pendingDownload.url, pendingDownload.filename);
+      if (result?.canceled) {
+        document.getElementById('pdf-progress-detail').textContent = 'El PDF está guardado en Informtit. Puede descargarlo cuando desee con el botón Descargar PDF.';
+        return result;
+      }
+      const detail = result?.path
+        ? `PDF guardado correctamente en: ${result.path}`
+        : 'PDF descargado correctamente.';
+      document.getElementById('pdf-progress-detail').textContent = detail;
+      toast('PDF guardado correctamente.');
+      return result;
+    } catch (error) {
+      document.getElementById('pdf-progress-detail').textContent = `El PDF sí fue generado y está guardado en Informtit, pero no se pudo copiar al destino: ${error.message}`;
+      toast(`No se pudo guardar la copia del PDF: ${error.message}`, true);
+      return { ok: false, canceled: false, error: error.message };
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Descargar PDF';
+        button.hidden = false;
+      }
+    }
   }
 
   async function pollJob(jobId) {
@@ -381,21 +427,20 @@
         setProgress(job);
         if (job.status === 'completed') {
           polling = false;
-          await downloadJob(jobId);
           activeJobId = null;
+          prepareDownload(`/api/pdf-jobs/${jobId}/download`, job.filename || 'Informe_Titulacion.pdf');
           setProgress({
             ...job,
-            detail: `PDF generado y descarga iniciada en ${formatElapsed(job.duration_seconds ?? job.elapsed_seconds ?? 0)}. Esta ventana se cerrará automáticamente.`,
+            detail: `PDF generado correctamente en ${formatElapsed(job.duration_seconds ?? job.elapsed_seconds ?? 0)}. Seleccione dónde desea guardar una copia.`,
           });
-          toast('PDF generado correctamente.');
 
-          // El trabajo ya terminó y la descarga ya fue disparada. No dejar al
-          // usuario atrapado en una pantalla al 100 %: cerramos el overlay en
-          // cuanto el navegador/Electron recibió la orden de descarga.
-          const completedOverlay = ensureProgressUI();
-          setTimeout(() => {
-            if (!polling && activeJobId === null) completedOverlay.hidden = true;
-          }, 1200);
+          const saved = await triggerPendingDownload();
+          if (saved?.ok) {
+            const completedOverlay = ensureProgressUI();
+            setTimeout(() => {
+              if (!polling && activeJobId === null) completedOverlay.hidden = true;
+            }, 1400);
+          }
           return;
         }
         if (job.status === 'error') {
@@ -409,11 +454,10 @@
     } catch (error) {
       polling = false;
       activeJobId = null;
-      setProgress({ status: 'error', progress: 0, stage: 'No se pudo completar la descarga', error: error.message });
+      setProgress({ status: 'error', progress: 0, stage: 'No se pudo consultar el proceso PDF', error: error.message });
       toast(error.message, true);
     }
   }
-
   let startingPdf = false;
 
   async function generatePdf(reportId, button = null, label = 'PDF') {
