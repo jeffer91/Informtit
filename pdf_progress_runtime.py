@@ -44,14 +44,6 @@ def _cache_meta_path(report_id: int) -> Path:
     return _cache_dir() / f"report_{int(report_id)}.json"
 
 
-def _database_revision() -> str:
-    path = Path(db.DB_PATH)
-    if not path.exists():
-        return "missing"
-    stat = path.stat()
-    return f"{stat.st_size}:{stat.st_mtime_ns}"
-
-
 def _generator_revision() -> str:
     """Firma barata del código que puede afectar el PDF.
 
@@ -106,12 +98,20 @@ def _read_cache_meta(report_id: int) -> dict[str, Any]:
         return {}
 
 
-def cached_pdf(report_id: int) -> tuple[Path, dict[str, Any]] | None:
+def _saved_pdf(report_id: int) -> tuple[Path, dict[str, Any]] | None:
     pdf_path = _cache_pdf_path(report_id)
     meta = _read_cache_meta(report_id)
     if not meta or not _valid_pdf(pdf_path):
         return None
-    if str(meta.get("database_revision") or "") != _database_revision():
+    return pdf_path, meta
+
+
+def cached_pdf(report_id: int) -> tuple[Path, dict[str, Any]] | None:
+    saved = _saved_pdf(report_id)
+    if not saved:
+        return None
+    pdf_path, meta = saved
+    if bool(meta.get("stale")):
         return None
     if str(meta.get("generator_revision") or "") != _generator_revision():
         return None
@@ -119,17 +119,73 @@ def cached_pdf(report_id: int) -> tuple[Path, dict[str, Any]] | None:
 
 
 def cache_status(report_id: int) -> dict[str, Any]:
-    cached = cached_pdf(report_id)
-    if not cached:
-        return {"available": False, "report_id": int(report_id)}
-    path, meta = cached
+    saved = _saved_pdf(report_id)
+    if not saved:
+        return {
+            "available": False,
+            "saved": False,
+            "stale": False,
+            "report_id": int(report_id),
+        }
+    path, meta = saved
+    generator_changed = str(meta.get("generator_revision") or "") != _generator_revision()
+    stale = bool(meta.get("stale")) or generator_changed
     return {
-        "available": True,
+        "available": not stale,
+        "saved": True,
+        "stale": stale,
+        "stale_reason": (
+            "La aplicación cambió desde la última generación."
+            if generator_changed
+            else str(meta.get("stale_reason") or "")
+        ),
         "report_id": int(report_id),
         "filename": str(meta.get("filename") or path.name),
         "generated_at": meta.get("generated_at"),
         "size": path.stat().st_size,
     }
+
+
+def invalidate_cached_pdf(report_id: int, reason: str = "La información del informe cambió.") -> None:
+    saved = _saved_pdf(report_id)
+    if not saved:
+        return
+    _path, meta = saved
+    meta["stale"] = True
+    meta["stale_reason"] = str(reason or "La información del informe cambió.")
+    meta["invalidated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        _cache_meta_path(report_id).write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _related_report_ids(report_id: int) -> list[int]:
+    ids = {int(report_id)}
+    try:
+        with db.connection() as conn:
+            row = conn.execute(
+                "SELECT period_project_id FROM reports WHERE id=?",
+                (int(report_id),),
+            ).fetchone()
+            project_id = int(row[0] or 0) if row else 0
+            if project_id:
+                for item in conn.execute(
+                    "SELECT id FROM reports WHERE period_project_id=?",
+                    (project_id,),
+                ).fetchall():
+                    ids.add(int(item[0]))
+    except Exception:
+        pass
+    return sorted(ids)
+
+
+def invalidate_report_cache(report_id: int, reason: str = "La información del informe cambió.") -> None:
+    for related_id in _related_report_ids(report_id):
+        invalidate_cached_pdf(related_id, reason)
 
 
 def _store_cached_pdf(report_id: int, source: Path) -> Path:
@@ -142,8 +198,9 @@ def _store_cached_pdf(report_id: int, source: Path) -> Path:
         "report_id": int(report_id),
         "filename": source.name,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "database_revision": _database_revision(),
         "generator_revision": _generator_revision(),
+        "stale": False,
+        "stale_reason": "",
     }
     _cache_meta_path(report_id).write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),
@@ -466,6 +523,33 @@ def get_job_path(job_id: str) -> Path | None:
             return None
         path = Path(str(job["path"]))
     return path if path.exists() else None
+
+
+def install_cache_invalidation() -> None:
+    """Instala al final del backend la invalidación persistente por escrituras.
+
+    A diferencia de usar la fecha del archivo SQLite, esto no invalida los PDF por
+    mantenimiento interno o por reiniciar Informtit. Solo una operación de escritura
+    solicitada por la aplicación marca como desactualizado el PDF relacionado.
+    """
+    if getattr(core.InformtitHandler, "_pdf_cache_invalidation_installed", False):
+        return
+
+    previous_write = core.InformtitHandler._handle_api_write
+
+    def cache_aware_write(self: Any, method: str, path: str, payload: dict[str, Any]) -> None:
+        import re
+
+        report_match = re.match(r"/api/reports/(\d+)(?:/|$)", path)
+        if report_match and method in {"POST", "PUT", "PATCH", "DELETE"}:
+            invalidate_report_cache(
+                int(report_match.group(1)),
+                "Los datos del informe cambiaron; se requiere una nueva generación.",
+            )
+        previous_write(self, method, path, payload)
+
+    core.InformtitHandler._handle_api_write = cache_aware_write
+    core.InformtitHandler._pdf_cache_invalidation_installed = True
 
 
 def install() -> None:
