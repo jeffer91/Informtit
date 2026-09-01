@@ -35,6 +35,22 @@ class PeriodUnifiedFrontendTests(unittest.TestCase):
         self.assertIn('value="pvc"', html)
         self.assertIn("openReportDialog('pvc')", app)
 
+    def test_creation_dialog_uses_structured_period_and_code_month(self):
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        for field in (
+            'name="period_start_month"',
+            'name="period_start_year"',
+            'name="period_end_month"',
+            'name="period_end_year"',
+            'name="code_month"',
+        ):
+            self.assertIn(field, html)
+        self.assertIn('type="month" name="code_month"', html)
+        self.assertIn("Informe Final del Proceso de Titulación -", app)
+        self.assertIn("UTET-INF-01-PRO-95-", app)
+        self.assertIn("refreshDerivedReportFields", app)
+
     def test_dashboard_uses_one_card_per_period(self):
         script = (ROOT / "static" / "period-unified-ui.js").read_text(encoding="utf-8")
         self.assertIn("Períodos", script)
