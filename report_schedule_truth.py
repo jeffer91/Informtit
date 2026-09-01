@@ -305,7 +305,11 @@ def _docx_apa_table(document: Any, headers: list[str], rows: list[list[Any]], wi
                 run.font.name = "Arial"
                 run.font.size = Pt(8)
 
-    left_columns = {0, 1, len(headers) - 2, len(headers) - 1} if len(headers) == 8 else {0, len(headers) - 2, len(headers) - 1}
+    left_columns = {
+        index
+        for index, header in enumerate(headers)
+        if header in {"Fase", "Actividad", "Evidencia", "Observación"}
+    }
     for values in rows:
         cells = table.add_row().cells
         for index, value in enumerate(values):
@@ -382,23 +386,22 @@ def _pdf_apa_table(headers: list[str], rows: list[list[Any]], widths: list[float
         for row in rows
     ]
     table = Table([header_cells] + body_rows, repeatRows=1, colWidths=widths)
-    table.setStyle(
-        TableStyle(
-            [
-                ("LINEABOVE", (0, 0), (-1, 0), 0.8, colors.black),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.black),
-                ("LINEBELOW", (0, -1), (-1, -1), 0.8, colors.black),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (2, 1), (5, -1), "CENTER"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 2.5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 2.5),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]
-        )
-    )
+    commands = [
+        ("LINEABOVE", (0, 0), (-1, 0), 0.8, colors.black),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.black),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.8, colors.black),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2.5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+    for index, header in enumerate(headers):
+        if header not in {"Fase", "Actividad", "Evidencia", "Observación"}:
+            commands.append(("ALIGN", (index, 1), (index, -1), "CENTER"))
+    table.setStyle(TableStyle(commands))
     return table
 
 
