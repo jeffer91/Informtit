@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/assets-ui.css?v=4.3">
   <link rel="stylesheet" href="/process-ui.css?v=4.3">
   <link rel="stylesheet" href="/students-ui.css?v=1.0">
+  <link rel="stylesheet" href="/generated-pdfs-ui.css?v=1.0">
 </head>
 <body>
   <div id="toast" class="toast" hidden></div>
@@ -60,7 +61,9 @@
           <div><span class="eyebrow" id="report-modality"></span><h2 id="report-name"></h2><p id="report-period"></p></div>
           <div class="report-actions">
             <a id="export-docx" href="#" style="display:none" aria-hidden="true" tabindex="-1"></a>
-            <a class="button secondary" id="export-pdf" href="#">PDF</a>
+            <a id="export-pdf" href="#" style="display:none" aria-hidden="true" tabindex="-1"></a>
+            <button type="button" class="button primary" id="open-generate-pdfs">Generar informes</button>
+            <button type="button" class="button secondary" id="open-generated-pdfs">PDFs generados</button>
           </div>
         </div>
         <div class="tabs" id="report-tabs">
@@ -222,7 +225,8 @@
   <script src="/independent-modules-ui.js?v=4.3"></script>
   <script src="/thesis-full-ui.js?v=4.3"></script>
   <script src="/pdf-validation-ui.js?v=4.3"></script>
-  <script src="/pdf-progress.js?v=4.9"></script>
+  <script src="/pdf-progress.js?v=5.0"></script>
+  <script src="/generated-pdfs-ui.js?v=1.0"></script>
   <script src="/import-modality-guard-ui.js?v=4.3"></script>
   <script src="/import-preview-client-guard.js?v=4.3"></script>
   <script src="/robust-import-ui.js?v=4.3"></script>
