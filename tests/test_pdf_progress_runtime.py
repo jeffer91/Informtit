@@ -41,7 +41,9 @@ class PdfProgressRuntimeTests(unittest.TestCase):
             self.assertTrue(job["download_ready"])
             self.assertGreaterEqual(job["elapsed_seconds"], 0)
             self.assertTrue(job["steps"])
-            self.assertEqual(progress.get_job_path(started["id"]), output)
+            saved = progress.get_job_path(started["id"])
+            self.assertIsNotNone(saved)
+            self.assertEqual(saved.read_bytes(), output.read_bytes())
 
     def test_build_validation_error_is_reported_by_progress_job(self):
         with patch.object(
