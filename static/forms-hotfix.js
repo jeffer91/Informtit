@@ -497,10 +497,10 @@
           <button type="button" class="button secondary small" id="open-fixed-settings">Ver responsables</button>
         </div>
         <div class="form-grid three">
-          ${field('name', 'Nombre del informe', report.name)}
-          ${field('period', 'Periodo', report.period)}
-          <label>Modalidad<select name="modality"><option value="presencial" ${report.modality === 'presencial' ? 'selected' : ''}>Presencial</option><option value="en_linea" ${report.modality === 'en_linea' ? 'selected' : ''}>En línea</option></select></label>
-          ${field('code', 'Código', report.code)}
+          ${readonlyField('name', 'Nombre del informe', report.name)}
+          ${readonlyField('period', 'Periodo', report.period)}
+          <label>Modalidad<select name="modality" disabled><option value="presencial" ${report.modality === 'presencial' ? 'selected' : ''}>Presencial</option><option value="en_linea" ${report.modality === 'en_linea' ? 'selected' : ''}>En línea</option></select></label>
+          ${readonlyField('code', 'Código', report.code)}
           ${field('version', 'Versión', report.version)}
           ${field('elaboration_date', 'Fecha de elaboración', report.elaboration_date, 'date')}
         </div>
