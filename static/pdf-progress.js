@@ -428,19 +428,18 @@
         if (job.status === 'completed') {
           polling = false;
           activeJobId = null;
-          prepareDownload(`/api/pdf-jobs/${jobId}/download`, job.filename || 'Informe_Titulacion.pdf');
+          pendingDownload = null;
+          const downloadButton = document.getElementById('pdf-progress-download');
+          if (downloadButton) downloadButton.hidden = true;
           setProgress({
             ...job,
-            detail: `PDF generado correctamente en ${formatElapsed(job.duration_seconds ?? job.elapsed_seconds ?? 0)}. Seleccione dónde desea guardar una copia.`,
+            stage: 'PDF generado',
+            detail: `PDF generado correctamente en ${formatElapsed(job.duration_seconds ?? job.elapsed_seconds ?? 0)}. La nueva versión quedó guardada en «PDFs generados».`,
           });
-
-          const saved = await triggerPendingDownload();
-          if (saved?.ok) {
-            const completedOverlay = ensureProgressUI();
-            setTimeout(() => {
-              if (!polling && activeJobId === null) completedOverlay.hidden = true;
-            }, 1400);
-          }
+          toast('PDF generado y guardado en el historial.');
+          document.dispatchEvent(new CustomEvent('informtit:pdf-generated', {
+            detail: { reportId: Number(job.report_id || 0), job },
+          }));
           return;
         }
         if (job.status === 'error') {
@@ -474,41 +473,8 @@
     startingPdf = true;
     const originalText = button?.textContent || label;
     try {
-      // Si nada cambió desde la última generación, ofrecer directamente la
-      // copia persistente. Un problema al guardarla en Windows NO debe provocar
-      // una regeneración de un PDF que ya existe correctamente en Informtit.
-      try {
-        const cacheResult = await api(`/api/reports/${id}/pdf-cache`);
-        if (cacheResult?.cache?.available) {
-          if (button) button.textContent = 'Abriendo PDF guardado…';
-          const cache = cacheResult.cache;
-          pendingDownload = null;
-          prepareDownload(
-            `/api/reports/${id}/pdf-cache/download`,
-            cache.filename || `Informe_${label}.pdf`,
-          );
-          setProgress({
-            status: 'completed',
-            progress: 100,
-            stage: 'PDF guardado disponible',
-            detail: 'No fue necesario regenerar el documento. Seleccione dónde desea guardar una copia.',
-            duration_seconds: 0,
-            steps: [{
-              stage: 'PDF guardado disponible',
-              progress: 100,
-              detail: 'Se reutilizó la última versión vigente.',
-            }],
-          });
-          const saved = await triggerPendingDownload();
-          if (saved?.ok) {
-            const completedOverlay = ensureProgressUI();
-            setTimeout(() => { completedOverlay.hidden = true; }, 1400);
-          }
-          return;
-        }
-      } catch (cacheError) {
-        console.warn('[Informtit PDF cache] No se pudo consultar la copia guardada; se generará nuevamente:', cacheError);
-      }
+      // Generar siempre crea una nueva versión. Descargar una versión existente
+      // se gestiona por separado desde «PDFs generados».
 
       // Feedback inmediato: la auditoría previa también puede tardar en informes
       // grandes y antes el usuario veía la pantalla inmóvil durante ese tiempo.
