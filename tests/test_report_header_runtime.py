@@ -18,11 +18,13 @@ class ReportHeaderRuntimeTests(unittest.TestCase):
 
 
     def test_active_pdf_header_uses_larger_boxes(self):
-        source = open("report_pdf_polish.py", encoding="utf-8").read()
-        self.assertIn("row = 1.28 * cm", source)
-        self.assertIn("left = 4.65 * cm", source)
-        self.assertIn("right = 4.45 * cm", source)
-        self.assertIn("total = width - 1.90 * cm", source)
+        source = open("report_integrity_last_guard.py", encoding="utf-8").read()
+        self.assertIn("row = 1.50 * cm", source)
+        self.assertIn("left = 4.80 * cm", source)
+        self.assertIn("right = 4.60 * cm", source)
+        self.assertIn("total = width - 1.80 * cm", source)
+        self.assertIn("def _draw_cell_text", source)
+        self.assertNotIn('canvas.drawRightString(width - 1.35 * cm', source)
 
 if __name__ == "__main__":
     unittest.main()
