@@ -101,6 +101,35 @@ class PdfProgressRuntimeTests(unittest.TestCase):
                 job = self.wait_job(started["id"])
         self.assertEqual(job["status"], "completed")
 
+    def test_generated_pdf_is_persisted_and_reused_without_rebuild(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            db_path = data_dir / "informtit.db"
+            db_path.write_bytes(b"database-v1")
+            source = data_dir / "generated.pdf"
+            source.write_bytes(b"%PDF-1.4\n")
+
+            with patch.object(progress.db, "DATA_DIR", data_dir), patch.object(
+                progress.db, "DB_PATH", db_path
+            ):
+                progress._store_cached_pdf(301, source)
+                status = progress.cache_status(301)
+                self.assertTrue(status["available"])
+
+                with patch.object(
+                    progress.core,
+                    "build_pdf",
+                    side_effect=AssertionError("no debe regenerar un PDF vigente"),
+                ):
+                    started = progress.start_job(301)
+
+                self.assertEqual(started["status"], "completed")
+                self.assertTrue(started["cached"])
+                self.assertEqual(started["stage"], "PDF guardado")
+
+                db_path.write_bytes(b"database-v2-con-cambios")
+                self.assertFalse(progress.cache_status(301)["available"])
+
     def test_stalled_flag_uses_last_progress_time(self):
         now = time.time()
         job_id = "a" * 32
@@ -158,6 +187,8 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         self.assertIn("role=\"progressbar\"", source)
         self.assertIn("/download", source)
         self.assertIn("await downloadJob(jobId)", source)
+        self.assertIn("/pdf-cache", source)
+        self.assertIn("PDF guardado descargado", source)
         self.assertIn("Esta ventana se cerrará automáticamente", source)
         self.assertIn("completedOverlay.hidden = true", source)
         self.assertIn("Tiempo transcurrido", source)
