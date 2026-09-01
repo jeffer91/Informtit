@@ -24,6 +24,7 @@ import report_integrity_rules as rules
 import report_pdf_polish as polish
 import report_quality
 import pdf_progress_runtime
+import student_report_integration as report_integration
 
 
 def install() -> None:
@@ -115,7 +116,12 @@ def install() -> None:
         match = re.fullmatch(r"/api/reports/(\d+)/audit", path)
         if match:
             report_id = int(match.group(1))
-            validation = hooks.validation_integrity(report_id)
+            # La auditoría usa el mismo snapshot de lectura que la generación PDF.
+            # Así report_data, Núcleos, Complexivo, Trabajo de Titulación y las
+            # decisiones manuales se calculan una vez y se reutilizan durante todo
+            # el preflight, sin volver a conciliar ni reconsultar por cada control.
+            with report_integration.report_read_snapshot():
+                validation = hooks.validation_integrity(report_id)
             token = pdf_progress_runtime.store_preflight(report_id, "normal", validation)
             self._send_json({
                 "ok": True,
