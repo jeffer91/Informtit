@@ -463,35 +463,108 @@ def _pdf_nuclei(story: list[Any], context: Any, styles: Any, report_id: int) -> 
             6.8,
         ), Spacer(1, .12*cm)]
 
-    report_quality._pdf_heading(story, context, styles, 2, "Resultados por curso y estudiante")
+    report_quality._pdf_heading(story, context, styles, 2, "Resultados por carrera y estudiante")
+    report_quality._pdf_body(
+        story,
+        styles,
+        "Para evitar que cada curso genere una página aislada, los registros nominales se agrupan por carrera. Se conserva el curso o núcleo de origen de cada calificación, de modo que ningún estudiante ni resultado se pierde y la lectura permite distinguir la población total de cada carrera de los cursos individuales.",
+    )
+
+    grouped_courses: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for course in courses:
+        grouped_courses[_norm(course.get("career_name")) or "Sin carrera"].append(course)
+
     inst_avg = data["institutional_stats"]["average"]
-    for index, course in enumerate(courses, 1):
-        raw_career = _norm(course.get("career_name")) or "Sin carrera"
+    for raw_career, career_courses in grouped_courses.items():
         career = _display_career(raw_career)
-        title = _norm(course.get("course_title")) or f"Núcleo {course.get('nucleus_number') or '—'}"
-        teacher = _norm(course.get("teacher_name")) or "No registrado"
-        detail = full._course_detail(course, data["career_lookup_raw"].get(raw_career), inst_avg, data["institutional_approval"])
-        report_quality._pdf_heading(story, context, styles, 3, f"Curso {index:03d}. {career} – {title}", page_break=index > 1)
-        report_quality._pdf_body(story, styles, f"El curso «{title}» fue impartido por {teacher}. La tabla conserva el detalle nominal importado, la nota final y el estado académico oficial de cada estudiante.")
-        student_rows = [[s.get("full_name") or "—", report_quality._fmt(s.get("final_grade")), s.get("final_status") or "No evaluado"] for s in course.get("students", [])]
-        report_quality._pdf_caption(story, styles, context.table_caption(f"Resultados de {title} – {career}"))
-        story += [full._table(["Estudiante", "Nota final", "Estado"], student_rows, [10.4 * cm, 2.6 * cm, 4.3 * cm], styles, 7.4), Spacer(1, .12 * cm)]
-        metric_rows = [
-            ["Registros", detail["records"], "Evaluados", detail["evaluated"]],
-            ["Aprobados", detail["approved"], "Reprobados", detail["failed"]],
-            ["No evaluados", detail["unevaluated"], "Aprobación", report_quality._pct(detail["approval"])],
-            ["Promedio", report_quality._fmt(detail["average"]), "Mediana", report_quality._fmt(detail["median"])],
-            ["Mínimo", report_quality._fmt(detail["minimum"]), "Máximo", report_quality._fmt(detail["maximum"])],
-            ["Desv. estándar", report_quality._fmt(detail["stdev"]), "Docente", teacher],
-        ]
+        report_quality._pdf_heading(story, context, styles, 3, career)
+
+        nominal_rows: list[list[Any]] = []
+        unique_names: set[str] = set()
+        for course in career_courses:
+            title = _norm(course.get("course_title")) or f"Núcleo {course.get('nucleus_number') or '—'}"
+            for student in course.get("students", []):
+                student_name = _norm(student.get("full_name")) or "—"
+                if student_name != "—":
+                    unique_names.add(normalize(student_name))
+                nominal_rows.append([
+                    title,
+                    student_name,
+                    report_quality._fmt(student.get("final_grade")),
+                    student.get("final_status") or "No evaluado",
+                ])
+
         report_quality._pdf_body(
             story,
             styles,
-            "A partir de los registros nominales anteriores, la siguiente tabla sintetiza los indicadores descriptivos disponibles para este curso.",
+            f"{career} registra {len(unique_names)} estudiantes únicos distribuidos en {len(career_courses)} cursos o registros académicos de Núcleos. La tabla conserva cada relación curso-estudiante con su nota final y estado académico; por ello un mismo estudiante puede aparecer en más de una fila cuando participa en distintos cursos.",
         )
-        report_quality._pdf_caption(story, styles, context.table_caption(f"Indicadores de {title} – {career}"))
-        story += [full._table(["Indicador", "Resultado", "Indicador", "Resultado"], metric_rows, [3.2 * cm, 3.2 * cm, 3.2 * cm, 7.0 * cm], styles, 7.1), Spacer(1, .12 * cm)]
-        report_quality._pdf_body(story, styles, full._course_analysis_text(course, detail))
+        report_quality._pdf_caption(
+            story,
+            styles,
+            context.table_caption(f"Resultados nominales de Núcleos – {career}"),
+        )
+        story += [
+            full._table(
+                ["Curso / núcleo", "Estudiante", "Nota final", "Estado"],
+                nominal_rows,
+                [5.0 * cm, 7.0 * cm, 2.0 * cm, 3.2 * cm],
+                styles,
+                7.1,
+            ),
+            Spacer(1, .12 * cm),
+        ]
+
+        indicator_rows: list[list[Any]] = []
+        for course in career_courses:
+            title = _norm(course.get("course_title")) or f"Núcleo {course.get('nucleus_number') or '—'}"
+            teacher = _norm(course.get("teacher_name")) or "No registrado"
+            detail = full._course_detail(
+                course,
+                data["career_lookup_raw"].get(raw_career),
+                inst_avg,
+                data["institutional_approval"],
+            )
+            indicator_rows.append([
+                title,
+                detail["records"],
+                detail["evaluated"],
+                detail["approved"],
+                detail["failed"],
+                detail["unevaluated"],
+                report_quality._fmt(detail["average"]),
+                report_quality._pct(detail["approval"]),
+                teacher,
+            ])
+
+        report_quality._pdf_body(
+            story,
+            styles,
+            "A partir del detalle nominal anterior, la tabla siguiente resume los indicadores de cada curso sin repetir una subsección completa por estudiante o por asignatura.",
+        )
+        report_quality._pdf_caption(
+            story,
+            styles,
+            context.table_caption(f"Indicadores por curso de Núcleos – {career}"),
+        )
+        story += [
+            full._table(
+                ["Curso / núcleo", "Reg.", "Eval.", "APR", "REP", "N/E", "Prom.", "% APR", "Docente"],
+                indicator_rows,
+                [4.1 * cm, 1.0 * cm, 1.0 * cm, .9 * cm, .9 * cm, .9 * cm, 1.2 * cm, 1.3 * cm, 5.9 * cm],
+                styles,
+                6.7,
+            ),
+            Spacer(1, .14 * cm),
+        ]
+
+        career_row = data["career_lookup_raw"].get(raw_career)
+        if career_row:
+            report_quality._pdf_body(
+                story,
+                styles,
+                f"En {career}, los {career_row['records']} registros académicos corresponden a {career_row['evaluated']} evaluados, con {career_row['approved']} aprobados, {career_row['failed']} reprobados y {career_row['unevaluated']} no evaluados. La aprobación sobre estudiantes evaluados fue del {report_quality._pct(career_row['approval'])} y el promedio disponible fue {report_quality._fmt(career_row['average'])}.",
+            )
 
     report_quality._pdf_heading(story, context, styles, 2, "Consolidado por carrera")
     report_quality._pdf_body(
