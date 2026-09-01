@@ -51,6 +51,18 @@ class PeriodUnifiedFrontendTests(unittest.TestCase):
         self.assertIn("UTET-INF-01-PRO-95-", app)
         self.assertIn("refreshDerivedReportFields", app)
 
+    def test_creation_defaults_to_current_academic_period_and_general_fields_are_readonly(self):
+        app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        hotfix = (ROOT / "static" / "forms-hotfix.js").read_text(encoding="utf-8")
+        self.assertIn("if (month >= 4 && month <= 9)", app)
+        self.assertIn("startMonth = 10", app)
+        self.assertIn("codeMonth:", app)
+        self.assertIn("function readonlyField", app)
+        for source in (app, hotfix):
+            self.assertIn("readonlyField('name'", source)
+            self.assertIn("readonlyField('period'", source)
+            self.assertIn("readonlyField('code'", source)
+
     def test_dashboard_uses_one_card_per_period(self):
         script = (ROOT / "static" / "period-unified-ui.js").read_text(encoding="utf-8")
         self.assertIn("Períodos", script)
