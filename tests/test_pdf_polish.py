@@ -34,7 +34,7 @@ class PdfPolishTests(unittest.TestCase):
     def test_detail_precedes_consolidated_results(self) -> None:
         nuclei = inspect.getsource(polish._pdf_nuclei)
         thesis = inspect.getsource(polish._pdf_projects)
-        self.assertLess(nuclei.index("Resultados por curso y estudiante"), nuclei.index("Consolidado por carrera"))
+        self.assertLess(nuclei.index("Resultados por carrera y estudiante"), nuclei.index("Consolidado por carrera"))
         self.assertLess(thesis.index("for idx, project"), thesis.index("Consolidado del Trabajo de Titulación"))
 
     def test_schedule_is_closed_without_empty_evidence_columns(self) -> None:
