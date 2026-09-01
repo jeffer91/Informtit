@@ -20,10 +20,18 @@ class PeriodUnifiedFrontendTests(unittest.TestCase):
         self.assertGreater(rescue, unified)
         self.assertTrue(scripts[-1].startswith('/desktop-ui-rescue.js?'))
 
-    def test_normal_period_has_three_views_and_two_pdf_buttons(self):
+    def test_normal_period_has_three_views_and_separate_pdf_actions(self):
         script = (ROOT / "static" / "period-unified-ui.js").read_text(encoding="utf-8")
-        for expected in ("Todos", "Presencial", "Online", "PDF Presencial", "PDF Online"):
+        generated = (ROOT / "static" / "generated-pdfs-ui.js").read_text(encoding="utf-8")
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        for expected in ("Todos", "Presencial", "Online"):
             self.assertIn(expected, script)
+        self.assertNotIn("PDF Presencial", script)
+        self.assertNotIn("PDF Online", script)
+        self.assertIn("Generar informes", html)
+        self.assertIn("PDFs generados", html)
+        self.assertIn("PDF Presencial", generated)
+        self.assertIn("PDF Online", generated)
         self.assertIn("period_project_id", script)
         self.assertIn("Cronograma compartido", script)
 
