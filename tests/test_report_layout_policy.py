@@ -22,6 +22,15 @@ class ReportLayoutPolicyTests(unittest.TestCase):
         self.assertIn("Población registrada de Núcleos por carrera", source)
         self.assertIn("un curso puede contener uno o pocos estudiantes", source)
 
+
+    def test_nuclei_are_grouped_by_career_without_losing_nominal_rows(self):
+        source = Path("report_pdf_polish.py").read_text(encoding="utf-8")
+        self.assertIn('Resultados por carrera y estudiante', source)
+        self.assertIn('Resultados nominales de Núcleos – {career}', source)
+        self.assertIn('Indicadores por curso de Núcleos – {career}', source)
+        self.assertIn('un mismo estudiante puede aparecer en más de una fila', source)
+        self.assertNotIn('f"Curso {index:03d}. {career} – {title}"', source)
+
     def test_table_context_guard_is_installed(self):
         source = Path("report_integrity_last_guard.py").read_text(encoding="utf-8")
         self.assertIn("_contextual_pdf_caption", source)
