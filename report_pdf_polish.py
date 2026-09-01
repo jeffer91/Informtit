@@ -300,12 +300,17 @@ def _introduction(report: dict[str, Any], report_id: int) -> list[str]:
 
 
 def _safe_heading(story: list[Any], context: Any, styles: Any, level: int, title: str, page_break: bool = False) -> None:
+    """Solo los títulos principales (nivel 1) inician una página nueva.
+
+    Los niveles 2, 3 y 4 usan un salto condicional únicamente cuando no existe
+    espacio suficiente para conservar el título unido al contenido siguiente.
+    El parámetro page_break se conserva por compatibilidad, pero no fuerza una
+    página nueva en subtítulos.
+    """
     if level == 1:
         if context.major_started:
             story.append(PageBreak())
         context.major_started = True
-    elif page_break:
-        story.append(PageBreak())
     else:
         story.append(CondPageBreak(2.5 * cm if level == 2 else 2.0 * cm))
     style = styles[f"Heading{level}"]
@@ -373,7 +378,7 @@ def _pdf_methodology(story: list[Any], context: Any, styles: Any, report: dict[s
         if not diagram.exists() or diagram.stat().st_size < 128:
             create_cycle_diagram(catalog, diagram)
         report_quality._pdf_caption(story, styles, context.figure_caption(f"Núcleos de {_display_career(catalog['career'])}"))
-        story += [report_quality.base.fit_image(diagram, 16.2 * cm, 11.2 * cm), Spacer(1, .1 * cm)]
+        story += [report_quality.base.fit_image(diagram, 14.8 * cm, 8.8 * cm), Spacer(1, .08 * cm)]
         report_quality._pdf_caption(story, styles, "Nota. Elaboración propia con base en la guía curricular de la carrera.")
         for nucleus in catalog.get("nuclei", []):
             story.append(CondPageBreak(1.8 * cm))
@@ -421,17 +426,42 @@ def _chart_chunks(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
 
 def _pdf_nuclei(story: list[Any], context: Any, styles: Any, report_id: int) -> None:
     data = _filtered_nuclei_data(report_id)
-    rows = data["careers"]
-    courses = data["courses"]
+    courses = [course for course in data.get("courses", []) if course.get("students")]
+    rows = [row for row in data.get("careers", []) if int(row.get("records") or 0) > 0]
     if not courses:
         return
 
     report_quality._pdf_heading(story, context, styles, 1, "Resultados de Núcleos")
+    unique_students = {
+        (_display_career(course.get("career_name")), _norm(student.get("full_name")))
+        for course in courses
+        for student in course.get("students", [])
+        if _norm(student.get("full_name"))
+    }
     report_quality._pdf_body(
         story,
         styles,
-        f"Se presentan {len(courses)} cursos o núcleos correspondientes a la modalidad del informe. Primero se conserva el detalle por estudiante y, después, se incorporan los consolidados por carrera y las comparaciones institucionales.",
+        f"Se presentan {len(courses)} cursos o registros académicos de Núcleos correspondientes a la modalidad del informe, con {len(unique_students)} estudiantes únicos. La fuente se conserva por curso, por lo que un curso puede contener uno o pocos estudiantes sin que ello represente la población total de la carrera. Primero se mantiene el detalle nominal de la fuente y después se incorporan los consolidados por carrera.",
     )
+
+    population_rows = [
+        [row["career"], row["courses"], row["records"], row["evaluated"], row["approved"], row["failed"], row["unevaluated"]]
+        for row in rows
+    ]
+    if population_rows:
+        report_quality._pdf_body(
+            story,
+            styles,
+            "Antes del detalle por curso, la tabla resume la población registrada en Núcleos por carrera para evitar interpretar un curso individual como si representara a toda la cohorte.",
+        )
+        report_quality._pdf_caption(story, styles, context.table_caption("Población registrada de Núcleos por carrera"))
+        story += [full._table(
+            ["Carrera", "Cursos", "Registros", "Evaluados", "Aprobados", "Reprobados", "No evaluados"],
+            population_rows,
+            [5.2*cm, 1.5*cm, 1.7*cm, 1.7*cm, 1.7*cm, 1.7*cm, 1.8*cm],
+            styles,
+            6.8,
+        ), Spacer(1, .12*cm)]
 
     report_quality._pdf_heading(story, context, styles, 2, "Resultados por curso y estudiante")
     inst_avg = data["institutional_stats"]["average"]
@@ -454,11 +484,21 @@ def _pdf_nuclei(story: list[Any], context: Any, styles: Any, report_id: int) -> 
             ["Mínimo", report_quality._fmt(detail["minimum"]), "Máximo", report_quality._fmt(detail["maximum"])],
             ["Desv. estándar", report_quality._fmt(detail["stdev"]), "Docente", teacher],
         ]
+        report_quality._pdf_body(
+            story,
+            styles,
+            "A partir de los registros nominales anteriores, la siguiente tabla sintetiza los indicadores descriptivos disponibles para este curso.",
+        )
         report_quality._pdf_caption(story, styles, context.table_caption(f"Indicadores de {title} – {career}"))
         story += [full._table(["Indicador", "Resultado", "Indicador", "Resultado"], metric_rows, [3.2 * cm, 3.2 * cm, 3.2 * cm, 7.0 * cm], styles, 7.1), Spacer(1, .12 * cm)]
         report_quality._pdf_body(story, styles, full._course_analysis_text(course, detail))
 
     report_quality._pdf_heading(story, context, styles, 2, "Consolidado por carrera")
+    report_quality._pdf_body(
+        story,
+        styles,
+        "La tabla siguiente consolida únicamente las carreras que registran estudiantes en la modalidad analizada; las carreras sin registros no se incluyen.",
+    )
     consolidated = [[
         row["career"], row["courses"], row["records"], row["evaluated"], row["approved"], row["failed"], row["unevaluated"],
         report_quality._fmt(row["average"]), report_quality._fmt(row["median"]), report_quality._fmt(row["stdev"]), report_quality._pct(row["approval"]),
@@ -479,6 +519,11 @@ def _pdf_nuclei(story: list[Any], context: Any, styles: Any, report_id: int) -> 
     low = sorted([row for row in data["course_rows"] if row.get("average") is not None], key=lambda row: float(row["average"]))[:5]
     if low:
         report_quality._pdf_heading(story, context, styles, 2, "Cursos con menor promedio")
+        report_quality._pdf_body(
+            story,
+            styles,
+            "La tabla identifica los cursos con promedio numérico disponible más bajo y se utiliza como señal descriptiva para priorizar revisión académica, sin atribuir causalidad.",
+        )
         low_rows = [[row["career"], row["nucleus"], row["teacher"], report_quality._fmt(row["average"]), row["failed"], row["unevaluated"], report_quality._pct(row["approval"])] for row in low]
         report_quality._pdf_caption(story, styles, context.table_caption("Cursos con menor promedio en Núcleos"))
         story += [full._table(["Carrera", "Curso / núcleo", "Docente", "Prom.", "REP", "N/E", "% APR"], low_rows, [3.2*cm,4.5*cm,3.5*cm,1.3*cm,1.2*cm,1.2*cm,2.0*cm], styles, 6.8), Spacer(1,.12*cm)]
@@ -728,7 +773,7 @@ def build_pdf(report_id: int) -> Path:
     ]
     prefix += [toc, PageBreak()]
     story = prefix + content
-    document = TocTwoLevels(str(output), pagesize=A4, rightMargin=1.45 * cm, leftMargin=1.45 * cm, topMargin=3.55 * cm, bottomMargin=1.35 * cm, title=report["name"])
+    document = TocTwoLevels(str(output), pagesize=A4, rightMargin=1.45 * cm, leftMargin=1.45 * cm, topMargin=4.35 * cm, bottomMargin=1.35 * cm, title=report["name"])
     try:
         document.multiBuild(story, canvasmaker=lambda *args, **kwargs: report_quality.base.NumberedCanvas(*args, report=report, **kwargs))
     finally:
