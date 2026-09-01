@@ -29,7 +29,8 @@ class ReportScheduleTruthTests(unittest.TestCase):
         self.assertEqual(rows[0][3], "01/02/2026")
         self.assertEqual(rows[0][4], "Ejecutado")
         self.assertEqual(rows[0][5], "99 %")
-        self.assertEqual(rows[0][6], "Registro institucional de ejecución")
+        self.assertEqual(rows[0][6], "—")
+        self.assertEqual(rows[0][7], "—")
 
     def test_explicit_execution_values_are_preserved(self):
         _, rows = schedule._rows(
