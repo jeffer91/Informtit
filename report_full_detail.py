@@ -777,7 +777,8 @@ def _pdf_post(story: list[Any], context: Any, styles: Any, report: dict[str, Any
     report_quality._pdf_body(story,styles,"La matriz separa hallazgo, acción, responsable, indicador, valor actual, meta, plazo y prioridad. Se divide en bloques para conservar legibilidad y repetir los encabezados en cada continuación.")
     chunks=[recommendations[i:i+4] for i in range(0,len(recommendations),4)] or [[]]
     for chunk_idx,chunk in enumerate(chunks,1):
-        if chunk_idx>1: story.append(PageBreak())
+        if chunk_idx>1:
+            story.append(Spacer(1,.08*cm))
         rows=[[idx+(chunk_idx-1)*4,r["hallazgo"],r["accion"],r["responsable"],r["indicador"],r["actual"],r["meta"],r["plazo"],r["prioridad"]] for idx,r in enumerate(chunk,1)]
         report_quality._pdf_caption(story,styles,context.table_caption("Matriz de acciones de mejora" + (f" – continuación {chunk_idx}" if chunk_idx>1 else "")))
         story += [_table(["N.º","Hallazgo","Acción","Responsable","Indicador","Actual","Meta","Plazo","Prior."],rows,[.7*cm,2.4*cm,3.3*cm,2.3*cm,2.1*cm,1.5*cm,1.5*cm,1.8*cm,1.3*cm],styles,6.1),Spacer(1,.12*cm)]
