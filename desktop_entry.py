@@ -238,6 +238,10 @@ def prepare() -> None:
     # Base PVC propia, fórmula 70/30 y narrativa visual contexto -> elemento -> análisis.
     pvc_report_runtime.install()
 
+    # Última capa de escritura: conserva el PDF entre reinicios y solo lo marca
+    # desactualizado cuando una operación real modifica ese informe/período.
+    pdf_progress_runtime.install_cache_invalidation()
+
 
 def main() -> None:
     prepare()
