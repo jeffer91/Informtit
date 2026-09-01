@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import unittest
 
+from reportlab.pdfgen.canvas import Canvas
+from io import BytesIO
+
 import report_integrity_last_guard as guard
 
 
@@ -55,6 +58,21 @@ class ReportIntegrityLastGuardTests(unittest.TestCase):
         }
         source = {"exists": True, "source_modality_count": 12}
         self.assertEqual(guard.source_mode_strict(metrics, source), "import_error")
+
+
+    def test_header_wrap_preserves_explicit_line_breaks(self):
+        canvas = Canvas(BytesIO())
+        lines = guard._wrap_cell_lines(
+            canvas,
+            "Código: UTET-INF-01-PRO-95-2025-08\nVersión: 1.0",
+            4.6 * guard.cm,
+            "Helvetica",
+            6.6,
+            3,
+        )
+        self.assertGreaterEqual(len(lines), 2)
+        self.assertTrue(lines[0].startswith("Código:"))
+        self.assertTrue(any(line.startswith("Versión:") for line in lines))
 
     def test_probable_nuclei_duplicate_does_not_depend_on_teacher(self):
         first = {
