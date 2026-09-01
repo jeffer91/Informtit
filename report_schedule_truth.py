@@ -25,6 +25,16 @@ from optional_content import is_present
 DEFAULT_EXECUTION_PERCENTAGE = 99.0
 
 
+def _execution_pct(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if number.is_integer():
+        return f"{int(number)} %"
+    return report_quality._pct(number)
+
+
 def _project_execution(row: dict[str, Any]) -> dict[str, Any]:
     """Proyección de salida del informe final.
 
@@ -114,9 +124,9 @@ def _rows(rows: list[dict[str, Any]], show_phase: bool) -> tuple[list[str], list
             planned,
             row.get("executed_date") or end or start or "—",
             row.get("execution_status") or "Ejecutado",
-            report_quality._pct(row.get("compliance_percentage"))
+            _execution_pct(row.get("compliance_percentage"))
             if row.get("compliance_percentage") is not None
-            else report_quality._pct(DEFAULT_EXECUTION_PERCENTAGE),
+            else _execution_pct(DEFAULT_EXECUTION_PERCENTAGE),
             row.get("evidence") or "Registro institucional de ejecución",
             row.get("observation") or "Actividad ejecutada conforme a la planificación",
         ]
@@ -129,7 +139,7 @@ def _rows(rows: list[dict[str, Any]], show_phase: bool) -> tuple[list[str], list
 def _analysis_text(data: dict[str, Any]) -> str:
     if not data["total"]:
         return ""
-    average = report_quality._pct(data["average"]) if data["average"] is not None else report_quality._pct(DEFAULT_EXECUTION_PERCENTAGE)
+    average = _execution_pct(data["average"]) if data["average"] is not None else _execution_pct(DEFAULT_EXECUTION_PERCENTAGE)
     if not (data["delayed"] or data["partial"] or data["not_complied"]):
         return (
             f"Las {data['total']} actividades del cronograma se presentan como ejecutadas para el período analizado, "
