@@ -16,5 +16,13 @@ class ReportHeaderRuntimeTests(unittest.TestCase):
         self.assertGreater(min(baselines) - divider, 0.20 * cm)
 
 
+
+    def test_active_pdf_header_uses_larger_boxes(self):
+        source = open("report_pdf_polish.py", encoding="utf-8").read()
+        self.assertIn("row = 1.28 * cm", source)
+        self.assertIn("left = 4.65 * cm", source)
+        self.assertIn("right = 4.45 * cm", source)
+        self.assertIn("total = width - 1.90 * cm", source)
+
 if __name__ == "__main__":
     unittest.main()
