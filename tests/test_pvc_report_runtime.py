@@ -125,8 +125,9 @@ class PvcReportRuntimeTests(unittest.TestCase):
 
     def test_frontend_exposes_pvc_results_module(self):
         source = Path("static/pvc-report-ui.js").read_text(encoding="utf-8")
+        generated = Path("static/generated-pdfs-ui.js").read_text(encoding="utf-8")
         self.assertIn("Resultados PVC", source)
-        self.assertIn("PDF PVC", source)
+        self.assertIn("PDF PVC", generated)
         self.assertIn("70 % trabajo escrito + 30 % defensa oral", source)
         self.assertIn("/pvc/import", source)
         self.assertIn("Regla del informe", source)
