@@ -134,6 +134,62 @@ def _rows(rows: list[dict[str, Any]], show_phase: bool) -> tuple[list[str], list
     return headers, values
 
 
+def _is_empty_cell(value: Any) -> bool:
+    text = str(value or "").strip()
+    return not text or text in {"—", "-", "–"}
+
+
+def _prune_optional_columns(
+    headers: list[str],
+    rows: list[list[Any]],
+    widths: list[float],
+) -> tuple[list[str], list[list[Any]], list[float]]:
+    """Elimina columnas opcionales que no contienen información real.
+
+    Evidencia y Observación solo se incluyen cuando al menos una fila registra
+    un valor. Las columnas estructurales del cronograma siempre se conservan.
+    """
+    optional = {"Evidencia", "Observación"}
+    keep: list[int] = []
+    for index, header in enumerate(headers):
+        if header not in optional:
+            keep.append(index)
+            continue
+        if any(index < len(row) and not _is_empty_cell(row[index]) for row in rows):
+            keep.append(index)
+
+    new_headers = [headers[index] for index in keep]
+    new_rows = [[row[index] for index in keep] for row in rows]
+    selected_widths = [widths[index] for index in keep]
+    original_total = sum(widths)
+    selected_total = sum(selected_widths) or 1.0
+    scale = original_total / selected_total
+    new_widths = [round(width * scale, 4) for width in selected_widths]
+    return new_headers, new_rows, new_widths
+
+
+def _table_context(title: str, headers: list[str], row_count: int) -> str:
+    fields = {
+        "Fecha planificada": "fecha planificada",
+        "Fecha ejecutada": "fecha ejecutada",
+        "Estado": "estado",
+        "Ejecución (%)": "porcentaje de ejecución",
+        "Evidencia": "evidencia registrada",
+        "Observación": "observaciones registradas",
+    }
+    included = [fields[header] for header in headers if header in fields]
+    if included:
+        if len(included) == 1:
+            detail = included[0]
+        else:
+            detail = ", ".join(included[:-1]) + " y " + included[-1]
+        return (
+            f"El {title.lower()} contiene {row_count} actividades. "
+            f"La tabla presenta la actividad y su {detail}, utilizando únicamente campos con información disponible."
+        )
+    return f"El {title.lower()} contiene {row_count} actividades registradas."
+
+
 def _analysis_text(data: dict[str, Any]) -> str:
     if not data["total"]:
         return ""
@@ -383,13 +439,11 @@ def _docx_schedules(document: Any, context: Any, report_id: int) -> None:
 
     for title, rows, show_phase in available:
         report_quality._docx_heading(document, context, 2, title)
-        report_quality._docx_body(
-            document,
-            f"La tabla presenta {len(rows)} actividades con su fecha planificada, fecha de ejecución, estado, porcentaje de ejecución, evidencia y observación.",
-        )
         headers, values = _rows(rows, show_phase)
-        _docx_apa_caption(document, context, f"Planificación y ejecución: {title}")
         widths = [0.75, 1.10, 0.80, 0.80, 0.70, 0.65, 0.85, 0.85] if show_phase else [1.30, 0.90, 0.90, 0.75, 0.70, 0.95, 1.00]
+        headers, values, widths = _prune_optional_columns(headers, values, widths)
+        report_quality._docx_body(document, _table_context(title, headers, len(rows)))
+        _docx_apa_caption(document, context, f"Planificación y ejecución: {title}")
         _docx_apa_table(document, headers, values, widths)
 
     report_quality._docx_body(document, _analysis_text(data))
@@ -414,14 +468,11 @@ def _pdf_schedules(story: list[Any], context: Any, styles: Any, report_id: int) 
 
     for title, rows, show_phase in available:
         report_quality._pdf_heading(story, context, styles, 2, title)
-        report_quality._pdf_body(
-            story,
-            styles,
-            f"La tabla presenta {len(rows)} actividades con su fecha planificada, fecha de ejecución, estado, porcentaje de ejecución, evidencia y observación.",
-        )
         headers, values = _rows(rows, show_phase)
-        _pdf_apa_caption(story, context, styles, f"Planificación y ejecución: {title}")
         widths = [1.9, 2.6, 2.0, 2.0, 1.7, 1.8, 2.6, 2.6] if show_phase else [3.2, 2.3, 2.3, 1.9, 1.8, 2.8, 2.9]
+        headers, values, widths = _prune_optional_columns(headers, values, widths)
+        report_quality._pdf_body(story, styles, _table_context(title, headers, len(rows)))
+        _pdf_apa_caption(story, context, styles, f"Planificación y ejecución: {title}")
         story += [_pdf_apa_table(headers, values, [width * cm for width in widths], styles)]
         _pdf_apa_note(story, styles)
         story.append(Spacer(1, 0.12 * cm))
