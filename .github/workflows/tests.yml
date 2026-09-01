@@ -59,6 +59,7 @@ jobs:
       - run: node --check static/import-preview-client-guard.js
       - run: node --check static/robust-import-ui.js
       - run: node --check static/pdf-progress.js
+      - run: node --check static/generated-pdfs-ui.js
       - run: node --check static/pvc-report-ui.js
       - run: node --check static/firebase-ui.js
       - run: node -e "const p=require('./package.json'); if(p.main!=='electron/main.cjs') process.exit(1)"
@@ -102,7 +103,8 @@ jobs:
           test -f out/Informtit-linux-x64/resources/app/static/students-ui.css
           test -f out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/firebase-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
-          grep -q '/pdf-progress.js?v=4.9' out/Informtit-linux-x64/resources/app/static/index.html
+          grep -q '/pdf-progress.js?v=5.0' out/Informtit-linux-x64/resources/app/static/index.html
+          grep -q '/generated-pdfs-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-period-ui.js?v=1.1' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-final-audit-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
