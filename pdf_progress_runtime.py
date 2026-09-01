@@ -334,20 +334,33 @@ def cache_status(report_id: int) -> dict[str, Any]:
 
 
 def invalidate_cached_pdf(report_id: int, reason: str = "La información del informe cambió.") -> None:
+    message = str(reason or "La información del informe cambió.")
+    invalidated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
     saved = _saved_pdf(report_id)
-    if not saved:
-        return
-    _path, meta = saved
-    meta["stale"] = True
-    meta["stale_reason"] = str(reason or "La información del informe cambió.")
-    meta["invalidated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    try:
-        _cache_meta_path(report_id).write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except OSError:
-        pass
+    if saved:
+        _path, meta = saved
+        meta["stale"] = True
+        meta["stale_reason"] = message
+        meta["invalidated_at"] = invalidated_at
+        try:
+            _cache_meta_path(report_id).write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    # El histórico nunca se elimina por un cambio académico. Se conserva como
+    # evidencia de versiones anteriores y se marca como desactualizado.
+    for item in _history_items_for_report(report_id):
+        item["stale"] = True
+        item["stale_reason"] = message
+        item["invalidated_at"] = invalidated_at
+        try:
+            _write_history_meta(report_id, str(item["artifact_id"]), item)
+        except OSError:
+            pass
 
 
 def _related_report_ids(report_id: int) -> list[int]:
@@ -473,13 +486,16 @@ def _store_cached_pdf(report_id: int, source: Path) -> Path:
         shutil.copy2(source, target)
     if not _valid_pdf(target):
         raise ValueError("No se pudo guardar una copia persistente válida del PDF.")
+
+    archived = _archive_generated_pdf(report_id, target, source.name)
     meta = {
         "report_id": int(report_id),
         "filename": source.name,
-        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "generated_at": archived["generated_at"],
         "generator_revision": _generator_revision(),
         "stale": False,
         "stale_reason": "",
+        "history_id": archived["artifact_id"],
     }
     _cache_meta_path(report_id).write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),
