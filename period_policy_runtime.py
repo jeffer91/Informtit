@@ -35,6 +35,23 @@ MONTHS = {
 
 NORMAL_PERIODS = {(4, 9), (10, 3)}
 
+REPORT_NAME_PREFIX = "Informe Final del Proceso de Titulación"
+REPORT_CODE_PREFIX = "UTET-INF-01-PRO-95-"
+
+
+def automatic_report_name(period: Any) -> str:
+    value = clean_cell(period)
+    return f"{REPORT_NAME_PREFIX} - {value}" if value else REPORT_NAME_PREFIX
+
+
+def institutional_code_for_month(value: Any) -> str:
+    month = clean_cell(value)
+    if not month:
+        return ""
+    if not re.fullmatch(r"(?:19|20)\d{2}-(?:0[1-9]|1[0-2])", month):
+        raise ValueError("El mes y año del código deben tener formato AAAA-MM.")
+    return f"{REPORT_CODE_PREFIX}{month}"
+
 
 def configure_storage() -> None:
     """Usa la carpeta persistente que Electron entrega a Python."""
@@ -394,10 +411,10 @@ def visible_reports() -> list[dict[str, Any]]:
 
 
 def _create_manual_reports(payload: dict[str, Any]) -> dict[str, Any]:
-    name = clean_cell(payload.get("name"))
     period = clean_cell(payload.get("period"))
-    if not name or not period:
-        raise ValueError("Nombre y periodo son obligatorios.")
+    if not period:
+        raise ValueError("El periodo académico es obligatorio.")
+    name = automatic_report_name(period)
     explicit_kind = clean_cell(payload.get("report_type")).lower()
     kind = explicit_kind if explicit_kind in {"normal", "pvc"} else classify_period(period)
     requested = clean_cell(payload.get("modality")) or "presencial"
@@ -411,11 +428,16 @@ def _create_manual_reports(payload: dict[str, Any]) -> dict[str, Any]:
 
     with connection() as conn:
         for modality in modalities:
-            code = clean_cell(
-                payload.get("code_online")
-                if modality == "en_linea"
-                else payload.get("code_presencial")
-            ) or clean_cell(payload.get("code"))
+            selected_code_month = clean_cell(payload.get("code_month"))
+            code = (
+                institutional_code_for_month(selected_code_month)
+                if selected_code_month
+                else clean_cell(
+                    payload.get("code_online")
+                    if modality == "en_linea"
+                    else payload.get("code_presencial")
+                ) or clean_cell(payload.get("code"))
+            )
             cursor = conn.execute(
                 """
                 INSERT INTO reports
