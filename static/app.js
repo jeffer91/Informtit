@@ -136,10 +136,10 @@ function renderGeneralTab() {
     <form class="form-panel" id="general-form">
       <div class="panel-head"><div><h2>Datos generales</h2><p>Estos datos se usarán en la portada y encabezados.</p></div></div>
       <div class="form-grid three">
-        ${field('name','Nombre del informe',r.name)}
-        ${field('period','Periodo',r.period)}
-        <label>Modalidad<select name="modality"><option value="presencial" ${r.modality==='presencial'?'selected':''}>Presencial</option><option value="en_linea" ${r.modality==='en_linea'?'selected':''}>En línea</option></select></label>
-        ${field('code','Código',r.code)}
+        ${readonlyField('name','Nombre del informe',r.name)}
+        ${readonlyField('period','Periodo',r.period)}
+        <label>Modalidad<select name="modality" disabled><option value="presencial" ${r.modality==='presencial'?'selected':''}>Presencial</option><option value="en_linea" ${r.modality==='en_linea'?'selected':''}>En línea</option></select></label>
+        ${readonlyField('code','Código',r.code)}
         ${field('version','Versión',r.version)}
         ${field('elaboration_date','Fecha de elaboración',r.elaboration_date,'date')}
         ${field('prepared_by','Elaborado por',r.prepared_by)}
@@ -156,6 +156,10 @@ function renderGeneralTab() {
 
 function field(name, label, value = '', type = 'text') {
   return `<label>${label}<input type="${type}" name="${name}" value="${escapeHtml(value || '')}"></label>`;
+}
+
+function readonlyField(name, label, value = '') {
+  return `<label>${label}<input name="${name}" value="${escapeHtml(value || '')}" readonly aria-readonly="true"></label>`;
 }
 
 async function saveGeneral(event) {
@@ -362,21 +366,39 @@ function reportCodeMonth(value) {
 }
 
 function reportCreationDefaults() {
-  const latest = (state.reports || []).find(report => String(report?.period || '').trim());
-  const parsed = parseReportPeriod(latest?.period);
   const now = new Date();
-  const fallbackEnd = new Date(now.getFullYear(), now.getMonth() + 5, 1);
-  let codeMonth = '';
-  for (const report of [latest, ...(state.reports || [])]) {
-    codeMonth = reportCodeMonth(report?.code);
-    if (codeMonth) break;
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+
+  // El formulario nuevo no hereda un período antiguo: propone el período
+  // académico vigente y deja al usuario cambiar mes/año explícitamente.
+  let startMonth;
+  let startYear;
+  let endMonth;
+  let endYear;
+  if (month >= 4 && month <= 9) {
+    startMonth = 4;
+    startYear = year;
+    endMonth = 9;
+    endYear = year;
+  } else if (month >= 10) {
+    startMonth = 10;
+    startYear = year;
+    endMonth = 3;
+    endYear = year + 1;
+  } else {
+    startMonth = 10;
+    startYear = year - 1;
+    endMonth = 3;
+    endYear = year;
   }
+
   return {
-    startMonth: parsed?.startMonth || (now.getMonth() + 1),
-    startYear: parsed?.startYear || now.getFullYear(),
-    endMonth: parsed?.endMonth || (fallbackEnd.getMonth() + 1),
-    endYear: parsed?.endYear || fallbackEnd.getFullYear(),
-    codeMonth: codeMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+    startMonth,
+    startYear,
+    endMonth,
+    endYear,
+    codeMonth: `${year}-${String(month).padStart(2, '0')}`,
   };
 }
 
