@@ -132,7 +132,7 @@
     if (tabs) tabs.style.display = '';
     $$('.tab-content').forEach(node => { node.style.display = ''; });
     const oldPdf = $('#export-pdf');
-    if (oldPdf) oldPdf.style.display = '';
+    if (oldPdf) oldPdf.style.display = 'none';
     const workspace = $('#report-workspace');
     if (workspace) delete workspace.dataset.unifiedNormal;
     $('#report-modality').textContent = 'PVC';
@@ -169,21 +169,9 @@
       </div>`;
     bannerInfo?.insertBefore(controls, bannerInfo.firstChild);
 
-    const actions = document.querySelector('.report-actions');
     const oldPdf = $('#export-pdf');
     if (oldPdf) oldPdf.style.display = 'none';
-    let pdfActions = document.getElementById('period-pdf-actions');
-    if (!pdfActions) {
-      pdfActions = document.createElement('div');
-      pdfActions.id = 'period-pdf-actions';
-      pdfActions.className = 'period-pdf-actions';
-      actions?.appendChild(pdfActions);
-    }
-    const presencialDisabled = !project.presencial_report_id || Number(project.presencial_students || 0) === 0;
-    const onlineDisabled = !project.online_report_id || Number(project.online_students || 0) === 0;
-    pdfActions.innerHTML = `
-      <button type="button" class="button secondary" data-pdf-report-id="${Number(project.presencial_report_id || 0)}" data-pdf-label="Presencial" ${presencialDisabled ? 'disabled aria-disabled="true"' : ''}>PDF Presencial</button>
-      <button type="button" class="button secondary" data-pdf-report-id="${Number(project.online_report_id || 0)}" data-pdf-label="Online" ${onlineDisabled ? 'disabled aria-disabled="true"' : ''}>PDF Online</button>`;
+    document.getElementById('period-pdf-actions')?.remove();
 
     const alerts = document.createElement('div');
     alerts.id = 'period-project-alerts';
