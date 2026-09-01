@@ -319,8 +319,8 @@
     renderProgressSteps({status: 'running', progress: 1, stage: 'Preparando generación', steps: []});
   }
 
-  async function downloadJob(jobId) {
-    const response = await fetch(`/api/pdf-jobs/${jobId}/download`, { cache: 'no-store' });
+  async function downloadPdfUrl(url) {
+    const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) {
       let message = `Error ${response.status} al descargar el PDF.`;
       const type = response.headers.get('content-type') || '';
@@ -356,6 +356,10 @@
       link.remove();
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
     }
+  }
+
+  async function downloadJob(jobId) {
+    await downloadPdfUrl(`/api/pdf-jobs/${jobId}/download`);
   }
 
   async function pollJob(jobId) {
@@ -416,6 +420,20 @@
     startingPdf = true;
     const originalText = button?.textContent || label;
     try {
+      // Si nada cambió desde la última generación, descargar la copia persistente
+      // de inmediato y evitar tanto la auditoría como la maquetación completa.
+      try {
+        const cacheResult = await api(`/api/reports/${id}/pdf-cache`);
+        if (cacheResult?.cache?.available) {
+          if (button) button.textContent = 'Descargando PDF guardado…';
+          await downloadPdfUrl(`/api/reports/${id}/pdf-cache/download`);
+          toast('PDF guardado descargado. No fue necesario regenerarlo.');
+          return;
+        }
+      } catch (cacheError) {
+        console.warn('[Informtit PDF cache] Se regenerará el documento:', cacheError);
+      }
+
       // Feedback inmediato: la auditoría previa también puede tardar en informes
       // grandes y antes el usuario veía la pantalla inmóvil durante ese tiempo.
       resetProgress();
