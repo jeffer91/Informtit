@@ -54,6 +54,49 @@ class ReportScheduleTruthTests(unittest.TestCase):
         self.assertEqual(rows[0][4], "87,50 %")
         self.assertEqual(rows[0][5], "Acta")
 
+
+    def test_optional_empty_columns_are_removed_from_final_table(self):
+        headers, rows = schedule._rows(
+            [{
+                "phase": "Fase 1",
+                "activity": "Actividad",
+                "start_date": "01/02/2026",
+                "end_date": "02/02/2026",
+                "executed_date": "",
+                "execution_status": "",
+                "compliance_percentage": None,
+                "evidence": "",
+                "observation": "",
+            }],
+            True,
+        )
+        widths = [1.9, 2.6, 2.0, 2.0, 1.7, 1.8, 2.6, 2.6]
+        headers, rows, widths = schedule._prune_optional_columns(headers, rows, widths)
+        self.assertNotIn("Evidencia", headers)
+        self.assertNotIn("Observación", headers)
+        self.assertEqual(
+            headers,
+            ["Fase", "Actividad", "Fecha planificada", "Fecha ejecutada", "Estado", "Ejecución (%)"],
+        )
+        self.assertEqual(len(rows[0]), 6)
+        self.assertAlmostEqual(sum(widths), 17.2, places=3)
+
+    def test_optional_column_is_kept_when_real_data_exists(self):
+        headers, rows = schedule._rows(
+            [{
+                "activity": "Actividad",
+                "start_date": "01/02/2026",
+                "end_date": "01/02/2026",
+                "evidence": "Acta 01",
+                "observation": "",
+            }],
+            False,
+        )
+        widths = [3.2, 2.3, 2.3, 1.9, 1.8, 2.8, 2.9]
+        headers, rows, _ = schedule._prune_optional_columns(headers, rows, widths)
+        self.assertIn("Evidencia", headers)
+        self.assertNotIn("Observación", headers)
+
     def test_schedule_table_uses_apa7_minimal_rules(self):
         source = Path("report_schedule_truth.py").read_text(encoding="utf-8")
         start = source.index("def _pdf_apa_table")
