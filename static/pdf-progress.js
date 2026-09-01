@@ -8,6 +8,7 @@
   let polling = false;
   let progressStartedAt = 0;
   let timerHandle = null;
+  let pendingDownload = null;
 
   function ensureStyles() {
     if (document.getElementById('pdf-progress-style')) return;
@@ -118,12 +119,16 @@
           </div>
           <div class="pdf-progress-steps" id="pdf-progress-steps"></div>
           <div class="pdf-progress-actions">
+            <button type="button" class="button primary" id="pdf-progress-download" hidden>Descargar PDF</button>
             <button type="button" class="button secondary" id="pdf-progress-close" hidden>Cerrar</button>
           </div>
         </section>`;
       document.body.appendChild(overlay);
       document.getElementById('pdf-progress-close').onclick = () => {
         if (!polling) overlay.hidden = true;
+      };
+      document.getElementById('pdf-progress-download').onclick = () => {
+        void triggerPendingDownload();
       };
     }
     return overlay;
@@ -302,6 +307,8 @@
       updateElapsed(job.elapsed_seconds);
     }
     document.getElementById('pdf-progress-close').hidden = !['completed', 'error'].includes(job.status);
+    const downloadButton = document.getElementById('pdf-progress-download');
+    if (downloadButton) downloadButton.hidden = !(job.status === 'completed' && pendingDownload);
   }
 
   function resetProgress() {
@@ -315,7 +322,10 @@
     document.getElementById('pdf-progress-fill').style.width = '1%';
     document.getElementById('pdf-progress-percent').textContent = '1 %';
     overlay.querySelector('.pdf-progress-track').setAttribute('aria-valuenow', '1');
+    pendingDownload = null;
     document.getElementById('pdf-progress-close').hidden = true;
+    const downloadButton = document.getElementById('pdf-progress-download');
+    if (downloadButton) downloadButton.hidden = true;
     renderProgressSteps({status: 'running', progress: 1, stage: 'Preparando generación', steps: []});
   }
 
