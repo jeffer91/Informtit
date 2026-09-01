@@ -700,6 +700,19 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
     refreshed = metrics["report"]
     logo_ok = bool(report_quality.base.image_path(report_quality.base.image_for(refreshed, report_quality.base.LOGO)))
 
+    period_text = str(refreshed.get("period") or "").strip()
+    report_name = str(refreshed.get("name") or "").strip()
+    period_in_name = not period_text or period_text.casefold() in report_name.casefold()
+
+    nuclei_courses = strict_nuclei(report_id).get("courses", [])
+    singleton_courses = [
+        str(course.get("course_title") or course.get("course_key") or "Curso sin nombre")
+        for course in nuclei_courses
+        if len(course.get("students", [])) == 1
+    ]
+    nuclei_records = int(metrics["nuclei"].get("records") or 0)
+    small_sample = 0 < nuclei_records < 10
+
     formula_errors = [item for item in formulas if not item["ok"]]
     controls = [
         control("Registros conciliados", "ok" if reconciliation_data["balanced"] else "error", f"Importados: {reconciliation_data['imported']}; incluidos: {reconciliation_data['included']}; excluidos: {reconciliation_data['excluded']}.", not reconciliation_data["balanced"]),
@@ -709,6 +722,34 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
         control("Fórmulas correctas", "error" if formula_errors else "ok", "; ".join(item["name"] for item in formula_errors) if formula_errors else "Todos los balances matemáticos principales son consistentes.", bool(formula_errors)),
         control("No evaluados tratados correctamente", "ok", f"{zero_noeval} registro(s) con estado No evaluado y nota 0 fueron excluidos de las estadísticas."),
         control("Actividades ejecutadas documentadas", "warning" if schedules["pending_evaluation"] or schedules["incomplete_evidence"] else "ok", f"Sin evaluar: {schedules['pending_evaluation']}; con evidencia incompleta: {schedules['incomplete_evidence']}."),
+        control(
+            "Coherencia temporal del informe",
+            "ok" if period_in_name else "error",
+            "El período del nombre coincide con el período académico configurado."
+            if period_in_name
+            else f"El nombre del informe no contiene el período configurado «{period_text}».",
+            not period_in_name,
+        ),
+        control(
+            "Granularidad de Núcleos",
+            "warning" if singleton_courses else "ok",
+            (
+                f"{len(singleton_courses)} curso(s) contienen un solo estudiante en la fuente. "
+                "El PDF mostrará la población consolidada por carrera antes del detalle por curso; "
+                "los cursos individuales no se interpretan como la cohorte completa."
+            )
+            if singleton_courses
+            else "Los cursos de Núcleos contienen poblaciones nominales consistentes con la fuente.",
+        ),
+        control(
+            "Tamaño muestral para inferencias",
+            "warning" if small_sample else "ok",
+            (
+                f"Núcleos contiene {nuclei_records} registros; el tamaño es reducido para formular conclusiones institucionales generales."
+            )
+            if small_sample
+            else f"Núcleos contiene {nuclei_records} registros; no se activa la alerta de muestra reducida.",
+        ),
         control("Logo institucional", "ok" if logo_ok else "error", "Logo institucional disponible." if logo_ok else "Falta el logo institucional obligatorio.", not logo_ok),
     ]
     if mode == "no_population":
@@ -728,15 +769,19 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
     )
     blocking_errors = [item for item in controls if item["status"] == "error" and item["blocking"]]
     can_generate = not blocking_errors and mode != "import_error"
-    final_ready = mode == "normal" and can_generate and critical_pending == 0
+    # El documento solicitado es final. La ausencia de información opcional no
+    # cambia el nombre a "Preliminar": esos campos/columnas se omiten y el audit
+    # mantiene las advertencias para trazabilidad. Solo un error bloqueante impide
+    # emitir el informe final.
+    final_ready = mode == "normal" and can_generate
     if mode == "no_population":
-        state, title = "SIN POBLACIÓN", "Informe de Titulación - Sin Población Registrada"
+        state, title = "SIN POBLACIÓN", "Informe Final del Proceso de Titulación - Sin Población Registrada"
     elif not can_generate:
-        state, title = "ERROR DE CARGA", "Informe Preliminar del Proceso de Titulación"
-    elif final_ready:
-        state, title = "APTO PARA EMITIR", "Informe Final del Proceso de Titulación"
+        state, title = "ERROR DE CARGA", "Informe Final del Proceso de Titulación"
+    elif critical_pending:
+        state, title = "APTO PARA EMITIR CON DATOS DISPONIBLES", "Informe Final del Proceso de Titulación"
     else:
-        state, title = "BORRADOR", "Informe Preliminar del Proceso de Titulación"
+        state, title = "APTO PARA EMITIR", "Informe Final del Proceso de Titulación"
     return {
         "ok": can_generate,
         "report_id": report_id,
