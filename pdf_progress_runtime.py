@@ -44,6 +44,193 @@ def _cache_meta_path(report_id: int) -> Path:
     return _cache_dir() / f"report_{int(report_id)}.json"
 
 
+def _history_root() -> Path:
+    path = _cache_dir() / "history"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _history_dir(report_id: int) -> Path:
+    path = _history_root() / f"report_{int(report_id)}"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _history_meta_path(report_id: int, artifact_id: str) -> Path:
+    return _history_dir(report_id) / f"{artifact_id}.json"
+
+
+def _history_pdf_path(report_id: int, artifact_id: str) -> Path:
+    return _history_dir(report_id) / f"{artifact_id}.pdf"
+
+
+def _report_metadata(report_id: int) -> dict[str, Any]:
+    try:
+        with db.connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id, period_project_id, name, period, code, version, modality, report_type
+                FROM reports
+                WHERE id=?
+                """,
+                (int(report_id),),
+            ).fetchone()
+        if not row:
+            return {"report_id": int(report_id)}
+        return {
+            "report_id": int(row["id"]),
+            "period_project_id": int(row["period_project_id"] or 0),
+            "name": str(row["name"] or ""),
+            "period": str(row["period"] or ""),
+            "code": str(row["code"] or ""),
+            "version": str(row["version"] or "1.0"),
+            "modality": str(row["modality"] or ""),
+            "report_type": str(row["report_type"] or ""),
+        }
+    except Exception:
+        return {"report_id": int(report_id)}
+
+
+def _write_history_meta(report_id: int, artifact_id: str, meta: dict[str, Any]) -> None:
+    _history_meta_path(report_id, artifact_id).write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _archive_generated_pdf(report_id: int, source: Path, filename: str) -> dict[str, Any]:
+    artifact_id = uuid.uuid4().hex
+    target = _history_pdf_path(report_id, artifact_id)
+    shutil.copy2(source, target)
+    if not _valid_pdf(target):
+        target.unlink(missing_ok=True)
+        raise ValueError("No se pudo crear una copia histórica válida del PDF.")
+
+    generated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    meta = {
+        **_report_metadata(report_id),
+        "artifact_id": artifact_id,
+        "filename": str(filename or source.name),
+        "stored_filename": target.name,
+        "generated_at": generated_at,
+        "generator_revision": _generator_revision(),
+        "stale": False,
+        "stale_reason": "",
+        "size": target.stat().st_size,
+    }
+    _write_history_meta(report_id, artifact_id, meta)
+    return meta
+
+
+def _history_items_for_report(report_id: int) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    directory = _history_dir(report_id)
+    for meta_path in directory.glob("*.json"):
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if not isinstance(meta, dict):
+            continue
+        artifact_id = str(meta.get("artifact_id") or meta_path.stem)
+        pdf_path = _history_pdf_path(report_id, artifact_id)
+        if not _valid_pdf(pdf_path):
+            continue
+        item = dict(meta)
+        item["artifact_id"] = artifact_id
+        item["report_id"] = int(report_id)
+        item["size"] = pdf_path.stat().st_size
+        items.append(item)
+    items.sort(key=lambda item: str(item.get("generated_at") or ""), reverse=True)
+    return items
+
+
+def _ensure_legacy_history(report_id: int) -> None:
+    saved = _saved_pdf(report_id)
+    if not saved:
+        return
+    pdf_path, meta = saved
+    if str(meta.get("history_id") or ""):
+        return
+    archived = _archive_generated_pdf(
+        report_id,
+        pdf_path,
+        str(meta.get("filename") or pdf_path.name),
+    )
+    meta["history_id"] = archived["artifact_id"]
+    try:
+        _cache_meta_path(report_id).write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def list_generated_pdfs(report_id: int) -> list[dict[str, Any]]:
+    report_ids = _related_report_ids(report_id)
+    all_items: list[dict[str, Any]] = []
+    for related_id in report_ids:
+        _ensure_legacy_history(related_id)
+        all_items.extend(_history_items_for_report(related_id))
+
+    newest_current: dict[int, str] = {}
+    for item in all_items:
+        rid = int(item.get("report_id") or 0)
+        generator_changed = str(item.get("generator_revision") or "") != _generator_revision()
+        stale = bool(item.get("stale")) or generator_changed
+        if not stale and rid not in newest_current:
+            newest_current[rid] = str(item.get("artifact_id") or "")
+
+    for item in all_items:
+        rid = int(item.get("report_id") or 0)
+        generator_changed = str(item.get("generator_revision") or "") != _generator_revision()
+        stale = bool(item.get("stale")) or generator_changed
+        if stale:
+            status = "desactualizado"
+            if generator_changed and not item.get("stale_reason"):
+                item["stale_reason"] = "La aplicación cambió desde esta generación."
+        elif newest_current.get(rid) == str(item.get("artifact_id") or ""):
+            status = "vigente"
+        else:
+            status = "historico"
+        item["status"] = status
+        modality = str(item.get("modality") or "")
+        if str(item.get("report_type") or "").lower() == "pvc":
+            item["modality_label"] = "PVC"
+        else:
+            item["modality_label"] = "Online" if modality == "en_linea" else "Presencial"
+
+    all_items.sort(key=lambda item: str(item.get("generated_at") or ""), reverse=True)
+    return all_items
+
+
+def get_generated_pdf(report_id: int, artifact_id: str) -> tuple[Path, dict[str, Any]] | None:
+    if not __import__("re").fullmatch(r"[a-f0-9]{32}", str(artifact_id or "")):
+        return None
+    if int(report_id) not in _related_report_ids(report_id):
+        return None
+    meta_path = _history_meta_path(report_id, artifact_id)
+    pdf_path = _history_pdf_path(report_id, artifact_id)
+    if not meta_path.exists() or not _valid_pdf(pdf_path):
+        return None
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    return pdf_path, meta if isinstance(meta, dict) else {}
+
+
+def delete_generated_pdf(report_id: int, artifact_id: str) -> bool:
+    found = get_generated_pdf(report_id, artifact_id)
+    if not found:
+        return False
+    pdf_path, _meta = found
+    pdf_path.unlink(missing_ok=True)
+    _history_meta_path(report_id, artifact_id).unlink(missing_ok=True)
+    return True
+
+
 def _generator_revision() -> str:
     """Firma barata del código que puede afectar el PDF.
 
