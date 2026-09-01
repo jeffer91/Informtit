@@ -158,6 +158,8 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         self.assertIn("role=\"progressbar\"", source)
         self.assertIn("/download", source)
         self.assertIn("await downloadJob(jobId)", source)
+        self.assertIn("Esta ventana se cerrará automáticamente", source)
+        self.assertIn("completedOverlay.hidden = true", source)
         self.assertIn("Tiempo transcurrido", source)
         self.assertIn("No cierre Informtit", source)
         self.assertIn("pdf-progress-steps", source)
