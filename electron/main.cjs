@@ -224,6 +224,119 @@ function reloadInterface() {
   return true;
 }
 
+function safePdfFilename(value) {
+  let name = String(value || 'Informe_Titulacion.pdf')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .trim();
+  if (!name) name = 'Informe_Titulacion.pdf';
+  if (!name.toLowerCase().endsWith('.pdf')) name += '.pdf';
+  return name.slice(0, 180);
+}
+
+function isAllowedPdfDownloadPath(value) {
+  const relative = String(value || '');
+  return /^\/api\/pdf-jobs\/[a-f0-9]{32}\/download$/.test(relative)
+    || /^\/api\/reports\/\d+\/pdf-cache\/download$/.test(relative);
+}
+
+function downloadBackendPdf(relativeUrl, destinationPath) {
+  return new Promise((resolve, reject) => {
+    if (!appUrl) {
+      reject(new Error('El backend local de Informtit no está disponible.'));
+      return;
+    }
+    if (!isAllowedPdfDownloadPath(relativeUrl)) {
+      reject(new Error('La ruta solicitada no corresponde a un PDF de Informtit.'));
+      return;
+    }
+
+    const target = new URL(relativeUrl, appUrl);
+    const request = http.get(target, (response) => {
+      const status = Number(response.statusCode || 0);
+      if (status < 200 || status >= 300) {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          if (body.length < 4096) body += chunk;
+        });
+        response.on('end', () => {
+          let detail = body.trim();
+          try {
+            const parsed = JSON.parse(body);
+            detail = parsed?.error || detail;
+          } catch (_error) {
+            // Mantener el texto recibido si no es JSON.
+          }
+          reject(new Error(detail || `El backend respondió con HTTP ${status}.`));
+        });
+        return;
+      }
+
+      const file = fs.createWriteStream(destinationPath);
+      let bytes = 0;
+      response.on('data', (chunk) => { bytes += chunk.length; });
+      response.on('error', (error) => {
+        file.destroy();
+        fs.rm(destinationPath, { force: true }, () => {});
+        reject(error);
+      });
+      file.on('error', (error) => {
+        response.destroy();
+        fs.rm(destinationPath, { force: true }, () => {});
+        reject(error);
+      });
+      file.on('finish', () => {
+        file.close(() => {
+          if (bytes < 5) {
+            fs.rm(destinationPath, { force: true }, () => {});
+            reject(new Error('El PDF recibido está vacío.'));
+            return;
+          }
+          resolve({ bytes });
+        });
+      });
+      response.pipe(file);
+    });
+
+    request.setTimeout(120000, () => {
+      request.destroy(new Error('La descarga del PDF superó el tiempo máximo de espera.'));
+    });
+    request.on('error', reject);
+  });
+}
+
+async function savePdfFromBackend(args = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('La ventana principal de Informtit no está disponible.');
+  }
+
+  const relativeUrl = String(args?.url || '');
+  if (!isAllowedPdfDownloadPath(relativeUrl)) {
+    throw new Error('Ruta de descarga PDF no permitida.');
+  }
+
+  const filename = safePdfFilename(args?.filename);
+  const selection = await dialog.showSaveDialog(mainWindow, {
+    title: 'Guardar PDF de Informtit',
+    defaultPath: path.join(app.getPath('downloads'), filename),
+    buttonLabel: 'Guardar PDF',
+    filters: [{ name: 'Documento PDF', extensions: ['pdf'] }],
+    properties: ['showOverwriteConfirmation'],
+  });
+
+  if (selection.canceled || !selection.filePath) {
+    return { ok: false, canceled: true };
+  }
+
+  const result = await downloadBackendPdf(relativeUrl, selection.filePath);
+  return {
+    ok: true,
+    canceled: false,
+    path: selection.filePath,
+    bytes: result.bytes,
+  };
+}
+
 function installApplicationMenu() {
   const template = [
     {
@@ -340,6 +453,7 @@ async function createWindow() {
 ipcMain.handle('informtit:toggle-devtools', () => toggleDevTools());
 ipcMain.handle('informtit:open-devtools', () => openDevTools());
 ipcMain.handle('informtit:reload', () => reloadInterface());
+ipcMain.handle('informtit:save-pdf', (_event, args) => savePdfFromBackend(args));
 
 async function boot() {
   try {
