@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
+from reportlab.platypus import Paragraph, Spacer
 
 import completion_routes
 import completion_service
@@ -14,6 +15,7 @@ import process_routes
 import process_service
 import report_integrity_core as integrity
 import report_integrity_final_fixes as final_fixes
+import report_quality
 from db import connection
 from optional_content import is_present, set_presence
 from process_service import COMPLEXIVE_DEFAULTS, THESIS_DEFAULTS
@@ -185,19 +187,99 @@ def _font_to_fit(canvas: Any, text: str, width: float, preferred: float = 6.3, m
     return max(minimum, size)
 
 
+def _wrap_cell_lines(canvas: Any, text: Any, width: float, font: str, size: float, max_lines: int) -> list[str]:
+    words = str(text or "").split()
+    if not words:
+        return [""]
+    lines: list[str] = []
+    current = ""
+    usable = max(10.0, width - 0.35 * cm)
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if not current or canvas.stringWidth(candidate, font, size) <= usable:
+            current = candidate
+            continue
+        lines.append(current)
+        current = word
+    if current:
+        lines.append(current)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1]
+        while last and canvas.stringWidth(last + "…", font, size) > usable:
+            last = last[:-1]
+        lines[-1] = (last.rstrip() + "…") if last else "…"
+    return lines
+
+
+def _draw_cell_text(
+    canvas: Any,
+    text: Any,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    *,
+    size: float = 7.0,
+    bold: bool = False,
+    max_lines: int = 3,
+) -> None:
+    """Dibuja texto envuelto y centrado dentro de una celda con margen real."""
+    font = "Helvetica-Bold" if bold else "Helvetica"
+    lines = _wrap_cell_lines(canvas, text, width, font, size, max_lines)
+    leading = size + 1.8
+    block_height = max(leading, len(lines) * leading)
+    center_y = y + height / 2
+    first_baseline = center_y + block_height / 2 - leading * 0.78
+    canvas.setFont(font, size)
+    for index, line in enumerate(lines):
+        canvas.drawCentredString(x + width / 2, first_baseline - index * leading, line)
+
+
+def _recent_table_context(story: list[Any]) -> bool:
+    for item in reversed(story[-5:]):
+        if isinstance(item, Spacer):
+            continue
+        if not isinstance(item, Paragraph):
+            return False
+        style_name = str(getattr(getattr(item, "style", None), "name", "") or "")
+        if "Caption" in style_name or style_name.startswith("Heading") or style_name == "Title":
+            return False
+        text = item.getPlainText().strip()
+        return bool(text)
+    return False
+
+
+def _contextual_pdf_caption(base_caption: Callable[..., Any]) -> Callable[..., Any]:
+    def wrapped(story: list[Any], styles: Any, text: str) -> Any:
+        caption = str(text or "").strip()
+        if caption.startswith("Tabla ") and not _recent_table_context(story):
+            title = caption
+            if ". " in caption:
+                title = caption.split(". ", 1)[1]
+            title = title.rstrip(".")
+            report_quality._pdf_body(
+                story,
+                styles,
+                f"La siguiente tabla presenta {title[:1].lower() + title[1:] if title else 'la información disponible'}, utilizando únicamente los datos registrados en la fuente del informe.",
+            )
+        return base_caption(story, styles, text)
+
+    return wrapped
+
+
 def draw_header_safe(canvas: Any, report: dict[str, Any], page: int, pages: int) -> None:
-    """Encabezado PDF con Código/Versión separados de la línea divisoria."""
+    """Encabezado institucional con texto completamente contenido en cada celda."""
     width, height = A4
-    x = 1.25 * cm
-    top = height - 0.75 * cm
-    row = 0.95 * cm
-    total = width - 2.5 * cm
-    left = 4.25 * cm
-    right = 4.15 * cm
+    x = 0.90 * cm
+    top = height - 0.55 * cm
+    row = 1.50 * cm
+    total = width - 1.80 * cm
+    left = 4.80 * cm
+    right = 4.60 * cm
     middle = total - left - right
     bottom = top - 2 * row
     right_x = x + left + middle
-    right_center = right_x + right / 2
 
     canvas.saveState()
     canvas.setLineWidth(0.7)
@@ -210,58 +292,74 @@ def draw_header_safe(canvas: Any, report: dict[str, Any], page: int, pages: int)
     if logo:
         canvas.drawImage(
             str(logo),
-            x + 0.1 * cm,
-            top - row + 0.08 * cm,
-            width=left - 0.2 * cm,
-            height=row - 0.16 * cm,
+            x + 0.15 * cm,
+            top - row + 0.14 * cm,
+            width=left - 0.30 * cm,
+            height=row - 0.28 * cm,
             preserveAspectRatio=True,
             anchor="c",
             mask="auto",
         )
     else:
-        institutional.centered(canvas, "LOGO INSTITUCIONAL NO CARGADO", x, top - row + 0.27 * cm, left, 6.5, True)
+        _draw_cell_text(
+            canvas, "LOGO INSTITUCIONAL NO CARGADO",
+            x, top - row, left, row, size=6.5, bold=True, max_lines=2,
+        )
 
-    institutional.centered(
+    _draw_cell_text(
         canvas,
         "Unidad Titulación y Eficiencia Terminal",
         x + left,
-        top - row + 0.27 * cm,
+        top - row,
         middle,
-        8.2,
+        row,
+        size=8.8,
+        max_lines=2,
+    )
+    _draw_cell_text(
+        canvas,
+        f"Código: {report.get('code', '')}\nVersión: {report.get('version', '1.0')}".replace("\n", " | "),
+        right_x,
+        top - row,
+        right,
+        row,
+        size=6.6,
+        max_lines=2,
     )
 
-    code_line = f"Código: {report.get('code', '')}"
-    version_line = f"Versión: {report.get('version', '1.0')}"
-    code_size = _font_to_fit(canvas, code_line, right)
-    canvas.setFont("Helvetica", code_size)
-    canvas.drawCentredString(right_center, top - 0.30 * cm, code_line)
-    canvas.setFont("Helvetica", 6.3)
-    canvas.drawCentredString(right_center, top - 0.68 * cm, version_line)
-
-    institutional.centered(
+    _draw_cell_text(
         canvas,
         f"Fecha de Elaboración: {institutional.format_date(report.get('elaboration_date'))}",
         x,
-        bottom + 0.25 * cm,
+        bottom,
         left,
-        6.8,
-        False,
-        2,
+        row,
+        size=7.0,
+        max_lines=2,
     )
-    institutional.centered(
+    _draw_cell_text(
         canvas,
         institutional.header_title(report),
         x + left,
-        bottom + 0.18 * cm,
+        bottom,
         middle,
-        6.8,
-        True,
+        row,
+        size=7.0,
+        bold=True,
+        max_lines=3,
     )
-    canvas.setFont("Helvetica", 7.2)
-    canvas.drawCentredString(right_center, bottom + 0.31 * cm, f"Página {page} de {pages}")
-    canvas.setFont("Helvetica", 8)
-    canvas.drawRightString(width - 1.35 * cm, 0.65 * cm, f"Página {page} de {pages}")
+    _draw_cell_text(
+        canvas,
+        f"Página {page} de {pages}",
+        right_x,
+        bottom,
+        right,
+        row,
+        size=7.6,
+        max_lines=1,
+    )
     canvas.restoreState()
+
 
 
 def install() -> None:
@@ -290,4 +388,11 @@ def install() -> None:
     integrity.nuclei_duplicate_entries = nuclei_duplicate_entries_strict
     institutional.draw_header = draw_header_safe
     final_fixes.install()
+
+    # Toda tabla debe tener contexto inmediato. Se añade únicamente cuando la
+    # función que construyó la sección no proporcionó ya un párrafo explicativo.
+    if not getattr(report_quality, "_table_context_guard_installed", False):
+        report_quality._pdf_caption = _contextual_pdf_caption(report_quality._pdf_caption)
+        report_quality._table_context_guard_installed = True
+
     _INSTALLED = True
