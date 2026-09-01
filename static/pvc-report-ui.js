@@ -69,9 +69,7 @@
     if (modality) modality.textContent = 'PVC · Artículo Científico';
     const pdf = document.getElementById('export-pdf');
     if (pdf) {
-      pdf.style.display = '';
-      pdf.textContent = 'PDF PVC';
-      pdf.dataset.pdfLabel = 'PVC';
+      pdf.style.display = 'none';
       pdf.href = '#';
     }
   }
