@@ -9,7 +9,7 @@
   }
 
   function currentReport() {
-    return globalThis.state?.activeReport || null;
+    return typeof state !== 'undefined' ? (state.activeReport || null) : null;
   }
 
   function isPvc(report) {
@@ -377,9 +377,9 @@
     if (generate) generate.hidden = false;
     if (generated) generated.hidden = false;
     const legacy = document.getElementById('export-pdf');
-    if (legacy) legacy.style.display = 'none';
+    if (legacy && legacy.style.display !== 'none') legacy.style.display = 'none';
     const periodActions = document.getElementById('period-pdf-actions');
-    if (periodActions) periodActions.style.display = 'none';
+    if (periodActions && periodActions.style.display !== 'none') periodActions.style.display = 'none';
   }
 
   ensureDialogs();
