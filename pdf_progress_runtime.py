@@ -188,6 +188,98 @@ def invalidate_report_cache(report_id: int, reason: str = "La información del i
         invalidate_cached_pdf(related_id, reason)
 
 
+def _project_report_ids(project_id: int) -> list[int]:
+    try:
+        with db.connection() as conn:
+            return [
+                int(row[0])
+                for row in conn.execute(
+                    "SELECT id FROM reports WHERE period_project_id=?",
+                    (int(project_id),),
+                ).fetchall()
+            ]
+    except Exception:
+        return []
+
+
+def _report_id_for_career(career_id: int) -> int | None:
+    try:
+        with db.connection() as conn:
+            row = conn.execute(
+                "SELECT report_id FROM careers WHERE id=?",
+                (int(career_id),),
+            ).fetchone()
+        return int(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def _report_id_for_student(student_id: int) -> int | None:
+    try:
+        with db.connection() as conn:
+            row = conn.execute(
+                """
+                SELECT c.report_id
+                FROM students s
+                JOIN careers c ON c.id=s.career_id
+                WHERE s.id=?
+                """,
+                (int(student_id),),
+            ).fetchone()
+        return int(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def _report_id_for_image(image_id: int) -> int | None:
+    try:
+        with db.connection() as conn:
+            row = conn.execute(
+                "SELECT report_id FROM images WHERE id=?",
+                (int(image_id),),
+            ).fetchone()
+        return int(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def invalidate_all_cached_pdfs(reason: str = "Cambió una configuración compartida del sistema.") -> None:
+    root = _cache_dir()
+    for meta_path in root.glob("report_*.json"):
+        match = __import__("re").fullmatch(r"report_(\d+)\.json", meta_path.name)
+        if match:
+            invalidate_cached_pdf(int(match.group(1)), reason)
+
+
+def _report_ids_affected_by_write(path: str) -> list[int]:
+    import re
+
+    match = re.match(r"/api/reports/(\d+)(?:/|$)", path)
+    if match:
+        return _related_report_ids(int(match.group(1)))
+
+    match = re.match(r"/api/period-projects/(\d+)(?:/|$)", path)
+    if match:
+        return _project_report_ids(int(match.group(1)))
+
+    match = re.match(r"/api/careers/(\d+)(?:/|$)", path)
+    if match:
+        report_id = _report_id_for_career(int(match.group(1)))
+        return _related_report_ids(report_id) if report_id else []
+
+    match = re.match(r"/api/students/(\d+)(?:/|$)", path)
+    if match:
+        report_id = _report_id_for_student(int(match.group(1)))
+        return _related_report_ids(report_id) if report_id else []
+
+    match = re.match(r"/api/images/(\d+)(?:/|$)", path)
+    if match:
+        report_id = _report_id_for_image(int(match.group(1)))
+        return _related_report_ids(report_id) if report_id else []
+
+    return []
+
+
 def _store_cached_pdf(report_id: int, source: Path) -> Path:
     target = _cache_pdf_path(report_id)
     if source.resolve() != target.resolve():
@@ -538,14 +630,21 @@ def install_cache_invalidation() -> None:
     previous_write = core.InformtitHandler._handle_api_write
 
     def cache_aware_write(self: Any, method: str, path: str, payload: dict[str, Any]) -> None:
-        import re
+        if method in {"POST", "PUT", "PATCH", "DELETE"}:
+            affected = _report_ids_affected_by_write(path)
+            for report_id in affected:
+                invalidate_cached_pdf(
+                    report_id,
+                    "Los datos del informe cambiaron; se requiere una nueva generación.",
+                )
 
-        report_match = re.match(r"/api/reports/(\d+)(?:/|$)", path)
-        if report_match and method in {"POST", "PUT", "PATCH", "DELETE"}:
-            invalidate_report_cache(
-                int(report_match.group(1)),
-                "Los datos del informe cambiaron; se requiere una nueva generación.",
-            )
+            # Estas operaciones pueden alterar datos compartidos sin llevar un
+            # report_id en la URL; se invalidan conservadoramente todos los PDF.
+            if path.startswith("/api/firebase/sync") or path.startswith("/api/coordinators"):
+                invalidate_all_cached_pdfs(
+                    "Cambió información compartida que puede afectar los informes.",
+                )
+
         previous_write(self, method, path, payload)
 
     core.InformtitHandler._handle_api_write = cache_aware_write
