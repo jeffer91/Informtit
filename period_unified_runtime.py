@@ -592,15 +592,17 @@ def _sync_shared_general(report_id: int, payload: dict[str, Any]) -> dict[str, A
     project = _project_for_report(report_id)
     if not project:
         raise ValueError("El período del informe no está conciliado.")
-    allowed = ["name", "period", "code", "version", "elaboration_date"]
+    allowed = ["period", "code", "version", "elaboration_date"]
     values = {key: payload[key] for key in allowed if key in payload}
-    if not values:
+    if not values and "name" not in payload:
         return {"ok": True}
     project_id = int(project["id"])
     now = utcnow()
     with connection() as conn:
         current = conn.execute("SELECT * FROM period_projects WHERE id=?", (project_id,)).fetchone()
         period = clean_cell(values.get("period") or current["period"])
+        values["name"] = period_policy_runtime.automatic_report_name(period)
+        synchronized_fields = ["name", "period", "code", "version", "elaboration_date"]
         kind = str(current["report_type"] or period_policy_runtime.classify_period(period))
         new_key = _project_key(period, kind)
         conflict = conn.execute(
@@ -611,7 +613,7 @@ def _sync_shared_general(report_id: int, payload: dict[str, Any]) -> dict[str, A
             raise ValueError("Ya existe otro proyecto para ese período académico.")
         assignments = []
         params: list[Any] = []
-        for key in allowed:
+        for key in synchronized_fields:
             if key in values:
                 assignments.append(f"{key}=?")
                 params.append(clean_cell(values[key]))
@@ -625,7 +627,7 @@ def _sync_shared_general(report_id: int, payload: dict[str, Any]) -> dict[str, A
 
         report_assignments = []
         report_params: list[Any] = []
-        for key in allowed:
+        for key in synchronized_fields:
             if key in values:
                 report_assignments.append(f"{key}=?")
                 report_params.append(clean_cell(values[key]))
