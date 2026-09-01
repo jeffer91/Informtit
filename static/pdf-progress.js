@@ -474,18 +474,40 @@
     startingPdf = true;
     const originalText = button?.textContent || label;
     try {
-      // Si nada cambió desde la última generación, descargar la copia persistente
-      // de inmediato y evitar tanto la auditoría como la maquetación completa.
+      // Si nada cambió desde la última generación, ofrecer directamente la
+      // copia persistente. Un problema al guardarla en Windows NO debe provocar
+      // una regeneración de un PDF que ya existe correctamente en Informtit.
       try {
         const cacheResult = await api(`/api/reports/${id}/pdf-cache`);
         if (cacheResult?.cache?.available) {
-          if (button) button.textContent = 'Descargando PDF guardado…';
-          await downloadPdfUrl(`/api/reports/${id}/pdf-cache/download`);
-          toast('PDF guardado descargado. No fue necesario regenerarlo.');
+          if (button) button.textContent = 'Abriendo PDF guardado…';
+          const cache = cacheResult.cache;
+          pendingDownload = null;
+          prepareDownload(
+            `/api/reports/${id}/pdf-cache/download`,
+            cache.filename || `Informe_${label}.pdf`,
+          );
+          setProgress({
+            status: 'completed',
+            progress: 100,
+            stage: 'PDF guardado disponible',
+            detail: 'No fue necesario regenerar el documento. Seleccione dónde desea guardar una copia.',
+            duration_seconds: 0,
+            steps: [{
+              stage: 'PDF guardado disponible',
+              progress: 100,
+              detail: 'Se reutilizó la última versión vigente.',
+            }],
+          });
+          const saved = await triggerPendingDownload();
+          if (saved?.ok) {
+            const completedOverlay = ensureProgressUI();
+            setTimeout(() => { completedOverlay.hidden = true; }, 1400);
+          }
           return;
         }
       } catch (cacheError) {
-        console.warn('[Informtit PDF cache] Se regenerará el documento:', cacheError);
+        console.warn('[Informtit PDF cache] No se pudo consultar la copia guardada; se generará nuevamente:', cacheError);
       }
 
       // Feedback inmediato: la auditoría previa también puede tardar en informes
