@@ -30,8 +30,9 @@ class PeriodUnifiedFrontendTests(unittest.TestCase):
         self.assertNotIn("PDF Online", script)
         self.assertIn("Generar informes", html)
         self.assertIn("PDFs generados", html)
-        self.assertIn("PDF Presencial", generated)
-        self.assertIn("PDF Online", generated)
+        self.assertIn("label: 'Presencial'", generated)
+        self.assertIn("label: 'Online'", generated)
+        self.assertIn("<h3>PDF ${esc(target.label)}</h3>", generated)
         self.assertIn("period_project_id", script)
         self.assertIn("Cronograma compartido", script)
 
