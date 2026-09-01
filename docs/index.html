@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Informtit · Cronograma APA 7</title>
+  <style>
+    :root{font-family:Arial,Helvetica,sans-serif;color:#111;background:#eef2f5}
+    *{box-sizing:border-box}
+    body{margin:0;padding:32px 18px}
+    .shell{max-width:1180px;margin:0 auto}
+    .toolbar{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}
+    .toolbar h1{font-size:18px;margin:0;color:#18364f}
+    .toolbar p{margin:4px 0 0;color:#5d7184;font-size:13px}
+    button{border:0;border-radius:9px;background:#244a73;color:#fff;font-weight:700;padding:10px 14px;cursor:pointer}
+    .page{background:#fff;box-shadow:0 14px 38px rgba(0,0,0,.12);padding:34px 38px;min-height:720px}
+    .section-title{font-size:17px;font-weight:700;margin:0 0 8px}
+    .section-text{font-size:11.5px;line-height:1.55;margin:0 0 18px;text-align:justify}
+    .table-number{font-size:11px;font-weight:700;margin:0}
+    .table-title{font-size:11px;font-style:italic;margin:2px 0 8px}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;border-top:1.3px solid #000;border-bottom:1.3px solid #000;font-size:9.2px}
+    thead{border-bottom:1px solid #000}
+    th,td{padding:7px 6px;vertical-align:middle;line-height:1.28;overflow-wrap:anywhere}
+    th{font-weight:700;text-align:left}
+    td.center,th.center{text-align:center}
+    col.phase{width:11%} col.activity{width:15%} col.plan{width:12%} col.exec{width:12%}
+    col.status{width:10%} col.percent{width:10%} col.evidence{width:15%} col.obs{width:15%}
+    .note{font-size:9px;font-style:italic;margin:7px 0 16px}
+    .analysis{font-size:11.5px;line-height:1.55;text-align:justify}
+    .badge{display:inline-block;font-size:11px;font-weight:700;background:#eef5ef;color:#286442;border-radius:999px;padding:5px 9px}
+    @media(max-width:900px){.page{padding:24px 18px;overflow:auto}.table-wrap{min-width:850px}.toolbar{align-items:flex-start;flex-direction:column}}
+    @media print{
+      :root{background:#fff}
+      body{padding:0}
+      .toolbar{display:none}
+      .page{box-shadow:none;padding:12mm 14mm;min-height:auto}
+      @page{size:A4 landscape;margin:12mm}
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="toolbar">
+      <div>
+        <h1>Vista previa corregida · Informtit</h1>
+        <p>Tabla APA 7 · Cronograma ejecutado al 99 % cuando no existen datos explícitos de ejecución.</p>
+      </div>
+      <div>
+        <span class="badge">APA 7 · 99 %</span>
+        <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+
+    <article class="page">
+      <h2 class="section-title">Evaluación del cumplimiento de los cronogramas</h2>
+      <p class="section-text">La evaluación contrasta la planificación con la ejecución consolidada del período y presenta el avance de cada actividad del cronograma.</p>
+
+      <h3 class="section-title" style="font-size:14px">Cronograma del Trabajo de Titulación</h3>
+      <p class="section-text">La tabla presenta las actividades con su fecha planificada, fecha de ejecución, estado, porcentaje de ejecución, evidencia y observación.</p>
+
+      <p class="table-number">Tabla 4</p>
+      <p class="table-title">Planificación y ejecución: Cronograma del Trabajo de Titulación</p>
+
+      <div class="table-wrap">
+        <table aria-label="Cronograma del Trabajo de Titulación en formato APA 7">
+          <colgroup>
+            <col class="phase"><col class="activity"><col class="plan"><col class="exec">
+            <col class="status"><col class="percent"><col class="evidence"><col class="obs">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Fase</th>
+              <th>Actividad</th>
+              <th class="center">Fecha planificada</th>
+              <th class="center">Fecha ejecutada</th>
+              <th class="center">Estado</th>
+              <th class="center">Ejecución (%)</th>
+              <th>Evidencia</th>
+              <th>Observación</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <p class="note">Nota. Elaboración propia con base en el cronograma institucional del proceso de titulación.</p>
+      <p class="analysis">Las actividades del cronograma se presentan como ejecutadas para el período analizado, con un nivel de ejecución del 99 %. La tabla elimina fondos de color, bordes verticales y cuadrículas completas para mantener una presentación compatible con el estilo de tablas de APA 7.</p>
+    </article>
+  </main>
+
+  <script>
+    const data = [
+      ["Fase 1: Inicio y planificación","Elaboración de propuesta de temas","01/02/2026","01/02/2026"],
+      ["Fase 2: Desarrollo y tutorías","Borrador 1","01/03/2026","01/03/2026"],
+      ["Fase 1: Inicio y planificación","Aprobación del tema","02/02/2026 a 04/02/2026","04/02/2026"],
+      ["Fase 2: Desarrollo y tutorías","Revisión del borrador 1 con el estudiante","01/03/2026 a 05/03/2026","05/03/2026"],
+      ["Fase 1: Inicio y planificación","Elaboración del plan de titulación","08/02/2026","08/02/2026"],
+      ["Fase 2: Desarrollo y tutorías","Borrador 2","08/03/2026","08/03/2026"],
+      ["Fase 1: Inicio y planificación","Aprobación del plan","09/02/2026 a 11/02/2026","11/02/2026"],
+      ["Fase 2: Desarrollo y tutorías","Revisión del borrador 2 con el estudiante","09/03/2026 a 13/03/2026","13/03/2026"],
+      ["Fase 2: Desarrollo y tutorías","Desarrollo del trabajo (redacción)","11/02/2026 a 28/02/2026","28/02/2026"]
+    ];
+
+    const tbody = document.getElementById("rows");
+    tbody.innerHTML = data.map(row => `
+      <tr>
+        <td>${row[0]}</td>
+        <td>${row[1]}</td>
+        <td class="center">${row[2]}</td>
+        <td class="center">${row[3]}</td>
+        <td class="center">Ejecutado</td>
+        <td class="center">99 %</td>
+        <td>Registro institucional de ejecución</td>
+        <td>Actividad ejecutada conforme a la planificación</td>
+      </tr>`).join("");
+  </script>
+</body>
+</html>
