@@ -238,7 +238,8 @@ function safePdfFilename(value) {
 function isAllowedPdfDownloadPath(value) {
   const relative = String(value || '');
   return /^\/api\/pdf-jobs\/[a-f0-9]{32}\/download$/.test(relative)
-    || /^\/api\/reports\/\d+\/pdf-cache\/download$/.test(relative);
+    || /^\/api\/reports\/\d+\/pdf-cache\/download$/.test(relative)
+    || /^\/api\/reports\/\d+\/generated-pdfs\/[a-f0-9]{32}\/download$/.test(relative);
 }
 
 function downloadBackendPdf(relativeUrl, destinationPath) {
