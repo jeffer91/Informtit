@@ -228,9 +228,11 @@ function safePdfFilename(value) {
   let name = String(value || 'Informe_Titulacion.pdf')
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
     .trim();
-  if (!name) name = 'Informe_Titulacion.pdf';
-  if (!name.toLowerCase().endsWith('.pdf')) name += '.pdf';
-  return name.slice(0, 180);
+  name = name.replace(/\.pdf$/i, '').trim();
+  if (!name) name = 'Informe_Titulacion';
+  // Reservar siempre espacio para la extensión; un nombre largo no debe terminar
+  // perdiendo ".pdf" al recortarse.
+  return `${name.slice(0, 175).trim() || 'Informe_Titulacion'}.pdf`;
 }
 
 function isAllowedPdfDownloadPath(value) {
@@ -251,6 +253,11 @@ function downloadBackendPdf(relativeUrl, destinationPath) {
     }
 
     const target = new URL(relativeUrl, appUrl);
+    const tempPath = `${destinationPath}.informtit-${process.pid}-${Date.now()}.part`;
+    const cleanupTemp = () => {
+      fs.rm(tempPath, { force: true }, () => {});
+    };
+
     const request = http.get(target, (response) => {
       const status = Number(response.statusCode || 0);
       if (status < 200 || status >= 300) {
@@ -272,27 +279,58 @@ function downloadBackendPdf(relativeUrl, destinationPath) {
         return;
       }
 
-      const file = fs.createWriteStream(destinationPath);
+      const file = fs.createWriteStream(tempPath, { flags: 'w' });
       let bytes = 0;
-      response.on('data', (chunk) => { bytes += chunk.length; });
+      let header = Buffer.alloc(0);
+
+      response.on('data', (chunk) => {
+        bytes += chunk.length;
+        if (header.length < 5) {
+          const needed = 5 - header.length;
+          header = Buffer.concat([header, chunk.subarray(0, needed)]);
+        }
+      });
       response.on('error', (error) => {
         file.destroy();
-        fs.rm(destinationPath, { force: true }, () => {});
+        cleanupTemp();
         reject(error);
       });
       file.on('error', (error) => {
         response.destroy();
-        fs.rm(destinationPath, { force: true }, () => {});
+        cleanupTemp();
         reject(error);
       });
       file.on('finish', () => {
-        file.close(() => {
-          if (bytes < 5) {
-            fs.rm(destinationPath, { force: true }, () => {});
-            reject(new Error('El PDF recibido está vacío.'));
+        file.close(async () => {
+          if (bytes < 5 || header.toString('ascii') !== '%PDF-') {
+            cleanupTemp();
+            reject(new Error('El backend no entregó un archivo PDF válido.'));
             return;
           }
-          resolve({ bytes });
+
+          const backupPath = `${destinationPath}.informtit-backup-${process.pid}-${Date.now()}`;
+          let backupCreated = false;
+          try {
+            if (fs.existsSync(destinationPath)) {
+              await fs.promises.rename(destinationPath, backupPath);
+              backupCreated = true;
+            }
+            try {
+              await fs.promises.rename(tempPath, destinationPath);
+            } catch (error) {
+              if (backupCreated && fs.existsSync(backupPath)) {
+                await fs.promises.rename(backupPath, destinationPath).catch(() => {});
+              }
+              throw error;
+            }
+            if (backupCreated) {
+              await fs.promises.rm(backupPath, { force: true }).catch(() => {});
+            }
+            resolve({ bytes });
+          } catch (error) {
+            cleanupTemp();
+            reject(error);
+          }
         });
       });
       response.pipe(file);
@@ -301,7 +339,10 @@ function downloadBackendPdf(relativeUrl, destinationPath) {
     request.setTimeout(120000, () => {
       request.destroy(new Error('La descarga del PDF superó el tiempo máximo de espera.'));
     });
-    request.on('error', reject);
+    request.on('error', (error) => {
+      cleanupTemp();
+      reject(error);
+    });
   });
 }
 
@@ -328,11 +369,14 @@ async function savePdfFromBackend(args = {}) {
     return { ok: false, canceled: true };
   }
 
-  const result = await downloadBackendPdf(relativeUrl, selection.filePath);
+  const destinationPath = selection.filePath.toLowerCase().endsWith('.pdf')
+    ? selection.filePath
+    : `${selection.filePath}.pdf`;
+  const result = await downloadBackendPdf(relativeUrl, destinationPath);
   return {
     ok: true,
     canceled: false,
-    path: selection.filePath,
+    path: destinationPath,
     bytes: result.bytes,
   };
 }
