@@ -1,4 +1,9 @@
 const state = { reports: [], activeReport: null, aiProviders: [] };
+const REPORT_MONTHS_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+const REPORT_CODE_DEFAULT_PREFIX = 'UTET-INF-01-PRO-95-';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -331,6 +336,126 @@ async function deleteImage(id) {
   await openReport(state.activeReport.id);
 }
 
+function parseReportPeriod(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)\s+(\d{4})\s*-\s*([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)\s+(\d{4})$/);
+  if (!match) return null;
+  const monthIndex = name => REPORT_MONTHS_ES.findIndex(item => item.toLocaleLowerCase('es') === name.toLocaleLowerCase('es'));
+  const startMonth = monthIndex(match[1]);
+  const endMonth = monthIndex(match[3]);
+  if (startMonth < 0 || endMonth < 0) return null;
+  return {
+    startMonth: startMonth + 1,
+    startYear: Number(match[2]),
+    endMonth: endMonth + 1,
+    endYear: Number(match[4]),
+  };
+}
+
+function reportCodePrefix() {
+  const candidates = [state.activeReport, ...(state.reports || [])];
+  for (const report of candidates) {
+    const code = String(report?.code || '').trim();
+    const match = code.match(/^(.*?)(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/);
+    if (match?.[1]) return match[1];
+  }
+  return REPORT_CODE_DEFAULT_PREFIX;
+}
+
+function reportCodeMonth(value) {
+  const match = String(value || '').trim().match(/((?:19|20)\d{2})-((?:0[1-9]|1[0-2]))$/);
+  return match ? match[0] : '';
+}
+
+function reportCreationDefaults() {
+  const latest = (state.reports || []).find(report => String(report?.period || '').trim());
+  const parsed = parseReportPeriod(latest?.period);
+  const now = new Date();
+  const fallbackEnd = new Date(now.getFullYear(), now.getMonth() + 5, 1);
+  let codeMonth = '';
+  for (const report of [latest, ...(state.reports || [])]) {
+    codeMonth = reportCodeMonth(report?.code);
+    if (codeMonth) break;
+  }
+  return {
+    startMonth: parsed?.startMonth || (now.getMonth() + 1),
+    startYear: parsed?.startYear || now.getFullYear(),
+    endMonth: parsed?.endMonth || (fallbackEnd.getMonth() + 1),
+    endYear: parsed?.endYear || fallbackEnd.getFullYear(),
+    codeMonth: codeMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  };
+}
+
+function refreshDerivedReportFields() {
+  const form = $('#report-form');
+  if (!form) return;
+
+  const startMonth = Number(form.elements.period_start_month?.value || 0);
+  const startYear = Number(form.elements.period_start_year?.value || 0);
+  const endMonth = Number(form.elements.period_end_month?.value || 0);
+  const endYear = Number(form.elements.period_end_year?.value || 0);
+  const endYearInput = form.elements.period_end_year;
+  const submit = $('#create-report-submit');
+
+  const complete = startMonth >= 1 && startMonth <= 12 && endMonth >= 1 && endMonth <= 12
+    && startYear >= 2000 && endYear >= 2000;
+  const chronological = !complete || (endYear * 12 + endMonth) >= (startYear * 12 + startMonth);
+
+  if (endYearInput?.setCustomValidity) {
+    endYearInput.setCustomValidity(chronological ? '' : 'El final del período no puede ser anterior al inicio.');
+  }
+
+  const period = complete && chronological
+    ? `${REPORT_MONTHS_ES[startMonth - 1]} ${startYear} - ${REPORT_MONTHS_ES[endMonth - 1]} ${endYear}`
+    : '';
+  const name = period ? `Informe Final del Proceso de Titulación - ${period}` : '';
+  const codeMonth = String(form.elements.code_month?.value || '');
+  const code = reportCodeMonth(codeMonth) ? `${reportCodePrefix()}${codeMonth}` : '';
+
+  if (form.elements.period) form.elements.period.value = period;
+  if (form.elements.name) form.elements.name.value = name;
+  if (form.elements.code) form.elements.code.value = code;
+
+  const periodPreview = $('#report-period-preview');
+  const namePreview = $('#report-name-preview');
+  const codePreview = $('#report-code-preview');
+  if (periodPreview) periodPreview.textContent = chronological ? (period || '—') : 'El final no puede ser anterior al inicio.';
+  if (namePreview) namePreview.textContent = name || '—';
+  if (codePreview) codePreview.textContent = code || '—';
+  if (submit) submit.disabled = !complete || !chronological || !code;
+}
+
+function initializeReportCreationForm() {
+  const form = $('#report-form');
+  if (!form) return;
+  const defaults = reportCreationDefaults();
+  form.elements.period_start_month.value = String(defaults.startMonth);
+  form.elements.period_start_year.value = String(defaults.startYear);
+  form.elements.period_end_month.value = String(defaults.endMonth);
+  form.elements.period_end_year.value = String(defaults.endYear);
+  form.elements.code_month.value = defaults.codeMonth;
+  if (!String(form.elements.version?.value || '').trim()) form.elements.version.value = '1.0';
+  refreshDerivedReportFields();
+}
+
+function bindReportCreationControls() {
+  const form = $('#report-form');
+  if (!form || form.dataset.periodBuilderBound === '1') return;
+  form.dataset.periodBuilderBound = '1';
+  for (const name of ['period_start_month', 'period_start_year', 'period_end_month', 'period_end_year', 'code_month']) {
+    const control = form.elements[name];
+    control?.addEventListener('input', refreshDerivedReportFields);
+    control?.addEventListener('change', refreshDerivedReportFields);
+  }
+  form.addEventListener('reset', () => setTimeout(refreshDerivedReportFields, 0));
+  document.addEventListener('click', event => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('#new-report-btn, #new-pvc-report-btn')) {
+      setTimeout(initializeReportCreationForm, 0);
+    }
+  }, true);
+}
+
 function setReportDialogType(type = 'normal') {
   const form = $('#report-form');
   const select = form?.elements?.report_type;
@@ -344,13 +469,17 @@ function setReportDialogType(type = 'normal') {
       ? 'PVC genera un único informe de Titulación – Modalidad Artículo Científico.'
       : 'Regular genera dos salidas del mismo período: Presencial y Online.';
   }
+  refreshDerivedReportFields();
 }
 
 function openReportDialog(type = 'normal') {
   setReportDialogType(type);
+  initializeReportCreationForm();
   const dialog = $('#report-dialog');
   if (dialog && !dialog.open) dialog.showModal();
 }
+
+bindReportCreationControls();
 
 $('#report-type-select')?.addEventListener('change', event => {
   setReportDialogType(event.currentTarget.value);
