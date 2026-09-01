@@ -103,7 +103,7 @@ class PdfProgressRuntimeTests(unittest.TestCase):
                 job = self.wait_job(started["id"])
         self.assertEqual(job["status"], "completed")
 
-    def test_generated_pdf_is_persisted_and_reused_without_rebuild(self):
+    def test_generated_pdf_is_persisted_across_db_maintenance_and_invalidated_explicitly(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp)
             db_path = data_dir / "informtit.db"
@@ -118,6 +118,11 @@ class PdfProgressRuntimeTests(unittest.TestCase):
                 status = progress.cache_status(301)
                 self.assertTrue(status["available"])
 
+                # Un cambio técnico en SQLite (por ejemplo, conciliación de arranque)
+                # no debe obligar a regenerar el mismo PDF.
+                db_path.write_bytes(b"database-v2-mantenimiento")
+                self.assertTrue(progress.cache_status(301)["available"])
+
                 with patch.object(
                     progress.core,
                     "build_pdf",
@@ -129,8 +134,11 @@ class PdfProgressRuntimeTests(unittest.TestCase):
                 self.assertTrue(started["cached"])
                 self.assertEqual(started["stage"], "PDF guardado")
 
-                db_path.write_bytes(b"database-v2-con-cambios")
-                self.assertFalse(progress.cache_status(301)["available"])
+                progress.invalidate_cached_pdf(301, "Cambio académico")
+                status = progress.cache_status(301)
+                self.assertTrue(status["saved"])
+                self.assertTrue(status["stale"])
+                self.assertFalse(status["available"])
 
     def test_stalled_flag_uses_last_progress_time(self):
         now = time.time()
@@ -202,7 +210,10 @@ class PdfProgressRuntimeTests(unittest.TestCase):
         self.assertNotIn("/export/presencial", period)
         self.assertNotIn("/export/online", period)
         runtime = Path("pdf_progress_runtime.py").read_text(encoding="utf-8")
+        desktop = Path("desktop_entry.py").read_text(encoding="utf-8")
         self.assertIn("Generando resultados de Núcleos", runtime)
+        self.assertIn("install_cache_invalidation", runtime)
+        self.assertIn("pdf_progress_runtime.install_cache_invalidation()", desktop)
         self.assertIn("report_read_snapshot", runtime)
         self.assertIn("Etapa completada en", runtime)
         self.assertIn("store_preflight", runtime)
