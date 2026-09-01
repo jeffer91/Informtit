@@ -67,10 +67,8 @@ def _project_execution(row: dict[str, Any]) -> dict[str, Any]:
         if projected.get("compliance_percentage") is None:
             projected["compliance_percentage"] = DEFAULT_EXECUTION_PERCENTAGE
 
-    if not str(projected.get("evidence") or "").strip():
-        projected["evidence"] = "Registro institucional de ejecución"
-    if not str(projected.get("observation") or "").strip():
-        projected["observation"] = "Actividad ejecutada conforme a la planificación"
+    # No inventar evidencia ni observaciones: si no existen en la fuente,
+    # el informe debe mostrarlas como ausencia de dato.
 
     return projected
 
@@ -127,8 +125,8 @@ def _rows(rows: list[dict[str, Any]], show_phase: bool) -> tuple[list[str], list
             _execution_pct(row.get("compliance_percentage"))
             if row.get("compliance_percentage") is not None
             else _execution_pct(DEFAULT_EXECUTION_PERCENTAGE),
-            row.get("evidence") or "Registro institucional de ejecución",
-            row.get("observation") or "Actividad ejecutada conforme a la planificación",
+            row.get("evidence") or "—",
+            row.get("observation") or "—",
         ]
         if show_phase:
             current.insert(0, row.get("phase") or "—")
