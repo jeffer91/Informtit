@@ -353,12 +353,6 @@ function parseReportPeriod(value) {
 }
 
 function reportCodePrefix() {
-  const candidates = [state.activeReport, ...(state.reports || [])];
-  for (const report of candidates) {
-    const code = String(report?.code || '').trim();
-    const match = code.match(/^(.*?)(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/);
-    if (match?.[1]) return match[1];
-  }
   return REPORT_CODE_DEFAULT_PREFIX;
 }
 
