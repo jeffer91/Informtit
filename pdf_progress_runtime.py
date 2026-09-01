@@ -692,17 +692,17 @@ def _run_job(job_id: str, report_id: int) -> None:
             download_name = path.name
             _set_progress(98, "Guardando PDF generado", "Conservando una copia para futuras descargas sin regenerar el informe.")
             path = _store_cached_pdf(report_id, path)
-            _set_progress(99, "Preparando descarga", "El PDF está listo; preparando la descarga automática.")
+            _set_progress(99, "Registrando versión generada", "La nueva versión quedó guardada en el historial de PDFs generados.")
 
-        _set_progress(100, "PDF listo", "El informe fue generado correctamente y está listo para descargar.")
+        _set_progress(100, "PDF generado", "El informe fue generado y guardado. Puede descargarlo desde «PDFs generados».")
         with _LOCK:
             job = _JOBS[job_id]
             duration = max(0.0, _now() - float(job.get("created_at") or _now()))
             job.update(
                 status="completed",
                 progress=100,
-                stage="PDF listo",
-                detail="El informe fue generado correctamente y está listo para descargar.",
+                stage="PDF generado",
+                detail="El informe fue generado y guardado. Puede descargarlo desde «PDFs generados».",
                 path=str(path),
                 filename=download_name,
                 cached=False,
@@ -734,40 +734,14 @@ def _run_job(job_id: str, report_id: int) -> None:
 
 
 def start_job(report_id: int, preflight_token: str = "") -> dict[str, Any]:
+    """Inicia SIEMPRE una nueva generación.
+
+    Descargar una versión existente es una operación separada y nunca debe
+    sustituir silenciosamente la acción explícita de Generar.
+    """
     _cleanup_jobs()
     _cleanup_preflights()
 
-    saved = cached_pdf(report_id)
-    if saved:
-        path, _meta = saved
-        job_id = uuid.uuid4().hex
-        now = _now()
-        job = {
-            "id": job_id,
-            "report_id": int(report_id),
-            "status": "completed",
-            "progress": 100,
-            "stage": "PDF guardado",
-            "detail": "Se reutilizó el último PDF porque la información del sistema no ha cambiado.",
-            "error": "",
-            "path": str(path),
-            "filename": str(_meta.get("filename") or path.name),
-            "cached": True,
-            "preflight_token": "",
-            "last_progress_at": now,
-            "steps": [{
-                "stage": "PDF guardado",
-                "progress": 100,
-                "detail": "Se reutilizó el último PDF porque la información del sistema no ha cambiado.",
-                "at": now,
-            }],
-            "duration_seconds": 0.0,
-            "created_at": now,
-            "updated_at": now,
-        }
-        with _LOCK:
-            _JOBS[job_id] = job
-        return _public_job(job)
     with _LOCK:
         active_id = _ACTIVE_BY_REPORT.get(report_id)
         if active_id:
