@@ -167,7 +167,13 @@ def _identity_conflict_result(matches: list[dict[str, Any]], detail: str) -> dic
     }
 
 
-def _smart_match(report_id: int, source_module: str, source_key: str, source: dict[str, Any]) -> dict[str, Any]:
+def _smart_match(
+    report_id: int,
+    source_module: str,
+    source_key: str,
+    source: dict[str, Any],
+    **_context: Any,
+) -> dict[str, Any]:
     """Resuelve identidad fuerte primero y usa similitud solo como apoyo.
 
     La carrera valida contexto, pero nunca reduce una coincidencia exacta de identidad.
