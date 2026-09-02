@@ -344,17 +344,18 @@ def build_pdf_integrity(report_id: int) -> Path:
     if _BASE_BUILD_PDF is None:
         raise RuntimeError("Integridad PDF no configurada.")
 
-    # Una generación directa también debe partir de la población maestra
-    # reconciliada, aunque no haya pasado previamente por la pantalla de auditoría.
-    nuclei_population_integrity.reconcile_population(report_id, refresh=True)
+    # Si el usuario acaba de revisar el preflight, ese resultado YA contiene la
+    # conciliación completa y aprobada. No volver a sincronizar ni conciliar al
+    # entrar al generador: la generación debe ser una operación de solo lectura.
+    validation = pdf_progress_runtime.consume_preflight(report_id, "normal")
+    if validation is None:
+        # Ruta de seguridad para generaciones directas sin preflight previo.
+        nuclei_population_integrity.reconcile_population(report_id, refresh=True)
+        validation = hooks.validation_integrity(report_id)
 
-    # Un solo preflight completo por generación. El generador base vuelve a llamar
-    # validate_pdf_report por diseño; prime_validation hace que esa segunda llamada
-    # reutilice exactamente el mismo resultado en este hilo.
-    validation = (
-        pdf_progress_runtime.consume_preflight(report_id, "normal")
-        or hooks.validation_integrity(report_id)
-    )
+    # El generador base vuelve a llamar validate_pdf_report por diseño;
+    # prime_validation hace que esa segunda llamada reutilice exactamente el mismo
+    # resultado en este hilo.
     audit = validation.get("audit") or integrity.audit_report(report_id)
     errors = list(validation.get("errors") or [])
     if errors or not audit["can_generate_pdf"]:
