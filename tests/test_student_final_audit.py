@@ -99,6 +99,42 @@ class StudentFinalAuditTests(unittest.TestCase):
             )
             return int(cursor.lastrowid)
 
+    def test_reconcile_wrappers_accept_shared_population_context(self):
+        students = [{"id": 1, "full_name": "ANA PEREZ"}]
+        match_index = {"students": students}
+        specs = [
+            ("reconcile_nuclei", "_BASE_RECONCILE_NUCLEI", "_nuclei_source_keys", "NUCLEI"),
+            ("reconcile_complexive", "_BASE_RECONCILE_COMPLEXIVE", "_complexive_source_keys", "COMPLEXIVE"),
+            ("reconcile_thesis", "_BASE_RECONCILE_THESIS", "_thesis_source_keys", "THESIS"),
+        ]
+        for function_name, base_name, keys_name, module in specs:
+            calls = []
+            original_base = getattr(audit, base_name)
+            original_keys = getattr(audit, keys_name)
+            original_mark = audit._mark_current_source_keys
+            setattr(
+                audit,
+                base_name,
+                lambda rid, *, students=None, match_index=None, _calls=calls: (
+                    _calls.append((rid, students, match_index)) or {"ok": True}
+                ),
+            )
+            setattr(audit, keys_name, lambda _rid: set())
+            audit._mark_current_source_keys = lambda *_args, **_kwargs: None
+            try:
+                result = getattr(audit, function_name)(
+                    self.report_id,
+                    students=students,
+                    match_index=match_index,
+                )
+            finally:
+                setattr(audit, base_name, original_base)
+                setattr(audit, keys_name, original_keys)
+                audit._mark_current_source_keys = original_mark
+
+            self.assertTrue(result["ok"], module)
+            self.assertEqual(calls, [(self.report_id, students, match_index)], module)
+
     def test_exact_homonyms_are_ambiguous_not_auto_linked(self):
         students = [
             {
