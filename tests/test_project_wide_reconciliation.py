@@ -90,6 +90,11 @@ class ProjectWideReconciliationTests(unittest.TestCase):
         db.DB_PATH = self.original_db_path
         self.tempdir.cleanup()
 
+    def test_project_bridge_accepts_read_only_sync_flag(self):
+        data = project_runtime._project_students_for_bridge(self.presencial_id, sync=False)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["summary"]["students"], 2)
+
     def test_project_index_finds_online_student_from_presencial_source(self):
         index = project_runtime._project_master_index(self.presencial_id)
         matches = index["by_email"]["abzapata@itsqmet.edu.ec"]
