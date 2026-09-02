@@ -33,11 +33,22 @@ def _current_masters(report_id: int) -> dict[int, dict[str, Any]]:
     }
 
 
-def _safe_reconcile_nuclei(report_id: int) -> dict[str, Any]:
-    """Concilia Núcleos sin mantener un writer abierto mientras el matcher escribe vínculos."""
+def _safe_reconcile_nuclei(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Concilia Núcleos sin writers anidados y reutiliza la población ya cargada."""
     bridge.ensure_bridge_schema()
     courses = bridge.nuclei_service.get_nuclei(report_id).get("courses", [])
-    masters = _current_masters(report_id)
+    if students is None:
+        masters = _current_masters(report_id)
+        students = list(masters.values())
+    else:
+        masters = {int(row["id"]): row for row in students}
+    if match_index is None:
+        match_index = domain.build_match_index(students)
     matched = 0
     pending = 0
     conflicts = 0
@@ -60,7 +71,14 @@ def _safe_reconcile_nuclei(report_id: int) -> dict[str, Any]:
                 "career_name": course.get("career_name") or "",
             }
             source_key = bridge._stable_source_key("NUCLEI", candidate, context)
-            result = bridge._match(report_id, "NUCLEI", source_key, candidate)
+            result = bridge._match(
+                report_id,
+                "NUCLEI",
+                source_key,
+                candidate,
+                students=students,
+                match_index=match_index,
+            )
             sid = result.get("period_student_id")
             status = result.get("status") or domain.MATCH_UNMATCHED
 
@@ -127,8 +145,13 @@ def _safe_reconcile_nuclei(report_id: int) -> dict[str, Any]:
     }
 
 
-def _safe_reconcile_complexive(report_id: int) -> dict[str, Any]:
-    """Calcula primero todos los matches y actualiza students en una transacción final."""
+def _safe_reconcile_complexive(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Calcula los matches reutilizando la población compartida y escribe al final."""
     bridge.ensure_bridge_schema()
     with connection() as conn:
         rows = [
@@ -143,7 +166,13 @@ def _safe_reconcile_complexive(report_id: int) -> dict[str, Any]:
             ).fetchall()
         ]
 
-    masters = _current_masters(report_id)
+    if students is None:
+        masters = _current_masters(report_id)
+        students = list(masters.values())
+    else:
+        masters = {int(row["id"]): row for row in students}
+    if match_index is None:
+        match_index = domain.build_match_index(students)
     matched = 0
     pending = 0
     route_conflicts = 0
@@ -151,7 +180,14 @@ def _safe_reconcile_complexive(report_id: int) -> dict[str, Any]:
 
     for row in rows:
         source_key = bridge._stable_source_key("COMPLEXIVE", row)
-        result = bridge._match(report_id, "COMPLEXIVE", source_key, row)
+        result = bridge._match(
+            report_id,
+            "COMPLEXIVE",
+            source_key,
+            row,
+            students=students,
+            match_index=match_index,
+        )
         sid = result.get("period_student_id")
         status = result.get("status") or domain.MATCH_UNMATCHED
 
@@ -195,8 +231,13 @@ def _safe_reconcile_complexive(report_id: int) -> dict[str, Any]:
     }
 
 
-def _safe_reconcile_thesis(report_id: int) -> dict[str, Any]:
-    """Concilia tesis sin una transacción exterior que bloquee save_source_link."""
+def _safe_reconcile_thesis(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Concilia tesis reutilizando población/índice y sin writer exterior."""
     bridge.ensure_bridge_schema()
     with connection() as conn:
         if not bridge._table_exists(conn, "thesis_projects"):
@@ -209,7 +250,13 @@ def _safe_reconcile_thesis(report_id: int) -> dict[str, Any]:
             ).fetchall()
         ]
 
-    masters = _current_masters(report_id)
+    if students is None:
+        masters = _current_masters(report_id)
+        students = list(masters.values())
+    else:
+        masters = {int(row["id"]): row for row in students}
+    if match_index is None:
+        match_index = domain.build_match_index(students)
     matched = 0
     pending = 0
     route_conflicts = 0
@@ -217,7 +264,14 @@ def _safe_reconcile_thesis(report_id: int) -> dict[str, Any]:
 
     for row in rows:
         source_key = bridge._stable_source_key("THESIS", row)
-        result = bridge._match(report_id, "THESIS", source_key, row)
+        result = bridge._match(
+            report_id,
+            "THESIS",
+            source_key,
+            row,
+            students=students,
+            match_index=match_index,
+        )
         sid = result.get("period_student_id")
         status = result.get("status") or domain.MATCH_UNMATCHED
 
