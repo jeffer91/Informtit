@@ -1294,10 +1294,12 @@ def _final_match(
     module: str,
     source_key: str,
     source: dict[str, Any],
+    **context: Any,
 ) -> dict[str, Any]:
     assert _FINAL_BASE_MATCH is not None
-    # Mantiene el seguimiento de progreso de la capa de rendimiento.
-    result = _FINAL_BASE_MATCH(report_id, module, source_key, source)
+    # Mantiene el seguimiento de progreso y acepta el contexto compartido del
+    # reconciliador optimizado (población/índices ya cargados).
+    result = _FINAL_BASE_MATCH(report_id, module, source_key, source, **context)
     result = _guard_strong_identity_conflict(report_id, module, source_key, source, result)
     result = _guard_weak_manual_recovery(report_id, module, source_key, source, result)
     project_id = _project_id_for_report(report_id)
