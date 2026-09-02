@@ -93,6 +93,29 @@ class ReconciliationReliabilityTests(unittest.TestCase):
         db.DB_PATH = self.original_db_path
         self.tempdir.cleanup()
 
+    def test_final_match_accepts_shared_reconciliation_context(self):
+        original = reliability._FINAL_BASE_MATCH
+        reliability._FINAL_BASE_MATCH = lambda report_id, module, source_key, source, **kwargs: {
+            "status": domain.MATCH_UNMATCHED,
+            "method": "",
+            "confidence": 0.0,
+            "period_student_id": None,
+            "candidates": [],
+            "detail": "",
+        }
+        try:
+            result = reliability._final_match(
+                self.report_id,
+                "NUCLEI",
+                "nuclei:test-context",
+                {"full_name": "SIN COINCIDENCIA"},
+                students=[],
+                match_index={"students": []},
+            )
+        finally:
+            reliability._FINAL_BASE_MATCH = original
+        self.assertIn("status", result)
+
     def test_unlink_complexive_clears_real_source_and_leaves_manual_review_barrier(self):
         result = reliability.unlink_period_source(77, self.link_id)
         self.assertTrue(result["ok"])
