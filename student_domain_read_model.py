@@ -190,8 +190,8 @@ def _effective_reconciliation(row: dict[str, Any]) -> tuple[str, str]:
     return selected_status, selected_detail
 
 
-def consolidated_students(report_id: int) -> dict[str, Any]:
-    students = get_period_students(report_id)
+def consolidated_students(report_id: int, *, sync: bool = True) -> dict[str, Any]:
+    students = get_period_students(report_id, sync=sync)
     complexive = _complexive_records(report_id)
     thesis = _thesis_records(report_id)
     nuclei = _nuclei_records(report_id)
