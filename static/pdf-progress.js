@@ -153,6 +153,7 @@
             <tbody id="report-audit-body"></tbody>
           </table>
           <div id="report-audit-reconciliation" class="report-audit-reconciliation"></div>
+          <div id="report-audit-population" class="report-audit-reconciliation"></div>
           <div class="report-audit-actions">
             <button type="button" class="button secondary" id="report-audit-cancel">Cerrar</button>
             <button type="button" class="button primary" id="report-audit-continue">Generar PDF</button>
@@ -179,7 +180,8 @@
     if (audit.state === 'APTO PARA EMITIR') return 'La información superó los controles críticos. El documento puede emitirse como Informe Final.';
     if (audit.state === 'SIN POBLACIÓN') return 'La fuente confirma que esta modalidad no tiene población. Se generará un informe corto de ausencia de registros.';
     if (audit.state === 'ERROR DE CARGA') return 'Se detectaron errores bloqueantes. Corríjalos antes de generar el PDF.';
-    return 'El documento contiene pendientes críticos. Puede generarse únicamente como Informe Preliminar.';
+    if (audit.can_generate_pdf) return 'El informe final puede generarse con los datos disponibles; las advertencias quedan registradas para seguimiento.';
+    return 'Existen inconsistencias que deben corregirse antes de emitir el informe final.';
   }
 
   function showAudit(audit) {
@@ -205,6 +207,28 @@
     document.getElementById('report-audit-reconciliation').textContent = rec.imported !== undefined
       ? `${reconciliationLabel}: ${rec.imported} importados = ${rec.included} incluidos + ${rec.excluded} excluidos.${reasonText ? ` ${reasonText}.` : ''}`
       : `Sin ${reconciliationLabel.toLowerCase()} disponible.`;
+
+    const population = audit.nuclei_population || {};
+    const missing = Array.isArray(population.missing) ? population.missing : [];
+    const populationNode = document.getElementById('report-audit-population');
+    if (populationNode) {
+      if (population.expected_students !== undefined) {
+        const coverage = population.coverage == null ? 'No aplica' : `${Number(population.coverage).toFixed(2).replace('.', ',')} %`;
+        const missingNames = missing
+          .map(item => `${item.full_name || 'Sin nombre'} — ${item.career_name || 'Sin carrera'}`)
+          .join(' · ');
+        populationNode.innerHTML = `
+          <strong>Población de Núcleos:</strong>
+          ${Number(population.expected_students || 0)} esperados ·
+          ${Number(population.with_nuclei || 0)} con Núcleos ·
+          ${Number(population.missing_students || 0)} sin Núcleos ·
+          cobertura ${escapeHtml(coverage)}.
+          ${missingNames ? `<br><strong>Faltantes:</strong> ${escapeHtml(missingNames)}` : ''}
+        `;
+      } else {
+        populationNode.textContent = '';
+      }
+    }
 
     const continueButton = document.getElementById('report-audit-continue');
     continueButton.hidden = !audit.can_generate_pdf;
