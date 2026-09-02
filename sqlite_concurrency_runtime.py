@@ -26,11 +26,10 @@ _BASE_WRITE: Callable[..., Any] | None = None
 
 
 def _current_masters(report_id: int) -> dict[int, dict[str, Any]]:
-    """Usa el caché de conciliación cuando existe y evita resincronizaciones internas."""
-    return {
-        int(row["id"]): row
-        for row in audit._matching_students(report_id)
-    }
+    """Usa primero la población ya cargada por la conciliación actual."""
+    cached = audit._MATCH_CACHE.get()
+    rows = cached if cached is not None else audit._matching_students(report_id)
+    return {int(row["id"]): row for row in rows}
 
 
 def _safe_reconcile_nuclei(
@@ -71,14 +70,7 @@ def _safe_reconcile_nuclei(
                 "career_name": course.get("career_name") or "",
             }
             source_key = bridge._stable_source_key("NUCLEI", candidate, context)
-            result = bridge._match(
-                report_id,
-                "NUCLEI",
-                source_key,
-                candidate,
-                students=students,
-                match_index=match_index,
-            )
+            result = bridge._match(report_id, "NUCLEI", source_key, candidate)
             sid = result.get("period_student_id")
             status = result.get("status") or domain.MATCH_UNMATCHED
 
@@ -180,14 +172,7 @@ def _safe_reconcile_complexive(
 
     for row in rows:
         source_key = bridge._stable_source_key("COMPLEXIVE", row)
-        result = bridge._match(
-            report_id,
-            "COMPLEXIVE",
-            source_key,
-            row,
-            students=students,
-            match_index=match_index,
-        )
+        result = bridge._match(report_id, "COMPLEXIVE", source_key, row)
         sid = result.get("period_student_id")
         status = result.get("status") or domain.MATCH_UNMATCHED
 
@@ -264,14 +249,7 @@ def _safe_reconcile_thesis(
 
     for row in rows:
         source_key = bridge._stable_source_key("THESIS", row)
-        result = bridge._match(
-            report_id,
-            "THESIS",
-            source_key,
-            row,
-            students=students,
-            match_index=match_index,
-        )
+        result = bridge._match(report_id, "THESIS", source_key, row)
         sid = result.get("period_student_id")
         status = result.get("status") or domain.MATCH_UNMATCHED
 
