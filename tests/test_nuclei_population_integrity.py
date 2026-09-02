@@ -95,7 +95,7 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
 
     @patch("nuclei_population_integrity.get_excel_import_summary", return_value={})
     @patch("nuclei_population_integrity.consolidated_students")
-    @patch("nuclei_population_integrity.reconcile_all")
+    @patch("nuclei_population_integrity.bridge.reconcile_all")
     def test_source_reconciliation_conflict_is_blocking_even_when_students_are_present(
         self, reconcile, consolidated, _summary
     ):
