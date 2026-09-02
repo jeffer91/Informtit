@@ -841,11 +841,7 @@ def reconcile_nuclei(
     match_index: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     def run(rid: int) -> dict[str, Any]:
-        result = _BASE_RECONCILE_NUCLEI(
-            rid,
-            students=students,
-            match_index=match_index,
-        )
+        result = _BASE_RECONCILE_NUCLEI(rid)
         _mark_current_source_keys(rid, "NUCLEI", _nuclei_source_keys(rid))
         return result
 
@@ -859,11 +855,7 @@ def reconcile_complexive(
     match_index: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     def run(rid: int) -> dict[str, Any]:
-        result = _BASE_RECONCILE_COMPLEXIVE(
-            rid,
-            students=students,
-            match_index=match_index,
-        )
+        result = _BASE_RECONCILE_COMPLEXIVE(rid)
         _mark_current_source_keys(rid, "COMPLEXIVE", _complexive_source_keys(rid))
         return result
 
@@ -877,11 +869,7 @@ def reconcile_thesis(
     match_index: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     def run(rid: int) -> dict[str, Any]:
-        result = _BASE_RECONCILE_THESIS(
-            rid,
-            students=students,
-            match_index=match_index,
-        )
+        result = _BASE_RECONCILE_THESIS(rid)
         _mark_current_source_keys(rid, "THESIS", _thesis_source_keys(rid))
         return result
 
@@ -896,16 +884,19 @@ def reconcile_all(
     students: list[dict[str, Any]] | None = None,
     match_index: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Concilia los tres módulos compartiendo población vía ContextVar.
+
+    No se propagan kwargs por la cadena de wrappers legacy: así ninguna capa
+    instalada puede romper el proceso por una firma antigua. El matcher de alto
+    rendimiento toma la misma población desde _MATCH_CACHE y construye su índice
+    una sola vez.
+    """
     def run(rid: int) -> dict[str, Any]:
-        shared = students if students is not None else (_MATCH_CACHE.get() or [])
-        shared_index = match_index
-        if shared_index is None:
-            shared_index = domain.build_match_index(shared)
         return {
             "ok": True,
-            "nuclei": reconcile_nuclei(rid, students=shared, match_index=shared_index),
-            "complexive": reconcile_complexive(rid, students=shared, match_index=shared_index),
-            "thesis": reconcile_thesis(rid, students=shared, match_index=shared_index),
+            "nuclei": reconcile_nuclei(rid),
+            "complexive": reconcile_complexive(rid),
+            "thesis": reconcile_thesis(rid),
         }
 
     return _with_match_cache(report_id, run, students=students)
