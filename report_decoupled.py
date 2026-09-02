@@ -214,18 +214,22 @@ def _add_pdf_objectives(story: list[Any], context: Any, styles: Any, report: dic
 
 
 def _methodology_paragraphs(report_id: int, report: dict[str, Any]) -> list[str]:
+    from report_integrity_core import strict_nuclei
+    from nuclei_population_integrity import reconcile_population
+
     requirements = report_completion.corrected_requirement_analysis(report_id)
-    nuclei = _nucleus_summary(report_id)
+    nuclei = strict_nuclei(report_id)
+    population = reconcile_population(report_id, refresh=False)
     complexive = report_completion._complexive_data(report)["totals"]
     projects = get_projects(report_id)["summary"]
     cutoff = report_quality.base.format_date(report.get("cutoff_date")) if report.get("cutoff_date") else "no registrada"
     return [
         f"La información fue procesada con fecha de corte {cutoff} para el período {report.get('period') or 'analizado'}.",
-        "Informtit organiza el informe en módulos independientes. Requisitos, Núcleos, Examen Complexivo y Trabajo de Titulación se analizan con la información cargada específicamente en cada módulo.",
-        "No se utiliza el resultado de Requisitos para habilitar o excluir registros de Núcleos; tampoco se utiliza Núcleos para habilitar o excluir registros del Examen Complexivo. El Trabajo de Titulación mantiene igualmente su propia población y seguimiento.",
-        f"El módulo de Requisitos contiene {requirements['total'] if requirements else 0} registros; el módulo de Núcleos contiene {nuclei['courses']} cursos y {nuclei['records']} registros de estudiante; el Examen Complexivo contiene {complexive['registered']} registros; y Trabajo de Titulación contiene {projects['total']} registros.",
-        "Las coincidencias de nombre, correo, cédula o sede entre módulos no generan relaciones automáticas. Cada sección conserva sus propios datos y cálculos.",
-        "En Núcleos, la aprobación de cada registro se determina con una nota final igual o superior a 7,00/10. En Examen Complexivo se mantienen las reglas de evaluación propias del módulo, sin depender de las notas de Núcleos.",
+        "Informtit utiliza Requisitos como población maestra del período. La ruta registrada de cada estudiante determina si pertenece a Examen Complexivo o Trabajo de Titulación; los módulos académicos aportan resultados y evidencias, pero no redefinen silenciosamente la población.",
+        f"Para Núcleos se esperan {population['expected_students']} estudiantes activos en ruta Complexivo; {population['with_nuclei']} cuentan con registros conciliados y {population['missing_students']} requieren revisión. El informe final se bloquea cuando existe al menos un estudiante esperado sin Núcleos o un registro fuente sin conciliación.",
+        f"El módulo de Requisitos contiene {requirements['total'] if requirements else 0} registros; Núcleos contiene {len(nuclei.get('courses', []))} cursos conciliados y {sum(int(row.get('records') or 0) for row in nuclei.get('careers', []))} relaciones curso-estudiante; el Examen Complexivo contiene {complexive['registered']} registros; y Trabajo de Titulación contiene {projects['total']} registros.",
+        "La conciliación prioriza cédula, luego correo y finalmente nombre normalizado con carrera; las coincidencias ambiguas requieren revisión y no se asignan de forma silenciosa.",
+        "En Núcleos, la aprobación de cada registro se determina con una nota final igual o superior a 7,00/10. En Examen Complexivo se mantienen las reglas de evaluación propias del módulo, conservando la trazabilidad del mismo estudiante entre fuentes.",
     ]
 
 
