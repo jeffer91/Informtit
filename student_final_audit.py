@@ -478,8 +478,8 @@ def _active_source_links(links: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def get_period_students(report_id: int) -> dict[str, Any]:
-    data = _BASE_GET_STUDENTS(report_id)
+def get_period_students(report_id: int, *, sync: bool = True) -> dict[str, Any]:
+    data = _BASE_GET_STUDENTS(report_id, sync=sync)
     rows = data.get("students", [])
     for row in rows:
         row["source_links"] = _active_source_links(list(row.get("source_links", [])))
@@ -726,6 +726,7 @@ def _audited_bridge_match(
     source_module: str,
     source_key: str,
     source: dict[str, Any],
+    **kwargs: Any,
 ) -> dict[str, Any]:
     manual_review = _manual_review_decision(
         report_id,
@@ -735,7 +736,7 @@ def _audited_bridge_match(
     )
     if manual_review:
         return manual_review
-    return _BASE_BRIDGE_MATCH(report_id, source_module, source_key, source)
+    return _BASE_BRIDGE_MATCH(report_id, source_module, source_key, source, **kwargs)
 
 
 def _mark_current_source_keys(
