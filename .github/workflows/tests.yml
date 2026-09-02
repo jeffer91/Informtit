@@ -103,7 +103,7 @@ jobs:
           test -f out/Informtit-linux-x64/resources/app/static/students-ui.css
           test -f out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/firebase-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
-          grep -q '/pdf-progress.js?v=5.0' out/Informtit-linux-x64/resources/app/static/index.html
+          grep -q '/pdf-progress.js?v=5.1' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/generated-pdfs-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-ui.js?v=1.0' out/Informtit-linux-x64/resources/app/static/index.html
           grep -q '/students-period-ui.js?v=1.1' out/Informtit-linux-x64/resources/app/static/index.html
