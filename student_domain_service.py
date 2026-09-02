@@ -503,6 +503,46 @@ def _candidate_score(source: dict[str, Any], student: dict[str, Any]) -> float:
     return name_score
 
 
+def build_match_index(students: list[dict[str, Any]]) -> dict[str, Any]:
+    """Índices O(1) para resolver primero cédula, correo y nombre+carrera."""
+    by_id: dict[str, list[dict[str, Any]]] = {}
+    by_email: dict[str, list[dict[str, Any]]] = {}
+    by_name_career: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    by_name: dict[str, list[dict[str, Any]]] = {}
+
+    for student in students:
+        sid = _id_number(student.get("identification"))
+        email = _email(student.get("email"))
+        name = _fold(student.get("full_name"))
+        career = _fold(student.get("career_name"))
+        if sid:
+            by_id.setdefault(sid, []).append(student)
+        if email:
+            by_email.setdefault(email, []).append(student)
+        if name:
+            by_name.setdefault(name, []).append(student)
+            by_name_career.setdefault((name, career), []).append(student)
+
+    return {
+        "students": students,
+        "by_id": by_id,
+        "by_email": by_email,
+        "by_name_career": by_name_career,
+        "by_name": by_name,
+    }
+
+
+def _candidate_payload(student: dict[str, Any], similarity: float) -> dict[str, Any]:
+    return {
+        "student_id": int(student["id"]),
+        "identification": student.get("identification") or "",
+        "full_name": student.get("full_name") or "",
+        "email": student.get("email") or "",
+        "career_name": student.get("career_name") or "",
+        "similarity": round(similarity * 100, 1),
+    }
+
+
 def match_source_record(
     report_id: int,
     source_module: str,
@@ -510,45 +550,84 @@ def match_source_record(
     source: dict[str, Any],
     *,
     persist: bool = True,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Matcher común: identifica primero; la habilitación se valida después."""
-    students = get_period_students(report_id)["students"]
-    ranked = sorted(
-        ((_candidate_score(source, student), student) for student in students),
-        key=lambda item: (-item[0], str(item[1].get("full_name") or "")),
-    )
-    top = ranked[0] if ranked else (0.0, None)
-    second = ranked[1][0] if len(ranked) > 1 else 0.0
-    score, student = top
-    status = MATCH_UNMATCHED
-    method = ""
-    selected_id: int | None = None
+    """Matcher común optimizado.
+
+    Las coincidencias exactas usan índices en memoria. SequenceMatcher solo se
+    ejecuta como último recurso cuando no existe cédula, correo ni
+    nombre+carrera exactos.
+    """
+    if students is None:
+        students = get_period_students(report_id, sync=False)["students"]
+    if match_index is None:
+        match_index = build_match_index(students)
 
     sid = _id_number(source.get("identification"))
     semail = _email(source.get("email"))
-    if student:
-        if sid and sid == _id_number(student.get("identification")):
-            status, method, selected_id = MATCH_OK, "CEDULA", int(student["id"])
-        elif semail and semail == _email(student.get("email")):
-            status, method, selected_id = MATCH_OK, "CORREO", int(student["id"])
-        elif score >= 0.97 and (score - second) >= 0.04:
-            status, method, selected_id = MATCH_OK, "NOMBRE_ALTA_CONFIANZA", int(student["id"])
-        elif score > 0 and abs(score - second) < 0.03:
-            status, method = MATCH_AMBIGUOUS, "NOMBRE_AMBIGUO"
-        elif score >= 0.85:
-            status, method = MATCH_REVIEW, "NOMBRE_POSIBLE"
+    sname = _fold(source.get("full_name"))
+    scareer = _fold(source.get("career_name"))
 
-    candidates = [
-        {
-            "student_id": int(item[1]["id"]),
-            "identification": item[1].get("identification") or "",
-            "full_name": item[1].get("full_name") or "",
-            "email": item[1].get("email") or "",
-            "career_name": item[1].get("career_name") or "",
-            "similarity": round(item[0] * 100, 1),
-        }
-        for item in ranked[:8]
-    ]
+    status = MATCH_UNMATCHED
+    method = ""
+    selected_id: int | None = None
+    score = 0.0
+    candidates: list[dict[str, Any]] = []
+
+    exact: list[dict[str, Any]] = []
+    exact_method = ""
+    exact_score = 0.0
+
+    if sid:
+        exact = list(match_index["by_id"].get(sid, []))
+        exact_method = "CEDULA"
+        exact_score = 1.0
+    if not exact and semail:
+        exact = list(match_index["by_email"].get(semail, []))
+        exact_method = "CORREO"
+        exact_score = 0.995
+    if not exact and sname:
+        exact = list(match_index["by_name_career"].get((sname, scareer), []))
+        if not exact and not scareer:
+            exact = list(match_index["by_name"].get(sname, []))
+        exact_method = "NOMBRE_EXACTO"
+        exact_score = 0.99
+
+    if len(exact) == 1:
+        student = exact[0]
+        status = MATCH_OK
+        method = exact_method
+        selected_id = int(student["id"])
+        score = exact_score
+        candidates = [_candidate_payload(student, exact_score)]
+    elif len(exact) > 1:
+        status = MATCH_AMBIGUOUS
+        method = exact_method + "_AMBIGUO"
+        score = exact_score
+        candidates = [_candidate_payload(student, exact_score) for student in exact[:8]]
+    else:
+        # Solo los casos sin coincidencia exacta pagan el costo del fuzzy matching.
+        ranked = sorted(
+            ((_candidate_score(source, student), student) for student in students),
+            key=lambda item: (-item[0], str(item[1].get("full_name") or "")),
+        )
+        top = ranked[0] if ranked else (0.0, None)
+        second = ranked[1][0] if len(ranked) > 1 else 0.0
+        score, student = top
+        if student:
+            if score >= 0.97 and (score - second) >= 0.04:
+                status, method, selected_id = MATCH_OK, "NOMBRE_ALTA_CONFIANZA", int(student["id"])
+            elif score > 0 and abs(score - second) < 0.03:
+                status, method = MATCH_AMBIGUOUS, "NOMBRE_AMBIGUO"
+            elif score >= 0.85:
+                status, method = MATCH_REVIEW, "NOMBRE_POSIBLE"
+        candidates = [
+            _candidate_payload(item[1], item[0])
+            for item in ranked[:8]
+            if item[0] > 0
+        ]
+
     result = {
         "status": status,
         "method": method,
