@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 import completion_service
 import nuclei_excel_import
+import nuclei_population_integrity
 import process_service
 import report_completion
 import report_full_detail as full
@@ -206,10 +207,22 @@ def import_nuclei_audited(report_id: int, payload: dict[str, Any]) -> dict[str, 
     entries = integrity.nuclei_duplicate_entries(records)
     result = dict(_BASE_IMPORT_NUCLEI_EXCEL(report_id, payload))
     integrity.write_duplicate_logs(report_id, "Núcleos", entries)
+
+    # La carga no termina en "archivo importado": inmediatamente se concilia cada
+    # estudiante contra la población maestra del período. Así la UI conoce desde
+    # el mismo momento de la importación quién falta o requiere revisión.
+    population = nuclei_population_integrity.reconcile_population(report_id, refresh=True)
+
     summary = dict(result.get("summary") or {})
     summary["duplicate_exact"] = sum(item["duplicate_type"] == "DUPLICADO EXACTO" for item in entries)
     summary["duplicate_probable"] = sum(item["duplicate_type"] == "DUPLICADO PROBABLE" for item in entries)
+    summary["expected_students"] = population["expected_students"]
+    summary["with_nuclei"] = population["with_nuclei"]
+    summary["missing_students"] = population["missing_students"]
+    summary["coverage"] = population["coverage"]
+    summary["population_ok"] = population["ok"]
     result["summary"] = summary
+    result["population_reconciliation"] = population
     return result
 
 
@@ -224,9 +237,14 @@ def executive_data_integrity(report_id: int) -> dict[str, Any]:
     comp = metrics["complexive"]
     thesis = metrics["thesis"]
     schedules = metrics["schedules"]
+    population = nuclei_population_integrity.reconcile_population(report_id, refresh=False)
+    data["nuclei_population"] = population
     data["indicators"] = [
         ("Estudiantes registrados", req["registered"]),
         ("Cumplieron requisitos", req["complete"]),
+        ("Esperados en Núcleos", population["expected_students"]),
+        ("Con registros conciliados de Núcleos", population["with_nuclei"]),
+        ("Sin registros conciliados de Núcleos", population["missing_students"]),
         ("Registros evaluados en Núcleos", nuc["evaluated"]),
         ("No evaluados en Núcleos", nuc["unevaluated"]),
         ("Aprobados finales en Complexivo", comp["approved"]),
@@ -272,6 +290,18 @@ def automatic_actions_integrity(data: dict[str, Any]) -> list[dict[str, str]]:
             "Áreas responsables de requisitos",
             "Casos de requisitos pendientes o incompletos",
             "Matriz de requisitos",
+        )
+
+    population = audit.get("nuclei_population") or nuclei_population_integrity.reconcile_population(report_id, refresh=False)
+    if population["missing_students"]:
+        names = ", ".join(item["full_name"] for item in population["missing"][:8])
+        suffix = "" if population["missing_students"] <= 8 else f" y {population['missing_students'] - 8} más"
+        add(
+            f"Existen {population['missing_students']} estudiantes activos de la ruta Complexivo sin registros conciliados de Núcleos: {names}{suffix}.",
+            "Corregir la fuente de Núcleos o confirmar manualmente la conciliación de cada estudiante antes de emitir el informe final.",
+            "Coordinación de Titulación y coordinaciones de carrera",
+            "Estudiantes esperados con registros de Núcleos",
+            "Auditoría de población maestra y carga de Núcleos",
         )
 
     nuc = metrics["nuclei"]
