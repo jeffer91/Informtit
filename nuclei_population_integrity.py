@@ -9,7 +9,6 @@ from student_domain_read_model import consolidated_students
 from student_domain_service import (
     PROCESS_ACTIVE,
     ROUTE_COMPLEXIVE,
-    sync_report_students,
 )
 
 
@@ -31,10 +30,11 @@ def reconcile_population(report_id: int, *, refresh: bool = True) -> dict[str, A
         "nuclei": {"matched": 0, "pending": 0, "conflicts": 0, "route_conflicts": 0},
     }
     if refresh:
-        sync_report_students(report_id)
+        # reconcile_all sincroniza Requisitos una sola vez y reutiliza la misma
+        # población/index para todos los módulos.
         reconciliation = reconcile_all(report_id)
 
-    domain = consolidated_students(report_id)
+    domain = consolidated_students(report_id, sync=False)
     students = list(domain.get("students") or [])
 
     expected = [
