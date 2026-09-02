@@ -814,15 +814,19 @@ def _thesis_source_keys(report_id: int) -> set[str]:
 def _with_match_cache(
     report_id: int,
     callback: Callable[[int], dict[str, Any]],
+    *,
+    students: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """Ejecuta una conciliación con una sola población maestra en memoria."""
     current = _MATCH_CACHE.get()
     if current is not None:
         return callback(report_id)
-    students = [
-        row
-        for row in get_period_students(report_id).get("students", [])
-        if int(row.get("requirements_present", 1) or 0) == 1
-    ]
+    if students is None:
+        students = [
+            row
+            for row in get_period_students(report_id).get("students", [])
+            if int(row.get("requirements_present", 1) or 0) == 1
+        ]
     token = _MATCH_CACHE.set(students)
     try:
         return callback(report_id)
@@ -845,11 +849,7 @@ def reconcile_nuclei(
         _mark_current_source_keys(rid, "NUCLEI", _nuclei_source_keys(rid))
         return result
 
-    # Si la capa superior ya cargó la población/índice, no volver a construir el
-    # caché ni a sincronizar Requisitos.
-    if students is not None:
-        return run(report_id)
-    return _with_match_cache(report_id, run)
+    return _with_match_cache(report_id, run, students=students)
 
 
 def reconcile_complexive(
@@ -867,9 +867,7 @@ def reconcile_complexive(
         _mark_current_source_keys(rid, "COMPLEXIVE", _complexive_source_keys(rid))
         return result
 
-    if students is not None:
-        return run(report_id)
-    return _with_match_cache(report_id, run)
+    return _with_match_cache(report_id, run, students=students)
 
 
 def reconcile_thesis(
@@ -892,16 +890,25 @@ def reconcile_thesis(
     return _with_match_cache(report_id, run)
 
 
-def reconcile_all(report_id: int) -> dict[str, Any]:
+def reconcile_all(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     def run(rid: int) -> dict[str, Any]:
+        shared = students if students is not None else (_MATCH_CACHE.get() or [])
+        shared_index = match_index
+        if shared_index is None:
+            shared_index = domain.build_match_index(shared)
         return {
             "ok": True,
-            "nuclei": reconcile_nuclei(rid),
-            "complexive": reconcile_complexive(rid),
-            "thesis": reconcile_thesis(rid),
+            "nuclei": reconcile_nuclei(rid, students=shared, match_index=shared_index),
+            "complexive": reconcile_complexive(rid, students=shared, match_index=shared_index),
+            "thesis": reconcile_thesis(rid, students=shared, match_index=shared_index),
         }
 
-    return _with_match_cache(report_id, run)
+    return _with_match_cache(report_id, run, students=students)
 
 
 def _effective_reconciliation(row: dict[str, Any]) -> tuple[str, str]:
