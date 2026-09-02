@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 import completion_service
 import nuclei_excel_import
+import nuclei_population_integrity
 import process_service
 import report_completion
 import report_pdf_polish as polish
@@ -520,6 +521,8 @@ def reconciliation(report_id: int) -> dict[str, Any]:
             "imported_rows": int(source.get("imported_rows") or 0),
             "duplicate_rows": int(source.get("duplicate_rows") or 0),
             "skipped_rows": int(source.get("skipped_rows") or 0),
+            "students": int(source.get("students") or 0),
+            "courses": int(source.get("courses") or 0),
         },
     }
 
@@ -689,6 +692,7 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
     if resolve_resources:
         resolve_logo(report_id)
     metrics = report_metrics(report_id)
+    population = nuclei_population_integrity.reconcile_population(report_id, refresh=False)
     source = source_context(metrics["report"])
     mode = _source_mode(metrics, source)
     reconciliation_data = reconciliation(report_id)
@@ -716,6 +720,20 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
     formula_errors = [item for item in formulas if not item["ok"]]
     controls = [
         control("Registros conciliados", "ok" if reconciliation_data["balanced"] else "error", f"Importados: {reconciliation_data['imported']}; incluidos: {reconciliation_data['included']}; excluidos: {reconciliation_data['excluded']}.", not reconciliation_data["balanced"]),
+        control(
+            "Población maestra de Núcleos conciliada",
+            "ok" if population["ok"] else "error",
+            (
+                f"Esperados en ruta Complexivo: {population['expected_students']}; "
+                f"con registros de Núcleos: {population['with_nuclei']}; "
+                f"sin Núcleos: {population['missing_students']}; "
+                f"cobertura: {population['coverage'] if population['coverage'] is not None else 'No aplica'} %. "
+                f"Registros fuente sin conciliar: {population['source_links']['pending_records']}; "
+                f"ambiguos/revisión: {population['source_links']['conflicts']}; "
+                f"conflictos de ruta: {population['source_links']['route_conflicts']}."
+            ),
+            not population["ok"],
+        ),
         control("Duplicados resueltos", "warning" if duplicates["unresolved_probable"] else "ok", f"Exactos omitidos en Núcleos: {duplicates['nuclei_exact_omitted']}; probables pendientes: {duplicates['unresolved_probable']}."),
         control("Estados válidos", "warning" if states["pending_classification"] else "ok", f"Pendientes de clasificar: {states['pending_classification']}." if states["pending_classification"] else "Los estados pertenecen al catálogo institucional."),
         control("Cronograma sin duplicados", "error" if schedules["duplicates"] else "ok", f"Duplicados detectados: {schedules['duplicates']}.", bool(schedules["duplicates"])),
@@ -765,7 +783,11 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
         metrics["nuclei"]["unevaluated"] + metrics["complexive"]["not_evaluated"] +
         metrics["thesis"]["incomplete"] + schedules["pending_evaluation"] +
         schedules["incomplete_evidence"] + states["pending_classification"] +
-        duplicates["unresolved_probable"]
+        duplicates["unresolved_probable"] +
+        population["missing_students"] +
+        population["source_links"]["pending_records"] +
+        population["source_links"]["conflicts"] +
+        population["source_links"]["route_conflicts"]
     )
     blocking_errors = [item for item in controls if item["status"] == "error" and item["blocking"]]
     can_generate = not blocking_errors and mode != "import_error"
@@ -795,6 +817,7 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
         "blocking_errors": blocking_errors,
         "metrics": metrics,
         "reconciliation": reconciliation_data,
+        "nuclei_population": population,
         "duplicates": duplicates,
         "states": states,
         "formulas": formulas,
