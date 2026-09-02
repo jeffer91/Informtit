@@ -672,10 +672,16 @@ def _run_job(job_id: str, report_id: int) -> None:
             # La validación completa ya forma parte de core.build_pdf. Antes se
             # ejecutaba también aquí y luego otra vez dentro del generador, lo que
             # repetía consultas y cálculos costosos sin aportar seguridad adicional.
+            has_preflight = bool(str(job_info.get("preflight_token") or ""))
             _set_progress(
                 5,
                 "Preparando datos del informe",
-                "Usando la conciliación ya guardada y preparando las secciones del documento.",
+                (
+                    "Auditoría ya aprobada: reutilizando la conciliación guardada sin volver a procesar estudiantes."
+                    if has_preflight
+                    else
+                    "No existe un preflight previo; se validará una sola vez antes de maquetar el documento."
+                ),
             )
             snapshot = nullcontext()
             try:
