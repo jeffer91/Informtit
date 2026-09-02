@@ -830,30 +830,65 @@ def _with_match_cache(
         _MATCH_CACHE.reset(token)
 
 
-def reconcile_nuclei(report_id: int) -> dict[str, Any]:
+def reconcile_nuclei(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     def run(rid: int) -> dict[str, Any]:
-        result = _BASE_RECONCILE_NUCLEI(rid)
+        result = _BASE_RECONCILE_NUCLEI(
+            rid,
+            students=students,
+            match_index=match_index,
+        )
         _mark_current_source_keys(rid, "NUCLEI", _nuclei_source_keys(rid))
         return result
 
+    # Si la capa superior ya cargó la población/índice, no volver a construir el
+    # caché ni a sincronizar Requisitos.
+    if students is not None:
+        return run(report_id)
     return _with_match_cache(report_id, run)
 
 
-def reconcile_complexive(report_id: int) -> dict[str, Any]:
+def reconcile_complexive(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     def run(rid: int) -> dict[str, Any]:
-        result = _BASE_RECONCILE_COMPLEXIVE(rid)
+        result = _BASE_RECONCILE_COMPLEXIVE(
+            rid,
+            students=students,
+            match_index=match_index,
+        )
         _mark_current_source_keys(rid, "COMPLEXIVE", _complexive_source_keys(rid))
         return result
 
+    if students is not None:
+        return run(report_id)
     return _with_match_cache(report_id, run)
 
 
-def reconcile_thesis(report_id: int) -> dict[str, Any]:
+def reconcile_thesis(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     def run(rid: int) -> dict[str, Any]:
-        result = _BASE_RECONCILE_THESIS(rid)
+        result = _BASE_RECONCILE_THESIS(
+            rid,
+            students=students,
+            match_index=match_index,
+        )
         _mark_current_source_keys(rid, "THESIS", _thesis_source_keys(rid))
         return result
 
+    if students is not None:
+        return run(report_id)
     return _with_match_cache(report_id, run)
 
 
