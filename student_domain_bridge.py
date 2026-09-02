@@ -11,9 +11,11 @@ from student_domain_service import (
     MATCH_OK,
     ROUTE_COMPLEXIVE,
     ROUTE_THESIS,
+    build_match_index,
     get_period_students,
     match_source_record,
     save_source_link,
+    sync_report_students,
 )
 
 
@@ -243,7 +245,15 @@ def _legacy_nucleus_manual_match(report_id: int, source: dict[str, Any]) -> dict
     }
 
 
-def _match(report_id: int, source_module: str, source_key: str, source: dict[str, Any]) -> dict[str, Any]:
+def _match(
+    report_id: int,
+    source_module: str,
+    source_key: str,
+    source: dict[str, Any],
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     manual = _manual_match(report_id, source_module, source_key)
     if manual:
         return manual
@@ -258,17 +268,33 @@ def _match(report_id: int, source_module: str, source_key: str, source: dict[str
         if legacy:
             save_source_link(report_id, source_module, source_key, source, legacy)
             return legacy
-    return match_source_record(report_id, source_module, source_key, source)
+    return match_source_record(
+        report_id,
+        source_module,
+        source_key,
+        source,
+        students=students,
+        match_index=match_index,
+    )
 
 
-def reconcile_nuclei(report_id: int) -> dict[str, Any]:
+def reconcile_nuclei(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     ensure_bridge_schema()
     courses = nuclei_service.get_nuclei(report_id).get("courses", [])
     matched = 0
     pending = 0
     conflicts = 0
     route_conflicts = 0
-    masters = {int(row["id"]): row for row in get_period_students(report_id).get("students", [])}
+    if students is None:
+        students = get_period_students(report_id, sync=False).get("students", [])
+    if match_index is None:
+        match_index = build_match_index(students)
+    masters = {int(row["id"]): row for row in students}
     with connection() as conn:
         for course in courses:
             course_id = int(course.get("id") or 0)
@@ -284,7 +310,14 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
                     "career_name": course.get("career_name") or "",
                 }
                 source_key = _stable_source_key("NUCLEI", candidate, context)
-                result = _match(report_id, "NUCLEI", source_key, candidate)
+                result = _match(
+                    report_id,
+                    "NUCLEI",
+                    source_key,
+                    candidate,
+                    students=students,
+                    match_index=match_index,
+                )
                 sid = result.get("period_student_id")
                 status = result.get("status") or "UNMATCHED"
                 detail = ""
@@ -334,7 +367,12 @@ def reconcile_nuclei(report_id: int) -> dict[str, Any]:
     }
 
 
-def reconcile_complexive(report_id: int) -> dict[str, Any]:
+def reconcile_complexive(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     ensure_bridge_schema()
     with connection() as conn:
         rows = rows_to_dicts(
@@ -350,11 +388,22 @@ def reconcile_complexive(report_id: int) -> dict[str, Any]:
     matched = 0
     route_conflicts = 0
     pending = 0
-    masters = {int(row["id"]): row for row in get_period_students(report_id).get("students", [])}
+    if students is None:
+        students = get_period_students(report_id, sync=False).get("students", [])
+    if match_index is None:
+        match_index = build_match_index(students)
+    masters = {int(row["id"]): row for row in students}
     with connection() as conn:
         for row in rows:
             source_key = _stable_source_key("COMPLEXIVE", row)
-            result = _match(report_id, "COMPLEXIVE", source_key, row)
+            result = _match(
+                report_id,
+                "COMPLEXIVE",
+                source_key,
+                row,
+                students=students,
+                match_index=match_index,
+            )
             sid = result.get("period_student_id")
             status = result.get("status") or "UNMATCHED"
             if status == MATCH_OK and sid:
@@ -380,7 +429,12 @@ def reconcile_complexive(report_id: int) -> dict[str, Any]:
     return {"ok": True, "matched": matched, "pending": pending, "route_conflicts": route_conflicts}
 
 
-def reconcile_thesis(report_id: int) -> dict[str, Any]:
+def reconcile_thesis(
+    report_id: int,
+    *,
+    students: list[dict[str, Any]] | None = None,
+    match_index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     ensure_bridge_schema()
     with connection() as conn:
         if not _table_exists(conn, "thesis_projects"):
@@ -394,11 +448,22 @@ def reconcile_thesis(report_id: int) -> dict[str, Any]:
     matched = 0
     route_conflicts = 0
     pending = 0
-    masters = {int(row["id"]): row for row in get_period_students(report_id).get("students", [])}
+    if students is None:
+        students = get_period_students(report_id, sync=False).get("students", [])
+    if match_index is None:
+        match_index = build_match_index(students)
+    masters = {int(row["id"]): row for row in students}
     with connection() as conn:
         for row in rows:
             source_key = _stable_source_key("THESIS", row)
-            result = _match(report_id, "THESIS", source_key, row)
+            result = _match(
+                report_id,
+                "THESIS",
+                source_key,
+                row,
+                students=students,
+                match_index=match_index,
+            )
             sid = result.get("period_student_id")
             status = result.get("status") or "UNMATCHED"
             if status == MATCH_OK and sid:
@@ -425,9 +490,17 @@ def reconcile_thesis(report_id: int) -> dict[str, Any]:
 
 
 def reconcile_all(report_id: int) -> dict[str, Any]:
+    """Conciliación completa incremental en memoria.
+
+    Requisitos se sincroniza una sola vez; la población y sus índices se
+    reutilizan en Núcleos, Complexivo y Trabajo de Titulación.
+    """
+    sync_report_students(report_id)
+    students = get_period_students(report_id, sync=False).get("students", [])
+    match_index = build_match_index(students)
     return {
         "ok": True,
-        "nuclei": reconcile_nuclei(report_id),
-        "complexive": reconcile_complexive(report_id),
-        "thesis": reconcile_thesis(report_id),
+        "nuclei": reconcile_nuclei(report_id, students=students, match_index=match_index),
+        "complexive": reconcile_complexive(report_id, students=students, match_index=match_index),
+        "thesis": reconcile_thesis(report_id, students=students, match_index=match_index),
     }
