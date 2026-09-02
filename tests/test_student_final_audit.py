@@ -99,7 +99,7 @@ class StudentFinalAuditTests(unittest.TestCase):
             )
             return int(cursor.lastrowid)
 
-    def test_reconcile_wrappers_accept_shared_population_context(self):
+    def test_reconcile_wrappers_share_population_without_forwarding_legacy_kwargs(self):
         students = [{"id": 1, "full_name": "ANA PEREZ"}]
         match_index = {"students": students}
         specs = [
@@ -109,16 +109,17 @@ class StudentFinalAuditTests(unittest.TestCase):
         ]
         for function_name, base_name, keys_name, module in specs:
             calls = []
+            cache_seen = []
             original_base = getattr(audit, base_name)
             original_keys = getattr(audit, keys_name)
             original_mark = audit._mark_current_source_keys
-            setattr(
-                audit,
-                base_name,
-                lambda rid, *, students=None, match_index=None, _calls=calls: (
-                    _calls.append((rid, students, match_index)) or {"ok": True}
-                ),
-            )
+
+            def base(rid, _calls=calls, _cache=cache_seen):
+                _calls.append(rid)
+                _cache.append(audit._MATCH_CACHE.get())
+                return {"ok": True}
+
+            setattr(audit, base_name, base)
             setattr(audit, keys_name, lambda _rid: set())
             audit._mark_current_source_keys = lambda *_args, **_kwargs: None
             try:
@@ -133,7 +134,8 @@ class StudentFinalAuditTests(unittest.TestCase):
                 audit._mark_current_source_keys = original_mark
 
             self.assertTrue(result["ok"], module)
-            self.assertEqual(calls, [(self.report_id, students, match_index)], module)
+            self.assertEqual(calls, [self.report_id], module)
+            self.assertEqual(cache_seen, [students], module)
 
     def test_exact_homonyms_are_ambiguous_not_auto_linked(self):
         students = [
