@@ -444,6 +444,65 @@ def _pdf_nuclei(story: list[Any], context: Any, styles: Any, report_id: int) -> 
         f"Se presentan {len(courses)} cursos o registros académicos de Núcleos correspondientes a la modalidad del informe, con {len(unique_students)} estudiantes únicos. La fuente se conserva por curso, por lo que un curso puede contener uno o pocos estudiantes sin que ello represente la población total de la carrera. Primero se mantiene el detalle nominal de la fuente y después se incorporan los consolidados por carrera.",
     )
 
+    from nuclei_population_integrity import reconcile_population
+    master_population = reconcile_population(report_id, refresh=False)
+    if master_population.get("careers"):
+        report_quality._pdf_body(
+            story,
+            styles,
+            "Antes de presentar calificaciones, se contrasta la población maestra de estudiantes activos en ruta Complexivo con los estudiantes que poseen registros conciliados de Núcleos.",
+        )
+        report_quality._pdf_caption(
+            story,
+            styles,
+            context.table_caption("Cobertura de estudiantes esperados en Núcleos"),
+        )
+        coverage_rows = [
+            [
+                row["career"],
+                row["expected"],
+                row["with_nuclei"],
+                row["missing"],
+                "No aplica" if row["coverage"] is None else f"{row['coverage']:.2f} %".replace(".", ","),
+            ]
+            for row in master_population["careers"]
+        ]
+        story += [
+            full._table(
+                ["Carrera", "Esperados", "Con Núcleos", "Sin Núcleos", "Cobertura"],
+                coverage_rows,
+                [7.0 * cm, 2.2 * cm, 2.4 * cm, 2.3 * cm, 2.4 * cm],
+                styles,
+                7.0,
+            ),
+            Spacer(1, .12 * cm),
+        ]
+    if master_population.get("missing"):
+        report_quality._pdf_body(
+            story,
+            styles,
+            "Los siguientes estudiantes pertenecen a la población activa de la ruta Complexivo, pero no cuentan con registros conciliados de Núcleos. No se asignan notas inexistentes; estos casos requieren corrección de la fuente o conciliación manual.",
+        )
+        report_quality._pdf_caption(
+            story,
+            styles,
+            context.table_caption("Estudiantes sin registros conciliados de Núcleos"),
+        )
+        missing_rows = [
+            [item["full_name"], item["identification"] or "—", item["career_name"], item["process_status"]]
+            for item in master_population["missing"]
+        ]
+        story += [
+            full._table(
+                ["Estudiante", "Identificación", "Carrera", "Estado del proceso"],
+                missing_rows,
+                [6.5 * cm, 2.6 * cm, 5.5 * cm, 2.8 * cm],
+                styles,
+                7.0,
+            ),
+            Spacer(1, .12 * cm),
+        ]
+
     population_rows = [
         [row["career"], row["courses"], row["records"], row["evaluated"], row["approved"], row["failed"], row["unevaluated"]]
         for row in rows
