@@ -65,9 +65,8 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
     @patch("nuclei_population_integrity.get_excel_import_summary")
     @patch("nuclei_population_integrity.consolidated_students")
     @patch("nuclei_population_integrity.reconcile_all")
-    @patch("nuclei_population_integrity.sync_report_students")
     def test_master_population_detects_missing_active_complexive_student(
-        self, sync, reconcile, consolidated, summary
+        self, reconcile, consolidated, summary
     ):
         consolidated.return_value = self._domain()
         reconcile.return_value = {
@@ -83,8 +82,8 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
 
         result = population.reconcile_population(10, refresh=True)
 
-        sync.assert_called_once_with(10)
         reconcile.assert_called_once_with(10)
+        consolidated.assert_called_once_with(10, sync=False)
         self.assertFalse(result["ok"])
         self.assertEqual(result["expected_students"], 2)
         self.assertEqual(result["with_nuclei"], 1)
@@ -97,9 +96,8 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
     @patch("nuclei_population_integrity.get_excel_import_summary", return_value={})
     @patch("nuclei_population_integrity.consolidated_students")
     @patch("nuclei_population_integrity.reconcile_all")
-    @patch("nuclei_population_integrity.sync_report_students")
     def test_source_reconciliation_conflict_is_blocking_even_when_students_are_present(
-        self, sync, reconcile, consolidated, _summary
+        self, reconcile, consolidated, _summary
     ):
         domain = self._domain()
         domain["students"][1]["has_nuclei"] = True
