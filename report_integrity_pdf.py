@@ -173,8 +173,28 @@ def _reconciliation_section(story: list[Any], context: Any, styles: Any, report_
     report_quality._pdf_body(
         story,
         styles,
-        f"Control del Excel de Núcleos: {source['source_rows']} filas fuente, {source['duplicate_rows']} duplicados exactos omitidos y {source['skipped_rows']} filas no aplicables omitidas.",
+        f"Control del Excel de Núcleos: {source['source_rows']} filas fuente, {source['imported_rows']} filas importadas, {source.get('students', 0)} estudiantes únicos y {source.get('courses', 0)} cursos; {source['duplicate_rows']} duplicados exactos y {source['skipped_rows']} filas no aplicables fueron omitidos.",
     )
+
+    population = (audit or {}).get("nuclei_population") or nuclei_population_integrity.reconcile_population(report_id, refresh=False)
+    report_quality._pdf_heading(story, context, styles, 3, "Conciliación de la población estudiantil de Núcleos")
+    report_quality._pdf_body(
+        story,
+        styles,
+        f"La población maestra identifica {population['expected_students']} estudiantes activos en ruta Complexivo. "
+        f"{population['with_nuclei']} cuentan con registros conciliados de Núcleos y {population['missing_students']} no cuentan con ellos. "
+        + (
+            f"La cobertura es del {population['coverage']:.2f} %.".replace(".", ",")
+            if population["coverage"] is not None
+            else "No existe población esperada para calcular cobertura."
+        ),
+    )
+    if population.get("missing"):
+        report_quality._pdf_body(
+            story,
+            styles,
+            "La existencia de estudiantes esperados sin Núcleos constituye un error bloqueante para la emisión final; el sistema no elimina ni completa artificialmente estos casos.",
+        )
 
 
 def pdf_methodology_integrity(story: list[Any], context: Any, styles: Any, report: dict[str, Any], temp_paths: list[Path]) -> None:
