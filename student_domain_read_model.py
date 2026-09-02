@@ -136,6 +136,7 @@ def _academic_consistency(row: dict[str, Any]) -> list[tuple[str, str]]:
         issues.append(("GRADE_CONFLICT", f"Se encontraron notas distintas para el mismo núcleo. {detail}."))
 
     route = str(row.get("route") or "COMPLEXIVO")
+    process_status = str(row.get("process_status") or "").upper()
     official_graduated = bool(row.get("official_graduated"))
     titulation_completed = bool(row.get("official_titulation_completed"))
     if route == "COMPLEXIVO":
@@ -145,7 +146,9 @@ def _academic_consistency(row: dict[str, Any]) -> list[tuple[str, str]]:
             issues.append(("REVIEW_REQUIRED", "Requisitos confirma que el estudiante se graduó, pero no se encontró su nota final de Examen Complexivo."))
         elif not official_graduated and approved:
             issues.append(("OFFICIAL_DATA_CONFLICT", "Existe una nota aprobatoria de Examen Complexivo, pero Requisitos todavía no confirma la graduación oficial."))
-        if titulation_completed and not row.get("has_nuclei"):
+        if process_status == "ACTIVO" and not row.get("has_nuclei"):
+            issues.append(("REVIEW_REQUIRED", "El estudiante está activo en la ruta Complexivo, pero no tiene registros conciliados de Núcleos."))
+        elif titulation_completed and not row.get("has_nuclei"):
             issues.append(("REVIEW_REQUIRED", "Titulación consta CUMPLE en Requisitos, pero no se encontró evidencia de Núcleos para completar la trazabilidad."))
     else:
         has_grade = _has_thesis_grade(row.get("thesis_records", []))
