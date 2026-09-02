@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Any
 
 from nuclei_excel_import import get_excel_import_summary
-from student_domain_bridge import reconcile_all
+import student_domain_bridge as bridge
 from student_domain_read_model import consolidated_students
 from student_domain_service import (
     PROCESS_ACTIVE,
@@ -32,7 +32,7 @@ def reconcile_population(report_id: int, *, refresh: bool = True) -> dict[str, A
     if refresh:
         # reconcile_all sincroniza Requisitos una sola vez y reutiliza la misma
         # población/index para todos los módulos.
-        reconciliation = reconcile_all(report_id)
+        reconciliation = bridge.reconcile_all(report_id)
 
     domain = consolidated_students(report_id, sync=False)
     students = list(domain.get("students") or [])
