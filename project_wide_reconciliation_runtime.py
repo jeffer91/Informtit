@@ -97,8 +97,12 @@ def _project_master_rows(report_id: int) -> list[dict[str, Any]]:
     return rows
 
 
-def _project_students_for_bridge(report_id: int) -> dict[str, Any]:
+def _project_students_for_bridge(report_id: int, *, sync: bool = True) -> dict[str, Any]:
     """Bridge de conciliación: la persona se busca en todo el período.
+
+    El parámetro sync se acepta por compatibilidad con el lector maestro optimizado.
+    Esta función es de solo lectura: la sincronización explícita ocurre una sola vez
+    antes de la conciliación completa.
 
     Solo se usa en las rutinas de conciliación. La lectura normal de la interfaz
     continúa separando Presencial y Online por el report_id oficial de Requisitos.
