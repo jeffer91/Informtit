@@ -373,8 +373,15 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
     return {"ok": True, "students": len(source), "created": created, "updated": updated}
 
 
-def get_period_students(report_id: int) -> dict[str, Any]:
-    sync_report_students(report_id)
+def get_period_students(report_id: int, *, sync: bool = True) -> dict[str, Any]:
+    """Lee la población maestra.
+
+    sync=True mantiene compatibilidad con las pantallas que necesitan refrescar
+    Requisitos. Los procesos de conciliación y generación pueden usar sync=False
+    cuando ya sincronizaron explícitamente una sola vez.
+    """
+    if sync:
+        sync_report_students(report_id)
     with connection() as conn:
         rows = rows_to_dicts(
             conn.execute(
