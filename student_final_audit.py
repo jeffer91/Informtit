@@ -873,9 +873,7 @@ def reconcile_thesis(
         _mark_current_source_keys(rid, "THESIS", _thesis_source_keys(rid))
         return result
 
-    if students is not None:
-        return run(report_id)
-    return _with_match_cache(report_id, run)
+    return _with_match_cache(report_id, run, students=students)
 
 
 def reconcile_all(
