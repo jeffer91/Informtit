@@ -14,6 +14,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 import report_consistency_final as consistency
 import report_full_detail as full
 import report_integrity_core as integrity
+import nuclei_population_integrity
 import report_integrity_hooks as hooks
 import report_quality
 import pdf_progress_runtime
@@ -322,6 +323,10 @@ def build_no_population_pdf(report_id: int, audit: dict[str, Any]) -> Path:
 def build_pdf_integrity(report_id: int) -> Path:
     if _BASE_BUILD_PDF is None:
         raise RuntimeError("Integridad PDF no configurada.")
+
+    # Una generación directa también debe partir de la población maestra
+    # reconciliada, aunque no haya pasado previamente por la pantalla de auditoría.
+    nuclei_population_integrity.reconcile_population(report_id, refresh=True)
 
     # Un solo preflight completo por generación. El generador base vuelve a llamar
     # validate_pdf_report por diseño; prime_validation hace que esa segunda llamada
