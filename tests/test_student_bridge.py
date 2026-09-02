@@ -5,19 +5,28 @@ import student_domain_bridge as bridge
 
 
 class StudentBridgeTests(unittest.TestCase):
-    @patch("student_domain_bridge.nuclei_service.get_nuclei", return_value={"courses": []})
+    @patch("student_domain_bridge.sync_report_students")
+    @patch("student_domain_bridge.get_period_students", return_value={"students": []})
+    @patch("student_domain_bridge.reconcile_nuclei", return_value={"ok": True, "matched": 0, "pending": 0, "conflicts": 0, "route_conflicts": 0})
     @patch("student_domain_bridge.reconcile_complexive", return_value={"ok": True, "matched": 0, "pending": 0, "route_conflicts": 0})
     @patch("student_domain_bridge.reconcile_thesis", return_value={"ok": True, "matched": 0, "pending": 0, "route_conflicts": 0})
-    def test_reconcile_all_keeps_modules_separate(self, thesis_mock, complexive_mock, _nuclei_mock):
-        with patch("student_domain_bridge.ensure_bridge_schema"):
-            with patch("student_domain_bridge.connection"):
-                result = bridge.reconcile_all(1)
+    def test_reconcile_all_keeps_modules_separate(
+        self, thesis_mock, complexive_mock, nuclei_mock, students_mock, sync_mock
+    ):
+        result = bridge.reconcile_all(1)
         self.assertTrue(result["ok"])
         self.assertIn("nuclei", result)
         self.assertIn("complexive", result)
         self.assertIn("thesis", result)
-        complexive_mock.assert_called_once_with(1)
-        thesis_mock.assert_called_once_with(1)
+        sync_mock.assert_called_once_with(1)
+        students_mock.assert_called_once_with(1, sync=False)
+        nuclei_mock.assert_called_once()
+        complexive_mock.assert_called_once()
+        thesis_mock.assert_called_once()
+        for mocked in (nuclei_mock, complexive_mock, thesis_mock):
+            _, kwargs = mocked.call_args
+            self.assertEqual(kwargs["students"], [])
+            self.assertIn("match_index", kwargs)
 
     @patch("student_domain_bridge.match_source_record")
     @patch("student_domain_bridge._manual_match")
