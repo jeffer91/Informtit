@@ -117,6 +117,33 @@ class StudentDomainTests(unittest.TestCase):
         self.assertEqual(row["official_graduated"], 1)
         self.assertEqual(row["official_titulation_completed"], 1)
 
+
+    def test_get_period_students_can_read_without_resync(self):
+        self._insert_requirement()
+        domain.sync_report_students(self.report_id)
+        with patch("student_domain_service.sync_report_students") as sync_mock:
+            data = domain.get_period_students(self.report_id, sync=False)
+        sync_mock.assert_not_called()
+        self.assertEqual(len(data["students"]), 1)
+
+    def test_indexed_match_uses_exact_name_and_career_without_fuzzy_scan(self):
+        self._insert_requirement()
+        domain.sync_report_students(self.report_id)
+        students = domain.get_period_students(self.report_id, sync=False)["students"]
+        index = domain.build_match_index(students)
+        with patch("student_domain_service.SequenceMatcher", side_effect=AssertionError("fuzzy no debe ejecutarse")):
+            result = domain.match_source_record(
+                self.report_id,
+                "NUCLEI",
+                "row-indexed",
+                {"full_name": "ANA PEREZ", "career_name": "ENFERMERIA"},
+                persist=False,
+                students=students,
+                match_index=index,
+            )
+        self.assertEqual(result["status"], domain.MATCH_OK)
+        self.assertEqual(result["method"], "NOMBRE_EXACTO")
+
     def test_matching_does_not_create_students(self):
         self._insert_requirement()
         domain.sync_report_students(self.report_id)
