@@ -361,9 +361,10 @@ def _tracked_match(
     source_module: str,
     source_key: str,
     source: dict[str, Any],
+    **context: Any,
 ) -> dict[str, Any]:
     assert _BASE_MATCH is not None
-    result = _BASE_MATCH(report_id, source_module, source_key, source)
+    result = _BASE_MATCH(report_id, source_module, source_key, source, **context)
     if _active_job():
         _advance_progress(result)
     return result
