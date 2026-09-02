@@ -154,6 +154,19 @@ class ReportIntegrityCoreTests(unittest.TestCase):
         self.assertEqual(reasons["Otra modalidad"], 1)
 
 
+    def test_audit_source_contains_blocking_population_controls(self):
+        source = open("report_integrity_core.py", encoding="utf-8").read()
+        self.assertIn("Población maestra de Núcleos conciliada", source)
+        self.assertIn("Integridad de cursos importados de Núcleos", source)
+        self.assertIn("not population[\"ok\"]", source)
+        self.assertIn("source_course_count != stored_course_count", source)
+
+    def test_pdf_preflight_exposes_missing_student_names(self):
+        source = open("static/pdf-progress.js", encoding="utf-8").read()
+        self.assertIn("audit.nuclei_population", source)
+        self.assertIn("<strong>Faltantes:</strong>", source)
+        self.assertIn("population.missing_students", source)
+
     def test_dense_ranking_keeps_ties_in_same_position(self):
         self.assertEqual(
             final_fixes.dense_ranks([100.0, 100.0, 97.37, 97.37, 90.0]),
