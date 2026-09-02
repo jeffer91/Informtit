@@ -252,14 +252,18 @@ def _pdf_objectives(story: list[Any], context: Any, styles: Any, report: dict[st
 
 
 def _methodology_paragraphs(report_id: int, report: dict[str, Any]) -> list[str]:
+    from report_integrity_core import strict_nuclei
+    from nuclei_population_integrity import reconcile_population
+
     requirements = report_completion.corrected_requirement_analysis(report_id)
-    nuclei = get_nuclei(report_id).get("courses", [])
+    nuclei = strict_nuclei(report_id).get("courses", [])
+    population = reconcile_population(report_id, refresh=False)
     complexive = report_completion._complexive_data(report)["totals"]
     projects = get_projects(report_id)["summary"]
     cutoff = report_quality.base.format_date(report.get("cutoff_date")) if report.get("cutoff_date") else "el cierre documental del período"
     return [
-        f"El alcance comprende la información académica y administrativa disponible para el período {report.get('period') or 'analizado'}, con fecha de corte correspondiente a {cutoff}. El análisis considera de manera diferenciada los registros de Requisitos, Núcleos, Examen Complexivo y Trabajo de Titulación, sin asumir correspondencia automática entre las poblaciones de cada componente.",
-        f"La base analizada contiene {requirements['total'] if requirements else 0} registros en Requisitos, {len(nuclei)} cursos de Núcleos, {complexive['registered']} registros en Examen Complexivo y {projects['total']} registros en Trabajo de Titulación. Cada conjunto se procesa con sus propios criterios, de modo que los resultados reflejan únicamente la información efectivamente registrada en la fuente correspondiente.",
+        f"El alcance comprende la información académica y administrativa disponible para el período {report.get('period') or 'analizado'}, con fecha de corte correspondiente a {cutoff}. Requisitos constituye la población maestra; la ruta de cada estudiante determina si corresponde a Examen Complexivo o Trabajo de Titulación, y los registros de Núcleos se concilian contra los estudiantes activos de la ruta Complexivo.",
+        f"La base analizada contiene {requirements['total'] if requirements else 0} registros en Requisitos, {len(nuclei)} cursos conciliados de Núcleos, {population['expected_students']} estudiantes esperados en Núcleos y {population['with_nuclei']} con registros conciliados, {complexive['registered']} registros en Examen Complexivo y {projects['total']} registros en Trabajo de Titulación. Los estudiantes sin Núcleos no se omiten: se identifican como faltantes de conciliación y bloquean la emisión final hasta su revisión.",
         "Las fuentes de información comprenden matrices institucionales de requisitos, registros académicos, calificaciones de los cursos, cronogramas, actas, rúbricas, evidencias de ejecución y documentos de seguimiento. Antes del análisis se realiza depuración de encabezados y registros no aplicables, normalización de nombres y campos, verificación de valores numéricos y consolidación de duplicados cuando existe evidencia suficiente para hacerlo.",
         "El tratamiento de los datos es descriptivo y comparativo. Se calculan frecuencias, porcentajes de cumplimiento, tasas de aprobación y reprobación, promedios y distribución de estados. Los resultados se presentan mediante tablas y gráficos para facilitar la lectura institucional, y cada tabla incorpora un contexto previo y una interpretación posterior orientada a explicar el significado de los datos, no solamente a repetirlos.",
         "La evaluación académica se interpreta desde un enfoque de resultados de aprendizaje, evaluación auténtica y retroalimentación, reconociendo que la evidencia evaluativa debe ser válida, comprensible y útil para la toma de decisiones (Biggs & Tang, 2011; Black & Wiliam, 2009; Gulikers et al., 2004; Hattie & Timperley, 2007; Nicol & Macfarlane-Dick, 2006; Sadler, 1989; Wiggins, 1998).",
