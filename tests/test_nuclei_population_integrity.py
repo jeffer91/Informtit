@@ -64,7 +64,7 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
 
     @patch("nuclei_population_integrity.get_excel_import_summary")
     @patch("nuclei_population_integrity.consolidated_students")
-    @patch("nuclei_population_integrity.reconcile_all")
+    @patch("nuclei_population_integrity.bridge.reconcile_all")
     def test_master_population_detects_missing_active_complexive_student(
         self, reconcile, consolidated, summary
     ):
