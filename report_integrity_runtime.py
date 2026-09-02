@@ -21,6 +21,7 @@ import report_integrity_overrides as overrides
 import report_integrity_pdf as integrity_pdf
 import report_integrity_requirements as integrity_requirements
 import report_integrity_rules as rules
+import nuclei_population_integrity
 import report_pdf_polish as polish
 import report_quality
 import pdf_progress_runtime
@@ -116,10 +117,14 @@ def install() -> None:
         match = re.fullmatch(r"/api/reports/(\d+)/audit", path)
         if match:
             report_id = int(match.group(1))
+            # Antes de congelar el snapshot, conciliar Requisitos -> población
+            # maestra -> Núcleos. Así ningún estudiante activo de Complexivo puede
+            # desaparecer silenciosamente de la auditoría o del PDF.
+            nuclei_population_integrity.reconcile_population(report_id, refresh=True)
             # La auditoría usa el mismo snapshot de lectura que la generación PDF.
             # Así report_data, Núcleos, Complexivo, Trabajo de Titulación y las
             # decisiones manuales se calculan una vez y se reutilizan durante todo
-            # el preflight, sin volver a conciliar ni reconsultar por cada control.
+            # el preflight.
             with report_integration.report_read_snapshot():
                 validation = hooks.validation_integrity(report_id)
             token = pdf_progress_runtime.store_preflight(report_id, "normal", validation)
