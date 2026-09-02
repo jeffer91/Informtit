@@ -694,8 +694,10 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
     metrics = report_metrics(report_id)
     population = nuclei_population_integrity.reconcile_population(report_id, refresh=False)
     source = source_context(metrics["report"])
+    source_course_count = int(population.get("source_import", {}).get("courses") or 0)
     mode = _source_mode(metrics, source)
     reconciliation_data = reconciliation(report_id)
+    stored_course_count = int(reconciliation_data.get("imported") or 0)
     duplicates = duplicate_summary(report_id)
     states = status_summary(report_id)
     formulas = formula_checks(metrics, reconciliation_data)
@@ -720,6 +722,16 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
     formula_errors = [item for item in formulas if not item["ok"]]
     controls = [
         control("Registros conciliados", "ok" if reconciliation_data["balanced"] else "error", f"Importados: {reconciliation_data['imported']}; incluidos: {reconciliation_data['included']}; excluidos: {reconciliation_data['excluded']}.", not reconciliation_data["balanced"]),
+        control(
+            "Integridad de cursos importados de Núcleos",
+            "ok" if not source_course_count or source_course_count == stored_course_count else "error",
+            (
+                f"El resumen de importación registra {source_course_count} cursos y la base contiene {stored_course_count}; ambos valores coinciden."
+                if not source_course_count or source_course_count == stored_course_count
+                else f"El resumen de importación registra {source_course_count} cursos, pero la base contiene {stored_course_count}. Revise pérdida, sobreescritura o exclusión no trazada de cursos."
+            ),
+            bool(source_course_count and source_course_count != stored_course_count),
+        ),
         control(
             "Población maestra de Núcleos conciliada",
             "ok" if population["ok"] else "error",
