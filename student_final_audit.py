@@ -1032,6 +1032,7 @@ def get_period_student_domain(period_project_id: int) -> dict[str, Any]:
         "students": len(rows),
         "complexive": sum(row.get("route") == domain.ROUTE_COMPLEXIVE for row in rows),
         "thesis": sum(row.get("route") == domain.ROUTE_THESIS for row in rows),
+        "article": sum(row.get("route") == domain.ROUTE_ARTICLE for row in rows),
         "graduated": sum(bool(row.get("official_graduated")) for row in rows),
         "retired": sum(row.get("process_status") == domain.PROCESS_RETIRED for row in rows),
         "one_missing": sum(
@@ -1067,7 +1068,7 @@ def reset_process_status(report_id: int, student_id: int) -> dict[str, Any]:
         if requirement:
             status, _missing = domain._derived_process(dict(requirement))
         else:
-            status = domain.PROCESS_RETIRED
+            status = domain.PROCESS_WITH_ONE_MISSING
         old = str(master["process_status"])
         now = utcnow()
         conn.execute(
@@ -1212,8 +1213,15 @@ def _safe_get_eligibility(report_id: int) -> dict[str, Any]:
         if master["route"] == domain.ROUTE_THESIS:
             row["option"] = "Trabajo de Titulación"
             row["eligible_for_complexive"] = False
+            row["eligible_for_nuclei"] = False
             row["status"] = "Trabajo de Titulación"
             row["stage_status"] = "Trabajo de Titulación"
+        elif master["route"] == domain.ROUTE_ARTICLE:
+            row["option"] = "Artículo Académico"
+            row["eligible_for_complexive"] = False
+            row["eligible_for_nuclei"] = False
+            row["status"] = "Artículo Académico"
+            row["stage_status"] = "Artículo Académico"
         elif row.get("eligible_for_nuclei"):
             row["option"] = "Examen Complexivo"
 
@@ -1222,9 +1230,12 @@ def _safe_get_eligibility(report_id: int) -> dict[str, Any]:
     summary["thesis_students"] = sum(
         row.get("route") == domain.ROUTE_THESIS for row in master_rows
     )
+    summary["article_students"] = sum(
+        row.get("route") == domain.ROUTE_ARTICLE for row in master_rows
+    )
     summary["complexive_candidates"] = sum(
         row.get("route") == domain.ROUTE_COMPLEXIVE
-        and row.get("process_status") != domain.PROCESS_RETIRED
+        and row.get("process_status") == domain.PROCESS_ACTIVE
         for row in master_rows
     )
     summary["official_graduated"] = sum(
