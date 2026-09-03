@@ -283,12 +283,13 @@ def automatic_actions_integrity(data: dict[str, Any]) -> list[dict[str, str]]:
         })
 
     req = metrics["requirements"]
-    if req["pending"] or req["incomplete"]:
+    if req["incomplete"]:
         add(
-            f"Existen {req['pending']} casos con requisitos NO CUMPLE y {req['incomplete']} con información incompleta.",
-            "Completar, corregir o clasificar los requisitos pendientes antes del cierre.",
+            f"Existen {req['incomplete']} casos con información de requisitos sin clasificación final.",
+            "Corregir o clasificar únicamente los requisitos sin información. "
+            "Los estados NO CUMPLE ya son resultados terminales del período y no deben reabrirse automáticamente.",
             "Áreas responsables de requisitos",
-            "Casos de requisitos pendientes o incompletos",
+            "Casos de requisitos sin clasificación final",
             "Matriz de requisitos",
         )
 
