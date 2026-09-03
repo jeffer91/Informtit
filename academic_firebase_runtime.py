@@ -15,6 +15,7 @@ import student_domain_bridge as student_bridge
 import student_domain_read_model
 from db import connection, rows_to_dicts, utcnow
 from import_service import clean_cell
+from workflow_rules import prerequisite_state
 from student_domain_service import (
     MATCH_OK,
     PROCESS_RETIRED,
@@ -491,9 +492,9 @@ def _article_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, 
                 f"{cedula}: consta RETIRADO; la evidencia se conserva localmente y no se publica como nota vigente."
             )
             continue
-        if not bool(row.get("requirements_complete")):
-            # No cumplir requisitos es un resultado terminal del informe, no una
-            # nota académica publicable.
+        if not prerequisite_state(requirement_candidates[0])["complete"]:
+            # Se consulta Requisitos al momento de publicar; el estado guardado
+            # durante una importación anterior puede haber cambiado.
             continue
         if cedula in seen:
             issues.append(f"{cedula}: existe más de un resultado de Artículo Académico.")
