@@ -154,6 +154,21 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
         ana = next(item for item in result["missing"] if item["identification"] == "111")
         self.assertEqual(ana["missing_nuclei"], [4])
 
+    def test_failed_nucleus_is_terminal_but_series_is_complete(self):
+        student = {
+            "career_name": "DESARROLLO DE SOFTWARE",
+            "nuclei_records": [
+                {"nucleus_number": 1, "final_status": "APROBADO"},
+                {"nucleus_number": 2, "final_status": "APROBADO"},
+                {"nucleus_number": 3, "final_status": "REPROBADO"},
+                {"nucleus_number": 4, "final_status": "APROBADO"},
+            ],
+        }
+        state = population.nuclei_route_state(student)
+        self.assertEqual(state["outcome"], "FAILED")
+        self.assertEqual(state["missing"], [])
+        self.assertEqual(state["failed"], [3])
+
     def test_active_complexive_without_nuclei_is_review_required(self):
         row = {
             "route": "COMPLEXIVO",
