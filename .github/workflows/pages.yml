@@ -46,9 +46,10 @@ jobs:
           bridge = (
               '  <script src="./web-config.js?v=1.0"></script>\n'
               '  <script src="./web-runtime.js?v=1.0"></script>\n'
+              '  <script src="./github-pages-guard.js?v=1.1"></script>\n'
           )
           app_script = '  <script src="./app.js?v=4.6"></script>\n'
-          if 'web-runtime.js?v=1.0' not in text:
+          if 'github-pages-guard.js?v=1.1' not in text:
               text = text.replace(app_script, bridge + app_script)
           index.write_text(text, encoding='utf-8')
 
