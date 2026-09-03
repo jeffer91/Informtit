@@ -253,8 +253,13 @@ def _default_route_for_report(conn: Any, report_id: int) -> str:
 
 def _official_flags(row: dict[str, Any]) -> tuple[bool, bool]:
     downstream = downstream_state(row)
-    titulation_completed = bool(downstream["titulation_marked"])
-    graduated = bool(downstream["complexive_project_approved"] and downstream["titles_uploaded"])
+    # AprobacionTitulacion es el cierre institucional que el usuario definió
+    # como requisito para considerar terminada oficialmente la titulación.
+    titulation_completed = bool(downstream["titles_uploaded"])
+    graduated = bool(
+        downstream["complexive_project_approved"]
+        and downstream["titles_uploaded"]
+    )
     return graduated, titulation_completed
 
 
