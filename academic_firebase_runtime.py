@@ -480,6 +480,17 @@ def _article_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, 
         if not cedula:
             issues.append("Artículo: existe un registro conciliado sin cédula.")
             continue
+        requirement_candidates = requirements_by_id.get(cedula, [])
+        if len(requirement_candidates) != 1:
+            issues.append(
+                f"{cedula}: no existe una única ficha de Requisitos para validar la publicación de Artículo."
+            )
+            continue
+        if bool(requirement_candidates[0].get("retired")):
+            warnings.append(
+                f"{cedula}: consta RETIRADO; la evidencia se conserva localmente y no se publica como nota vigente."
+            )
+            continue
         if not bool(row.get("requirements_complete")):
             # No cumplir requisitos es un resultado terminal del informe, no una
             # nota académica publicable.
