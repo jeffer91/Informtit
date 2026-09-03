@@ -2,6 +2,10 @@
 
 La interfaz web se publica automáticamente desde `main` mediante `.github/workflows/pages.yml`.
 
+## URL
+
+La dirección del frontend es `https://jeffer91.github.io/Informtit/`.
+
 ## Arquitectura
 
 - GitHub Pages sirve la misma interfaz HTML/CSS/JavaScript de `static/`.
