@@ -122,6 +122,7 @@ def install() -> None:
     ensure_schema()
     _BASE_WRITE_DOCUMENT = firebase_sync.write_document
     firebase_sync.write_document = write_document_incremental
-    firebase_sync._push_new_collections = push_new_collections_incremental
+    # No se vuelve a parchear el antiguo flujo masivo _push_new_collections:
+    # publicar notas solo puede ocurrir desde academic_firebase_runtime.
     firebase_sync._incremental_sync_installed = True
     _INSTALLED = True
