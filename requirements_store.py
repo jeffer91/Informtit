@@ -32,6 +32,7 @@ _REQUIREMENT_COLUMNS = (
     "campus",
     "titulation_approval",
     "complexive_approval",
+    "retired",
 )
 
 
@@ -70,6 +71,7 @@ def ensure_requirements_schema() -> None:
                 campus TEXT DEFAULT '',
                 titulation_approval TEXT DEFAULT '',
                 complexive_approval TEXT DEFAULT '',
+                retired INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(report_id) REFERENCES reports(id) ON DELETE CASCADE
@@ -80,6 +82,11 @@ def ensure_requirements_schema() -> None:
                 ON requirements_students(report_id, identification);
             """
         )
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(requirements_students)").fetchall()}
+        if "retired" not in columns:
+            conn.execute(
+                "ALTER TABLE requirements_students ADD COLUMN retired INTEGER NOT NULL DEFAULT 0"
+            )
 
         report_ids = [int(row[0]) for row in conn.execute("SELECT id FROM reports").fetchall()]
         for report_id in report_ids:
@@ -163,7 +170,10 @@ def ensure_requirements_schema() -> None:
 
 
 def _insert_requirement_record(conn: Any, report_id: int, record: dict[str, Any], now: str) -> None:
-    values = [record.get(column) or "" for column in _REQUIREMENT_COLUMNS]
+    values = [
+        record.get(column) if record.get(column) is not None else ""
+        for column in _REQUIREMENT_COLUMNS
+    ]
     conn.execute(
         f"""
         INSERT INTO requirements_students
