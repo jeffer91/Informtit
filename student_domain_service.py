@@ -477,6 +477,40 @@ def set_student_route(report_id: int, student_id: int, route: str) -> dict[str, 
             """,
             (report_id, student_id, old, route, now),
         )
+
+        # Seleccionar Trabajo de Titulación crea inmediatamente su registro local
+        # de proceso, aunque todavía no tenga notas. Firebase se publica después,
+        # únicamente cuando la auditoría académica esté completa.
+        if route == ROUTE_THESIS and _table_exists(conn, "thesis_projects"):
+            existing_project = conn.execute(
+                "SELECT id FROM thesis_projects WHERE report_id=? AND identification=?",
+                (report_id, str(row["identification"] or "")),
+            ).fetchone()
+            if not existing_project:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO thesis_projects
+                    (report_id, identification, full_name, career_code, career_name,
+                     raw_text, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, '', ?, ?)
+                    """,
+                    (
+                        report_id,
+                        str(row["identification"] or ""),
+                        str(row["full_name"] or ""),
+                        str(row["career_code"] or ""),
+                        str(row["career_name"] or ""),
+                        now,
+                        now,
+                    ),
+                )
+                project_id = int(cursor.lastrowid)
+                columns = _columns(conn, "thesis_projects")
+                if "period_student_id" in columns:
+                    conn.execute(
+                        "UPDATE thesis_projects SET period_student_id=? WHERE id=?",
+                        (student_id, project_id),
+                    )
     return {"ok": True, "student_id": student_id, "route": route}
 
 
