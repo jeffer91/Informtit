@@ -215,5 +215,53 @@ class ReportIntegrityCoreTests(unittest.TestCase):
         self.assertTrue(all(row["blank"] == 1 for row in result["requirements"]))
 
 
+    def test_terminal_requirement_noncompliance_does_not_block_final_close(self):
+        metrics = {
+            "requirements": {"pending": 3, "incomplete": 0},
+            "nuclei": {"unevaluated": 0},
+            "complexive": {"not_evaluated": 0},
+            "thesis": {"incomplete": 0},
+        }
+        count = integrity._final_unresolved_count(
+            metrics,
+            {"pending_classification": 0},
+            {"unresolved_probable": 0},
+            {
+                "missing_students": 0,
+                "source_links": {
+                    "pending_records": 0,
+                    "conflicts": 0,
+                    "route_conflicts": 0,
+                },
+            },
+            {"unresolved": 0},
+        )
+        self.assertEqual(count, 0)
+
+    def test_unresolved_academic_evidence_blocks_final_close(self):
+        metrics = {
+            "requirements": {"pending": 0, "incomplete": 1},
+            "nuclei": {"unevaluated": 1},
+            "complexive": {"not_evaluated": 1},
+            "thesis": {"incomplete": 0},
+        }
+        count = integrity._final_unresolved_count(
+            metrics,
+            {"pending_classification": 0},
+            {"unresolved_probable": 0},
+            {
+                "missing_students": 1,
+                "source_links": {
+                    "pending_records": 0,
+                    "conflicts": 0,
+                    "route_conflicts": 0,
+                },
+            },
+            {"unresolved": 1},
+        )
+        self.assertGreater(count, 0)
+
+
+
 if __name__ == "__main__":
     unittest.main()
