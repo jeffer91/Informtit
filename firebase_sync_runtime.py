@@ -846,34 +846,8 @@ def _push_new_collections(
     kind: str,
     report_ids: dict[str, int],
 ) -> tuple[dict[str, int], list[str]]:
-    written = {name: 0 for name in WRITABLE_COLLECTIONS}
-    warnings: list[str] = []
-    for key, report_id in report_ids.items():
-        modality = "presencial" if key in {"pvc", "presencial"} else "en_linea"
-        group = _group_label(kind, modality)
-        items = {
-            "nucleos": _local_nuclei(report_id, period_id, group),
-            "complexivo": _local_complexive(report_id, period_id, group),
-            "titulacion": _local_thesis(report_id, period_id, group),
-        }
-        schedule = _local_schedule(report_id, period_id, group)
-        if schedule:
-            items["cronogramas"] = [schedule]
-        else:
-            items["cronogramas"] = []
-
-        for collection, documents in items.items():
-            for doc_id, data in documents:
-                try:
-                    write_document(collection, doc_id, data)
-                    written[collection] += 1
-                except Exception as exc:
-                    message = f"{collection}: {clean_cell(exc)}"
-                    if message not in warnings:
-                        warnings.append(message)
-                    break
-    return written, warnings
-
+    """Ruta heredada desactivada: sincronizar no publica colecciones académicas."""
+    return {name: 0 for name in WRITABLE_COLLECTIONS}, []
 
 def _report_has_local_data(report_id: int, module: str) -> bool:
     with connection() as conn:
