@@ -18,6 +18,7 @@ import report_completion
 import report_pdf_polish as polish
 import report_quality
 import report_full_detail as full
+import student_domain_read_model
 from db import connection, rows_to_dicts, utcnow
 from nuclei_excel_import import REQUIRED_HEADERS, get_excel_import_summary
 from roster_service import REQUIREMENTS, get_report_roster
@@ -688,11 +689,73 @@ def control(name: str, status: str, detail: str, blocking: bool = False) -> dict
     return {"name": name, "status": status, "ok": status == "ok", "detail": detail, "blocking": blocking}
 
 
+def final_student_closure(report_id: int) -> dict[str, Any]:
+    """Detecta estudiantes activos cuyo resultado final todavía no está cerrado.
+
+    NO CUMPLE REQUISITOS y RETIRADO son resultados terminales válidos del período;
+    por eso solo se exige evidencia académica a quienes permanecen ACTIVO.
+    """
+    data = student_domain_read_model.consolidated_students(report_id, sync=False)
+    unresolved: list[dict[str, Any]] = []
+    for row in data.get("students", []):
+        if str(row.get("process_status") or "").upper() != "ACTIVO":
+            continue
+        route = str(row.get("route") or "").upper()
+        reasons: list[str] = []
+        reconciliation = str(row.get("reconciliation_status") or "OK").upper()
+        if reconciliation != "OK":
+            reasons.append(
+                str(row.get("reconciliation_detail") or reconciliation)
+            )
+        if route == "COMPLEXIVO" and not bool(row.get("has_complexive")):
+            reasons.append("No existe resultado conciliado de Examen Complexivo.")
+        elif route == "TRABAJO_TITULACION" and not bool(row.get("has_thesis")):
+            reasons.append("No existe registro de Trabajo de Titulación.")
+        elif route == "ARTICULO":
+            reasons.append("Artículo Académico no corresponde a un informe regular.")
+        if reasons:
+            unresolved.append(
+                {
+                    "student_id": int(row.get("id") or 0),
+                    "identification": str(row.get("identification") or ""),
+                    "full_name": str(row.get("full_name") or ""),
+                    "route": route,
+                    "reasons": list(dict.fromkeys(reasons)),
+                }
+            )
+    return {"unresolved": len(unresolved), "students": unresolved}
+
+
+def _final_unresolved_count(
+    metrics: dict[str, Any],
+    states: dict[str, Any],
+    duplicates: dict[str, Any],
+    population: dict[str, Any],
+    closure: dict[str, Any],
+) -> int:
+    """Pendientes que sí impiden un informe final de un período ya cerrado."""
+    links = population.get("source_links") or {}
+    return int(
+        metrics["requirements"]["incomplete"]
+        + metrics["nuclei"]["unevaluated"]
+        + metrics["complexive"]["not_evaluated"]
+        + metrics["thesis"]["incomplete"]
+        + states["pending_classification"]
+        + duplicates["unresolved_probable"]
+        + population["missing_students"]
+        + int(links.get("pending_records") or 0)
+        + int(links.get("conflicts") or 0)
+        + int(links.get("route_conflicts") or 0)
+        + int(closure.get("unresolved") or 0)
+    )
+
+
 def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, Any]:
     if resolve_resources:
         resolve_logo(report_id)
     metrics = report_metrics(report_id)
     population = nuclei_population_integrity.reconcile_population(report_id, refresh=False)
+    closure = final_student_closure(report_id)
     source = source_context(metrics["report"])
     source_course_count = int(population.get("source_import", {}).get("courses") or 0)
     mode = _source_mode(metrics, source)
@@ -790,23 +853,39 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
         missing = [name for name, total in (("Requisitos", metrics["requirements"]["registered"]), ("Núcleos", metrics["nuclei"]["records"]), ("Complexivo", metrics["complexive"]["registered"]), ("Trabajo de Titulación", metrics["thesis"]["total"])) if total == 0]
         controls.append(control("Datos faltantes", "warning" if missing else "ok", "Sin registros en: " + ", ".join(missing) + "." if missing else "Los módulos con población registran información."))
 
-    critical_pending = (
-        metrics["requirements"]["pending"] + metrics["requirements"]["incomplete"] +
-        metrics["nuclei"]["unevaluated"] + metrics["complexive"]["not_evaluated"] +
-        metrics["thesis"]["incomplete"] + schedules["pending_evaluation"] +
-        schedules["incomplete_evidence"] + states["pending_classification"] +
-        duplicates["unresolved_probable"] +
-        population["missing_students"] +
-        population["source_links"]["pending_records"] +
-        population["source_links"]["conflicts"] +
-        population["source_links"]["route_conflicts"]
+    critical_pending = _final_unresolved_count(
+        metrics, states, duplicates, population, closure
     )
+    if mode == "normal":
+        closure_names = ", ".join(
+            item["full_name"] or item["identification"]
+            for item in closure.get("students", [])[:6]
+        )
+        controls.append(
+            control(
+                "Cierre académico final de la cohorte",
+                "error" if critical_pending else "ok",
+                (
+                    f"Existen {critical_pending} pendiente(s) reales de cierre académico"
+                    + (f". Revise: {closure_names}" if closure_names else "")
+                    + ". Los estados REPROBADO, NO CUMPLE REQUISITOS y RETIRADO "
+                      "son resultados terminales válidos y no bloquean por sí mismos."
+                )
+                if critical_pending
+                else (
+                    "Todos los estudiantes que debían continuar tienen evidencia final "
+                    "conciliada. Reprobados, no cumplidores de requisitos y retirados "
+                    "se conservan como resultados finales del período."
+                ),
+                bool(critical_pending),
+            )
+        )
+
     blocking_errors = [item for item in controls if item["status"] == "error" and item["blocking"]]
     can_generate = not blocking_errors and mode != "import_error"
-    # El documento solicitado es final. La ausencia de información opcional no
-    # cambia el nombre a "Preliminar": esos campos/columnas se omiten y el audit
-    # mantiene las advertencias para trazabilidad. Solo un error bloqueante impide
-    # emitir el informe final.
+    # El documento solicitado corresponde a un período cerrado. Un resultado
+    # negativo terminal sí puede formar parte del informe; una identidad, nota o
+    # etapa académica todavía sin resolver impide emitirlo como final.
     final_ready = mode == "normal" and can_generate
     if mode == "no_population":
         state, title = "SIN POBLACIÓN", "Informe Final del Proceso de Titulación - Sin Población Registrada"
@@ -830,6 +909,8 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
         "metrics": metrics,
         "reconciliation": reconciliation_data,
         "nuclei_population": population,
+        "student_closure": closure,
+        "terminal_noncompliance": int(metrics["requirements"]["pending"]),
         "duplicates": duplicates,
         "states": states,
         "formulas": formulas,
