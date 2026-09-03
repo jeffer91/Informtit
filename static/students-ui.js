@@ -2,10 +2,11 @@
   const ROUTE_LABELS = {
     COMPLEXIVO: "Examen Complexivo",
     TRABAJO_TITULACION: "Trabajo de Titulación",
+    ARTICULO: "Artículo Académico",
   };
   const STATUS_LABELS = {
     ACTIVO: "Continúa proceso",
-    NO_APROBADO_REQUISITO: "No aprobado por requisito",
+    NO_APROBADO_REQUISITO: "No cumple requisitos",
     RETIRADO: "Retirado",
   };
 
@@ -19,6 +20,10 @@
       if (!response.ok || data.ok === false) throw new Error(data.error || "No se pudo completar la operación.");
       return data;
     });
+  }
+
+  function isPvc() {
+    return String(window.state?.activeReport?.report_type || "").toLowerCase() === "pvc";
   }
 
   function reportId() {
@@ -58,6 +63,7 @@
         <div class="student-metric"><strong>${summary.students || 0}</strong><span>Total</span></div>
         <div class="student-metric"><strong>${summary.complexive || 0}</strong><span>Complexivo</span></div>
         <div class="student-metric"><strong>${summary.thesis || 0}</strong><span>Trabajo titulación</span></div>
+        <div class="student-metric"><strong>${summary.article || 0}</strong><span>Artículo académico</span></div>
         <div class="student-metric"><strong>${summary.graduated || 0}</strong><span>Graduados oficiales</span></div>
         <div class="student-metric"><strong>${summary.retired || 0}</strong><span>Retirados</span></div>
         <div class="student-metric"><strong>${summary.review || 0}</strong><span>Requieren revisión</span></div>
@@ -79,11 +85,13 @@
         <td><strong>${esc(row.full_name)}</strong><small>${esc(row.identification)}</small><small>${esc(row.email)}</small></td>
         <td>${esc(row.career_name)}<small>${esc(row.modality === "en_linea" ? "Online" : "Presencial")} · ${esc(row.campus || "Sin sede")}</small></td>
         <td>
-          <select class="student-route-select" data-student-id="${Number(row.id)}">
-            <option value="COMPLEXIVO" ${row.route === "COMPLEXIVO" ? "selected" : ""}>Examen Complexivo</option>
-            <option value="TRABAJO_TITULACION" ${row.route === "TRABAJO_TITULACION" ? "selected" : ""}>Trabajo de Titulación</option>
+          <select class="student-route-select" data-student-id="${Number(row.id)}" ${isPvc() ? "disabled" : ""}>
+            ${isPvc()
+              ? `<option value="ARTICULO" selected>Artículo Académico</option>`
+              : `<option value="COMPLEXIVO" ${row.route === "COMPLEXIVO" ? "selected" : ""}>Examen Complexivo</option>
+                 <option value="TRABAJO_TITULACION" ${row.route === "TRABAJO_TITULACION" ? "selected" : ""}>Trabajo de Titulación</option>`}
           </select>
-          <small>${row.route_source === "MANUAL" ? "Definido manualmente" : "Ruta por defecto"}</small>
+          <small>${isPvc() ? "Ruta automática por período PVC" : (row.route_source === "MANUAL" ? "Definido manualmente" : "Ruta por defecto")}</small>
         </td>
         <td>${formatMissing(row)}<small>${esc(STATUS_LABELS[row.process_status] || row.process_status)}</small></td>
         <td>${official}<small>${Number(row.official_titulation_completed) === 1 ? "Titulación: CUMPLE" : "Titulación no aprobada"}</small></td>
@@ -148,14 +156,14 @@
       root.innerHTML = `
         <div class="students-domain">
           <div class="panel">
-            <div class="panel-head"><div><h2>Estudiantes del período</h2><p>Requisitos es la fuente maestra. Todos parten por Complexivo y solo los casos definidos manualmente pasan a Trabajo de Titulación.</p></div>
+            <div class="panel-head"><div><h2>Estudiantes del período</h2><p>Estudiante es la identidad oficial. En períodos regulares la ruta inicia en Complexivo y las excepciones pasan manualmente a Trabajo de Titulación; en PVC la ruta es Artículo Académico.</p></div>
               <button class="button secondary" id="students-sync-btn">Reconciliar</button>
             </div>
             ${renderSummary(data.summary || {})}
             <div class="student-filters">
               <input id="student-search" placeholder="Buscar por cédula, nombre, correo o carrera">
-              <select id="student-filter-route"><option value="">Todas las rutas</option><option value="COMPLEXIVO">Complexivo</option><option value="TRABAJO_TITULACION">Trabajo de Titulación</option></select>
-              <select id="student-filter-process"><option value="">Todos los estados</option><option value="ACTIVO">Continúa proceso</option><option value="NO_APROBADO_REQUISITO">Falta un requisito</option><option value="RETIRADO">Retirado</option></select>
+              <select id="student-filter-route"><option value="">Todas las rutas</option><option value="COMPLEXIVO">Complexivo</option><option value="TRABAJO_TITULACION">Trabajo de Titulación</option><option value="ARTICULO">Artículo Académico</option></select>
+              <select id="student-filter-process"><option value="">Todos los estados</option><option value="ACTIVO">Continúa proceso</option><option value="NO_APROBADO_REQUISITO">No cumple requisitos</option><option value="RETIRADO">Retirado</option></select>
               <select id="student-filter-reconciliation"><option value="">Toda conciliación</option><option value="OK">Correctos</option><option value="OFFICIAL_DATA_CONFLICT">Conflicto oficial</option><option value="REVIEW_REQUIRED">Requieren revisión</option></select>
             </div>
             <div class="table-scroll"><table class="student-table"><thead><tr><th>Estudiante</th><th>Carrera</th><th>Ruta</th><th>Requisitos</th><th>Oficial</th><th>Conciliación</th><th></th></tr></thead><tbody>${students.map(rowHtml).join("")}</tbody></table></div>
