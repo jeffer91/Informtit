@@ -35,6 +35,9 @@
       '.pvc-table th{position:sticky;top:0;background:#f5f8fa;z-index:1}',
       '.pvc-contract{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}',
       '.pvc-contract div{padding:10px;border-radius:9px;background:#f5f8fa;font-size:12px}',
+      '.pvc-mapping{margin-top:12px;padding:12px;border:1px solid #dfe7ee;border-radius:10px;background:#f8fafc}',
+      '.pvc-mapping-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}',
+      '.pvc-mapping label{font-size:12px;font-weight:600}.pvc-mapping select{display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #cbd6df;border-radius:8px;background:white}',
       '@media(max-width:1100px){.pvc-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}'
     ].join('');
     document.head.appendChild(style);
@@ -143,7 +146,7 @@
       tab.innerHTML =
         '<div class="pvc-shell">' +
           '<section class="pvc-hero"><h2>Resultados PVC · Artículo Científico</h2>' +
-          '<p>Requisitos conserva la identidad, carrera y sede oficiales. La Base PVC aporta acta, tutor, lector, tribunal, rúbricas, defensa y calificación final.</p>' +
+          '<p>Estudiante conserva la identidad oficial. Requisitos define la habilitación y la Base PVC aporta acta, tutor, lector, tribunal, rúbricas, defensa y calificación final.</p>' +
           '<div class="pvc-contract">' +
             '<div><strong>Fórmula de validación</strong><br>70 % trabajo escrito + 30 % defensa oral.</div>' +
             '<div><strong>Regla del informe</strong><br>Antes de cada tabla, gráfico, mapa o diagrama se genera contexto; después se genera el análisis correspondiente.</div>' +
@@ -152,7 +155,7 @@
             '<p>Cargue el archivo .xlsx institucional. Una nueva carga reemplaza únicamente los resultados PVC de este informe; Requisitos no se modifica.</p></div></div>' +
             '<div class="pvc-upload-actions"><input class="pvc-file" id="pvc-results-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">' +
             '<button class="button primary" type="button" id="pvc-import-button">Importar Base PVC</button>' +
-            '<span id="pvc-import-state"></span></div>' +
+            '<span id="pvc-import-state"></span></div><div id="pvc-column-mapping"></div>' +
             (latest ? '<div class="pvc-alert pvc-ok"><strong>Última carga:</strong> ' + esc(latest.filename || '') + ' · ' + esc(latest.total_rows || 0) + ' registros · período fuente: ' + esc(latest.source_period || 'no detectado') + '</div>' : '') +
             (s.unmatched ? '<div class="pvc-alert"><strong>Conciliación:</strong> ' + esc(s.unmatched) + ' registro(s) no coinciden de forma única con Requisitos.</div>' : '') +
             (s.formula_warnings ? '<div class="pvc-alert"><strong>Fórmula:</strong> ' + esc(s.formula_warnings) + ' registro(s) presentan diferencias superiores a la tolerancia de cálculo.</div>' : '') +
@@ -161,7 +164,7 @@
           '<section class="panel"><div class="panel-head"><div><h2>Indicadores PVC</h2><p>Los no evaluados se mantienen separados de los reprobados.</p></div></div>' +
             '<div class="pvc-metrics">' + summaryMarkup(data) + '</div></section>' +
           '<section class="panel"><div class="panel-head"><div><h2>Registros conciliados y resultados</h2>' +
-            '<p>La carrera mostrada procede de Requisitos; una identidad sin coincidencia no se asigna automáticamente.</p></div></div>' +
+            '<p>La identidad procede de Estudiante; una fila que no pueda conciliarse de forma inequívoca no se publica.</p></div></div>' +
             recordsMarkup(data.records) + '</section>' +
         '</div>';
       bindImport(reportId);
@@ -170,11 +173,47 @@
     }
   }
 
+  function mappingMarkup(inspection) {
+    const headers = Array.isArray(inspection.headers) ? inspection.headers : [];
+    const required = Array.isArray(inspection.required) ? inspection.required : [];
+    const detected = inspection.mapping || {};
+    return '<div class="pvc-mapping"><strong>Mapeo manual de columnas</strong>' +
+      '<p>Informtit no reconoció todos los encabezados. Seleccione la columna correcta para cada dato obligatorio y vuelva a importar.</p>' +
+      '<div class="pvc-mapping-grid">' +
+      required.map(field => {
+        const options = ['<option value="">Seleccionar columna…</option>'].concat(
+          headers.map((header, index) =>
+            '<option value="' + index + '" ' + (Number(detected[field.key]) === index ? 'selected' : '') + '>' +
+            esc(header || ('Columna ' + (index + 1))) + '</option>'
+          )
+        ).join('');
+        return '<label>' + esc(field.label || field.key) +
+          '<select data-pvc-map-key="' + esc(field.key) + '">' + options + '</select></label>';
+      }).join('') +
+      '</div></div>';
+  }
+
+  function collectColumnMap(host) {
+    const result = {};
+    host?.querySelectorAll('[data-pvc-map-key]').forEach(select => {
+      if (select.value !== '') result[select.dataset.pvcMapKey] = Number(select.value);
+    });
+    return result;
+  }
+
   function bindImport(reportId) {
     const button = document.getElementById('pvc-import-button');
     const input = document.getElementById('pvc-results-file');
     const stateNode = document.getElementById('pvc-import-state');
+    const mappingHost = document.getElementById('pvc-column-mapping');
     if (!button || !input) return;
+
+    input.addEventListener('change', () => {
+      if (mappingHost) mappingHost.innerHTML = '';
+      button.dataset.mappingReady = '';
+      button.textContent = 'Importar Base PVC';
+    });
+
     button.onclick = async () => {
       const file = input.files?.[0];
       if (!file) {
@@ -182,12 +221,44 @@
         return;
       }
       button.disabled = true;
-      if (stateNode) stateNode.textContent = 'Leyendo y conciliando...';
+      if (stateNode) stateNode.textContent = 'Revisando columnas...';
       try {
         const dataUrl = await fileToDataUrl(file);
+        let columnMap = collectColumnMap(mappingHost);
+
+        if (!button.dataset.mappingReady) {
+          const inspection = await api('/api/reports/' + reportId + '/pvc/inspect', {
+            method: 'POST',
+            body: JSON.stringify({ data_url: dataUrl, filename: file.name })
+          });
+          if (Array.isArray(inspection.missing) && inspection.missing.length) {
+            if (mappingHost) mappingHost.innerHTML = mappingMarkup(inspection);
+            button.dataset.mappingReady = '1';
+            button.textContent = 'Importar con mapeo';
+            if (stateNode) stateNode.textContent = 'Complete el mapeo de columnas.';
+            toast('Hay columnas que no se reconocieron automáticamente. Complete el mapeo mostrado.', true);
+            return;
+          }
+        }
+
+        columnMap = collectColumnMap(mappingHost);
+        if (mappingHost?.querySelector('[data-pvc-map-key]')) {
+          const missingSelections = [...mappingHost.querySelectorAll('[data-pvc-map-key]')]
+            .filter(select => select.value === '');
+          if (missingSelections.length) {
+            toast('Seleccione todas las columnas obligatorias antes de importar.', true);
+            return;
+          }
+        }
+
+        if (stateNode) stateNode.textContent = 'Leyendo y conciliando...';
         const result = await api('/api/reports/' + reportId + '/pvc/import', {
           method: 'POST',
-          body: JSON.stringify({ data_url: dataUrl, filename: file.name })
+          body: JSON.stringify({
+            data_url: dataUrl,
+            filename: file.name,
+            column_map: columnMap
+          })
         });
         toast(result.records + ' registros PVC procesados. ' + result.matched + ' conciliados por cédula.');
         const tab = document.getElementById('tab-projects');
