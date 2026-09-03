@@ -886,11 +886,11 @@ def pvc_audit(report_id: int) -> dict[str, Any]:
         )
 
     add(
-        "Población maestra de Requisitos",
+        "Población oficial del período",
         "ok" if summary["requirements_total"] else "error",
-        f"{summary['requirements_total']} estudiantes registrados en Requisitos."
+        f"{summary['requirements_total']} estudiantes del período vinculados con las fuentes oficiales."
         if summary["requirements_total"]
-        else "No existe población de Requisitos para el PVC.",
+        else "No existe población oficial para el PVC.",
         blocking=not bool(summary["requirements_total"]),
     )
     add(
@@ -903,13 +903,15 @@ def pvc_audit(report_id: int) -> dict[str, Any]:
     )
     add(
         "Conciliación por cédula",
-        "ok" if summary["unmatched"] == 0 else "warning",
+        "ok" if summary["unmatched"] == 0 else "error",
         f"{summary['matched']} coincidencias exactas y {summary['unmatched']} registros sin identidad oficial confirmada.",
+        blocking=bool(summary["unmatched"]),
     )
     add(
         "Validación de fórmula 70/30",
-        "ok" if summary["formula_warnings"] == 0 else "warning",
+        "ok" if summary["formula_warnings"] == 0 else "error",
         f"{summary['formula_warnings']} registros presentan diferencia superior a {FORMULA_TOLERANCE:.2f} entre la nota fuente y el cálculo 70 % trabajo escrito + 30 % defensa.",
+        blocking=bool(summary["formula_warnings"]),
     )
     if source_periods:
         normalized_report = period_policy_runtime.canonical_period_id(report_period)
@@ -919,18 +921,19 @@ def pvc_audit(report_id: int) -> dict[str, Any]:
         mismatch = bool(normalized_report and any(value and value != normalized_report for value in normalized_sources))
         add(
             "Período de la Base PVC",
-            "warning" if mismatch else "ok",
+            "error" if mismatch else "ok",
             "Período(s) detectado(s) en la base: " + ", ".join(source_periods)
-            + (". Revise la diferencia con el período configurado en el informe." if mismatch else "."),
+            + (". No coincide con el período configurado en el informe." if mismatch else "."),
+            blocking=mismatch,
         )
     blocking = [item for item in controls if item["status"] == "error" and item["blocking"]]
     warning_count = sum(item["status"] == "warning" for item in controls)
     can_generate = not blocking
     return {
         "ok": True,
-        "state": "APTO PARA EMITIR" if can_generate and warning_count == 0 else "BORRADOR",
+        "state": "APTO PARA EMITIR" if can_generate else "BLOQUEADO",
         "mode": "pvc",
-        "final_ready": bool(can_generate and warning_count == 0),
+        "final_ready": bool(can_generate),
         "can_generate_pdf": can_generate,
         "controls": controls,
         "blocking_errors": blocking,
