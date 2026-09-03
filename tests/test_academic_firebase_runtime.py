@@ -120,6 +120,8 @@ class AcademicPublicationTests(unittest.TestCase):
             firebase.WRITABLE_COLLECTIONS,
             {"nucleos", "complexivo", "trabajoTitulacion", "articulo"},
         )
+        self.assertNotIn("titulacion", firebase.ALL_ALLOWED_COLLECTIONS)
+        self.assertNotIn("cronogramas", firebase.ALL_ALLOWED_COLLECTIONS)
 
 
 if __name__ == "__main__":
