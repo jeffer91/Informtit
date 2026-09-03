@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any
 
 from nuclei_excel_import import get_excel_import_summary
+import nuclei_catalog
 import student_domain_bridge as bridge
 from student_domain_read_model import consolidated_students
 from student_domain_service import (
@@ -16,6 +17,36 @@ def _coverage(matched: int, expected: int) -> float | None:
     if expected <= 0:
         return None
     return round(matched / expected * 100, 2)
+
+
+def _required_nuclei(student: dict[str, Any]) -> set[int]:
+    """Núcleos que debe tener un estudiante activo de Complexivo.
+
+    El catálogo institucional define la cantidad por carrera. Para una carrera
+    todavía no catalogada se conserva el estándar institucional de cuatro núcleos
+    en lugar de considerar completa una carga parcial por accidente.
+    """
+    catalog = nuclei_catalog.catalog_for_career(
+        str(student.get("career_name") or "")
+    )
+    numbers = {
+        int(item.get("number") or 0)
+        for item in ((catalog or {}).get("nuclei") or [])
+        if int(item.get("number") or 0) > 0
+    }
+    return numbers or {1, 2, 3, 4}
+
+
+def _present_nuclei(student: dict[str, Any]) -> set[int]:
+    return {
+        int(item.get("nucleus_number") or 0)
+        for item in (student.get("nuclei_records") or [])
+        if int(item.get("nucleus_number") or 0) > 0
+    }
+
+
+def _missing_nuclei(student: dict[str, Any]) -> list[int]:
+    return sorted(_required_nuclei(student) - _present_nuclei(student))
 
 
 def reconcile_population(report_id: int, *, refresh: bool = True) -> dict[str, Any]:
@@ -43,8 +74,10 @@ def reconcile_population(report_id: int, *, refresh: bool = True) -> dict[str, A
         if str(student.get("route") or "").upper() == ROUTE_COMPLEXIVE
         and str(student.get("process_status") or "").upper() == PROCESS_ACTIVE
     ]
-    matched = [student for student in expected if bool(student.get("has_nuclei"))]
-    missing = [student for student in expected if not bool(student.get("has_nuclei"))]
+    # "Tiene Núcleos" no significa "tiene algún Núcleo": para el cierre final
+    # debe existir la serie completa que corresponde a su carrera.
+    matched = [student for student in expected if not _missing_nuclei(student)]
+    missing = [student for student in expected if bool(_missing_nuclei(student))]
 
     unexpected = [
         student
@@ -67,7 +100,7 @@ def reconcile_population(report_id: int, *, refresh: bool = True) -> dict[str, A
         row = by_career[career.casefold()]
         row["career"] = career
         row["expected"] += 1
-        if student.get("has_nuclei"):
+        if not _missing_nuclei(student):
             row["with_nuclei"] += 1
         else:
             row["missing"] += 1
@@ -87,6 +120,10 @@ def reconcile_population(report_id: int, *, refresh: bool = True) -> dict[str, A
             "process_status": str(student.get("process_status") or ""),
             "reconciliation_status": str(student.get("reconciliation_status") or ""),
             "reconciliation_detail": str(student.get("reconciliation_detail") or ""),
+            "missing_nuclei": _missing_nuclei(student)
+            if str(student.get("route") or "").upper() == ROUTE_COMPLEXIVE
+            and str(student.get("process_status") or "").upper() == PROCESS_ACTIVE
+            else [],
         }
 
     source = get_excel_import_summary(report_id) or {}
