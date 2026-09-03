@@ -98,13 +98,13 @@ class StudentDomainTests(unittest.TestCase):
         self.assertEqual(row["route"], domain.ROUTE_THESIS)
         self.assertEqual(row["route_source"], "MANUAL")
 
-    def test_one_missing_is_not_approved_and_two_missing_is_retired(self):
+    def test_missing_requirements_never_imply_retirement(self):
         self._insert_requirement(identification="1", financial_status="NO CUMPLE")
         self._insert_requirement(identification="2", financial_status="NO CUMPLE", english_status="NO CUMPLE")
         domain.sync_report_students(self.report_id)
         rows = {row["identification"]: row for row in domain.get_period_students(self.report_id)["students"]}
         self.assertEqual(rows["1"]["process_status"], domain.PROCESS_WITH_ONE_MISSING)
-        self.assertEqual(rows["2"]["process_status"], domain.PROCESS_RETIRED)
+        self.assertEqual(rows["2"]["process_status"], domain.PROCESS_WITH_ONE_MISSING)
 
     def test_graduated_is_defined_only_by_official_requirement_fields(self):
         self._insert_requirement(
