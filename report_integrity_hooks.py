@@ -319,7 +319,7 @@ def automatic_actions_integrity(data: dict[str, Any]) -> list[dict[str, str]]:
     if comp["not_evaluated"]:
         add(
             f"El Examen Complexivo registra {comp['not_evaluated']} estudiantes no evaluados.",
-            "Clasificar y documentar individualmente la causa de cada caso antes del cierre.",
+            "Clasificar y documentar individualmente la causa de cada caso antes de emitir el informe final.",
             "Coordinaciones de carrera",
             "Casos no evaluados clasificados",
             "Consolidado del Examen Complexivo",
