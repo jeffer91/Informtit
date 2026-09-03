@@ -35,13 +35,12 @@ READ_ONLY_COLLECTIONS = {
     "matriculas",
     "periodos",
     "requisitos",
-    # Colecciones antiguas: Informtit puede leerlas para compatibilidad, pero
-    # desde esta versión ya no vuelve a escribirlas.
-    "titulacion",
-    "cronogramas",
 }
+# Compatibilidad de lectura con respaldos creados por versiones anteriores.
+# No se presentan como fuentes oficiales ni se pueden volver a escribir.
+LEGACY_READ_COLLECTIONS = {"titulacion", "cronogramas"}
 WRITABLE_COLLECTIONS = {"nucleos", "complexivo", "trabajoTitulacion", "articulo"}
-ALL_ALLOWED_COLLECTIONS = READ_ONLY_COLLECTIONS | WRITABLE_COLLECTIONS
+ALL_ALLOWED_COLLECTIONS = READ_ONLY_COLLECTIONS | LEGACY_READ_COLLECTIONS | WRITABLE_COLLECTIONS
 
 BASE_URL = (
     f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}"
