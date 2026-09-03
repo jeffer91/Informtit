@@ -20,6 +20,12 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
                     "route": "COMPLEXIVO",
                     "process_status": "ACTIVO",
                     "has_nuclei": True,
+                    "nuclei_records": [
+                        {"nucleus_number": 1},
+                        {"nucleus_number": 2},
+                        {"nucleus_number": 3},
+                        {"nucleus_number": 4},
+                    ],
                     "reconciliation_status": "OK",
                     "reconciliation_detail": "",
                 },
@@ -32,6 +38,7 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
                     "route": "COMPLEXIVO",
                     "process_status": "ACTIVO",
                     "has_nuclei": False,
+                    "nuclei_records": [],
                     "reconciliation_status": "REVIEW_REQUIRED",
                     "reconciliation_detail": "Sin Núcleos",
                 },
@@ -44,6 +51,7 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
                     "route": "TRABAJO_TITULACION",
                     "process_status": "ACTIVO",
                     "has_nuclei": False,
+                    "nuclei_records": [],
                     "reconciliation_status": "OK",
                     "reconciliation_detail": "",
                 },
@@ -56,6 +64,7 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
                     "route": "COMPLEXIVO",
                     "process_status": "RETIRADO",
                     "has_nuclei": False,
+                    "nuclei_records": [],
                     "reconciliation_status": "OK",
                     "reconciliation_detail": "",
                 },
@@ -101,6 +110,12 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
     ):
         domain = self._domain()
         domain["students"][1]["has_nuclei"] = True
+        domain["students"][1]["nuclei_records"] = [
+            {"nucleus_number": 1},
+            {"nucleus_number": 2},
+            {"nucleus_number": 3},
+            {"nucleus_number": 4},
+        ]
         consolidated.return_value = domain
         reconcile.return_value = {
             "ok": True,
@@ -113,6 +128,31 @@ class NucleiPopulationIntegrityTests(unittest.TestCase):
         self.assertEqual(result["coverage"], 100.0)
         self.assertFalse(result["ok"])
         self.assertEqual(result["source_links"]["conflicts"], 1)
+
+    @patch("nuclei_population_integrity.get_excel_import_summary", return_value={})
+    @patch("nuclei_population_integrity.consolidated_students")
+    @patch("nuclei_population_integrity.bridge.reconcile_all")
+    def test_partial_nucleus_series_is_not_considered_complete(
+        self, reconcile, consolidated, _summary
+    ):
+        domain = self._domain()
+        domain["students"][0]["nuclei_records"] = [
+            {"nucleus_number": 1},
+            {"nucleus_number": 2},
+            {"nucleus_number": 3},
+        ]
+        consolidated.return_value = domain
+        reconcile.return_value = {
+            "ok": True,
+            "nuclei": {"matched": 1, "pending": 0, "conflicts": 0, "route_conflicts": 0},
+        }
+
+        result = population.reconcile_population(10, refresh=True)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["missing_students"], 2)
+        ana = next(item for item in result["missing"] if item["identification"] == "111")
+        self.assertEqual(ana["missing_nuclei"], [4])
 
     def test_active_complexive_without_nuclei_is_review_required(self):
         row = {
