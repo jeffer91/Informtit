@@ -240,7 +240,9 @@ def install() -> None:
     period_policy.visible_reports = _visible_reports
 
     original_ensure_reports = firebase_sync._ensure_reports
-    original_local_nuclei = firebase_sync._local_nuclei
+    # El serializador _local_nuclei pertenecía al flujo legado de restauración.
+    # Si ya fue retirado, conservamos la capa de integridad sin reintroducirlo.
+    original_local_nuclei = getattr(firebase_sync, "_local_nuclei", None)
     original_make_requirement = firebase_sync._make_requirement_record
     original_list_periods = firebase_sync.list_periods
 
@@ -267,26 +269,6 @@ def install() -> None:
                 (label, period_id, now, now, best_id),
             )
         return kind, label, {"pvc": best_id}
-
-    def local_nuclei(
-        report_id: int,
-        period_id: str,
-        group: str,
-    ) -> list[tuple[str, dict[str, Any]]]:
-        documents = original_local_nuclei(report_id, period_id, group)
-        output: list[tuple[str, dict[str, Any]]] = []
-        prefix = f"{period_id}__"
-        group_key = clean_cell(group).upper() or "PRESENCIAL"
-        for document_id, data in documents:
-            remainder = (
-                document_id[len(prefix) :]
-                if document_id.startswith(prefix)
-                else document_id
-            )
-            if not remainder.startswith(f"{group_key}__"):
-                document_id = f"{period_id}__{group_key}__{remainder}"
-            output.append((document_id, data))
-        return output
 
     def make_requirement_record(
         cedula: str,
@@ -324,7 +306,28 @@ def install() -> None:
         ]
 
     firebase_sync._ensure_reports = ensure_reports
-    firebase_sync._local_nuclei = local_nuclei
+    if original_local_nuclei is not None:
+        def local_nuclei(
+            report_id: int,
+            period_id: str,
+            group: str,
+        ) -> list[tuple[str, dict[str, Any]]]:
+            documents = original_local_nuclei(report_id, period_id, group)
+            output: list[tuple[str, dict[str, Any]]] = []
+            prefix = f"{period_id}__"
+            group_key = clean_cell(group).upper() or "PRESENCIAL"
+            for document_id, data in documents:
+                remainder = (
+                    document_id[len(prefix) :]
+                    if document_id.startswith(prefix)
+                    else document_id
+                )
+                if not remainder.startswith(f"{group_key}__"):
+                    document_id = f"{period_id}__{group_key}__{remainder}"
+                output.append((document_id, data))
+            return output
+
+        firebase_sync._local_nuclei = local_nuclei
     firebase_sync._make_requirement_record = make_requirement_record
     firebase_sync.list_periods = list_periods
     firebase_sync._integrity_runtime_installed = True

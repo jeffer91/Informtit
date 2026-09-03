@@ -1,0 +1,79 @@
+name: Deploy Informtit to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: informtit-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare GitHub Pages site
+        env:
+          INFORMTIT_API_BASE: ${{ vars.INFORMTIT_API_BASE }}
+        run: |
+          rm -rf _site
+          mkdir -p _site
+          cp -a static/. _site/
+          touch _site/.nojekyll
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          site = Path('_site')
+          index = site / 'index.html'
+          text = index.read_text(encoding='utf-8')
+
+          # Informtit se sirve bajo /Informtit/ en GitHub Pages. Los recursos
+          # absolutos de la versión Electron deben ser relativos en la web.
+          text = re.sub(r'(href|src)="/', r'\1="./', text)
+
+          bridge = (
+              '  <script src="./web-config.js?v=1.0"></script>\n'
+              '  <script src="./web-runtime.js?v=1.0"></script>\n'
+          )
+          app_script = '  <script src="./app.js?v=4.6"></script>\n'
+          if 'web-runtime.js?v=1.0' not in text:
+              text = text.replace(app_script, bridge + app_script)
+          index.write_text(text, encoding='utf-8')
+
+          api_base = os.environ.get('INFORMTIT_API_BASE', '').strip().rstrip('/')
+          (site / 'web-config.js').write_text(
+              'window.INFORMTIT_API_BASE = ' + json.dumps(api_base) + ';\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
