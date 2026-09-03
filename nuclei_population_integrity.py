@@ -49,6 +49,63 @@ def _missing_nuclei(student: dict[str, Any]) -> list[int]:
     return sorted(_required_nuclei(student) - _present_nuclei(student))
 
 
+def nuclei_route_state(student: dict[str, Any]) -> dict[str, Any]:
+    """Resume si el estudiante puede avanzar de Núcleos a Complexivo."""
+    required = _required_nuclei(student)
+    missing = sorted(required - _present_nuclei(student))
+    grouped: dict[int, set[str]] = defaultdict(set)
+    for record in student.get("nuclei_records") or []:
+        number = int(record.get("nucleus_number") or 0)
+        if number not in required:
+            continue
+        status = str(record.get("final_status") or "").strip().upper()
+        if status in {"APROBADO", "APROBADA", "APR"}:
+            grouped[number].add("APPROVED")
+        elif status in {"REPROBADO", "REPROBADA", "REP", "SUSPENSO"}:
+            grouped[number].add("FAILED")
+        else:
+            grouped[number].add("UNEVALUATED")
+
+    conflicting = sorted(
+        number
+        for number, states in grouped.items()
+        if "APPROVED" in states and "FAILED" in states
+    )
+    failed = sorted(
+        number
+        for number in required
+        if "FAILED" in grouped.get(number, set()) and number not in conflicting
+    )
+    unevaluated = sorted(
+        number
+        for number in required
+        if number not in missing
+        and number not in conflicting
+        and not (
+            "APPROVED" in grouped.get(number, set())
+            or "FAILED" in grouped.get(number, set())
+        )
+    )
+    if missing:
+        outcome = "INCOMPLETE"
+    elif conflicting:
+        outcome = "CONFLICT"
+    elif unevaluated:
+        outcome = "UNEVALUATED"
+    elif failed:
+        outcome = "FAILED"
+    else:
+        outcome = "APPROVED"
+    return {
+        "outcome": outcome,
+        "required": sorted(required),
+        "missing": missing,
+        "failed": failed,
+        "unevaluated": unevaluated,
+        "conflicting": conflicting,
+    }
+
+
 def reconcile_population(report_id: int, *, refresh: bool = True) -> dict[str, Any]:
     """Concilia la población maestra con los registros de Núcleos.
 
@@ -124,6 +181,12 @@ def reconcile_population(report_id: int, *, refresh: bool = True) -> dict[str, A
             if str(student.get("route") or "").upper() == ROUTE_COMPLEXIVE
             and str(student.get("process_status") or "").upper() == PROCESS_ACTIVE
             else [],
+            "nuclei_route_state": (
+                nuclei_route_state(student)
+                if str(student.get("route") or "").upper() == ROUTE_COMPLEXIVE
+                and str(student.get("process_status") or "").upper() == PROCESS_ACTIVE
+                else {}
+            ),
         }
 
     source = get_excel_import_summary(report_id) or {}
