@@ -526,8 +526,11 @@ def _load_requirements_to_local(
         for item in enrollments
         if clean_cell(item.get("cedula"))
     }
-    cedulas = list(enr_by_id) or list(req_by_id)
+    # La cohorte se obtiene de las relaciones del período, pero la identidad
+    # solo existe si la cédula está realmente en Estudiante.
+    cedulas = list(dict.fromkeys([*enr_by_id.keys(), *req_by_id.keys()]))
     students = batch_get_students(cedulas)
+    missing_master = [cedula for cedula in cedulas if cedula not in students]
     career_catalog = {
         clean_cell(item.get("codigoCarrera") or item.get("_id")): item
         for item in list_collection("carreras")
@@ -544,6 +547,7 @@ def _load_requirements_to_local(
             kind,
         )
         for cedula in cedulas
+        if cedula in students
     ]
 
     grouped = {"presencial": [], "en_linea": []}
@@ -587,6 +591,15 @@ def _load_requirements_to_local(
         "presencial": len(records) if kind == "pvc" else len(grouped["presencial"]),
         "en_linea": 0 if kind == "pvc" else len(grouped["en_linea"]),
         "student_map": students,
+        "unmatched_students": [
+            {
+                "cedula": cedula,
+                "in_requirements": cedula in req_by_id,
+                "in_enrollment": cedula in enr_by_id,
+                "reason": "No existe en la colección Estudiante.",
+            }
+            for cedula in missing_master
+        ],
     }
 
 
