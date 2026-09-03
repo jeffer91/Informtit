@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import app as core
+import academic_firebase_runtime
 import completion_routes
 import coordinator_admin_runtime
 import database_hardening
@@ -237,6 +238,11 @@ def prepare() -> None:
     # PVC es un informe independiente de los regulares: una sola salida PDF,
     # Base PVC propia, fórmula 70/30 y narrativa visual contexto -> elemento -> análisis.
     pvc_report_runtime.install()
+
+    # Publicación académica explícita: sincronizar solo lee las fuentes oficiales;
+    # Núcleos, Complexivo, Trabajo y Artículo se publican por separado y solo
+    # después de pasar conciliación/auditoría.
+    academic_firebase_runtime.install()
 
     # Última capa de escritura: conserva el PDF entre reinicios y solo lo marca
     # desactualizado cuando una operación real modifica ese informe/período.
