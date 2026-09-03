@@ -909,9 +909,7 @@ def audit_report(report_id: int, resolve_resources: bool = True) -> dict[str, An
     if mode == "no_population":
         state, title = "SIN POBLACIÓN", "Informe Final del Proceso de Titulación - Sin Población Registrada"
     elif not can_generate:
-        state, title = "ERROR DE CARGA", "Informe Final del Proceso de Titulación"
-    elif critical_pending:
-        state, title = "APTO PARA EMITIR CON DATOS DISPONIBLES", "Informe Final del Proceso de Titulación"
+        state, title = "BLOQUEADO", "Informe Final del Proceso de Titulación"
     else:
         state, title = "APTO PARA EMITIR", "Informe Final del Proceso de Titulación"
     return {
