@@ -113,7 +113,16 @@
         const typeText = result.report_type === "pvc"
           ? "PVC"
           : "Presencial + Online";
-        toast(`Fuentes oficiales sincronizadas: ${typeText}. Las notas no fueron publicadas.`, false);
+        const unmatched = Array.isArray(result.requirements?.unmatched_students)
+          ? result.requirements.unmatched_students.length
+          : 0;
+        const extra = unmatched
+          ? ` ${unmatched} cédula(s) del período no existen en Estudiante y no fueron admitidas.`
+          : "";
+        toast(`Fuentes oficiales sincronizadas: ${typeText}. Las notas no fueron publicadas.${extra}`, unmatched > 0);
+        if (unmatched) {
+          console.warn("[Informtit Firebase] No conciliados con Estudiante", result.requirements.unmatched_students);
+        }
       } catch (error) {
         toast(error.message || "No se pudo sincronizar Firebase.", true);
       } finally {
