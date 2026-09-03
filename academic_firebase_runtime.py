@@ -361,6 +361,8 @@ def _thesis_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, d
                     "cedula": cedula,
                     "numeroActa": clean_cell(row.get("act_number")),
                     "fechaActa": clean_cell(row.get("act_date")),
+                    "tutor": clean_cell(row.get("tutor_name")),
+                    "lector": clean_cell(row.get("reader_name")),
                     "calificacionTutor": _number(row.get("tutor_grade")),
                     "calificacionLector": _number(row.get("reader_grade")),
                     "promedioTrabajoEscrito": _number(row.get("written_average")),
