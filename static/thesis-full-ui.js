@@ -179,6 +179,8 @@
         ${inputField('Fecha del acta', 'act_date', project.act_date)}
         ${inputField('Modalidad', 'modality', project.modality)}
         ${inputField('Título del proyecto', 'project_title', project.project_title)}
+        ${inputField('Nombre del tutor', 'tutor_name', project.tutor_name)}
+        ${inputField('Nombre del lector', 'reader_name', project.reader_name)}
         ${inputField('Calificación tutor', 'tutor_grade', project.tutor_grade, 'number', 'min="0" max="10" step="0.01"')}
         ${inputField('Calificación lector', 'reader_grade', project.reader_grade, 'number', 'min="0" max="10" step="0.01"')}
         ${inputField('Primer vocal', 'vocal_1', project.vocal_1)}
@@ -249,6 +251,8 @@
         act_date: value('act_date'),
         modality: value('modality'),
         project_title: value('project_title'),
+        tutor_name: value('tutor_name'),
+        reader_name: value('reader_name'),
         tutor_grade: value('tutor_grade'),
         reader_grade: value('reader_grade'),
         vocal_1: value('vocal_1'),
