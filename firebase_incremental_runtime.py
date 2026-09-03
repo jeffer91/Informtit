@@ -107,34 +107,12 @@ def push_new_collections_incremental(
     kind: str,
     report_ids: dict[str, int],
 ) -> tuple[dict[str, int], list[str]]:
-    written = {name: 0 for name in firebase_sync.WRITABLE_COLLECTIONS}
-    warnings: list[str] = []
+    """Compatibilidad segura: sincronizar fuentes nunca publica notas.
 
-    for key, report_id in report_ids.items():
-        modality = "presencial" if key in {"pvc", "presencial"} else "en_linea"
-        group = firebase_sync._group_label(kind, modality)
-        items = {
-            "nucleos": firebase_sync._local_nuclei(report_id, period_id, group),
-            "complexivo": firebase_sync._local_complexive(report_id, period_id, group),
-            "titulacion": firebase_sync._local_thesis(report_id, period_id, group),
-        }
-        schedule = firebase_sync._local_schedule(report_id, period_id, group)
-        items["cronogramas"] = [schedule] if schedule else []
-
-        for collection, documents in items.items():
-            for doc_id, data in documents:
-                try:
-                    changed = write_document_incremental(collection, doc_id, data)
-                    if changed:
-                        written[collection] += 1
-                except Exception as exc:
-                    message = f"{collection}: {clean_cell(exc)}"
-                    if message not in warnings:
-                        warnings.append(message)
-                    break
-
-    return written, warnings
-
+    Las escrituras incrementales se ejecutan documento por documento desde
+    academic_firebase_runtime, después de la auditoría explícita del módulo.
+    """
+    return {name: 0 for name in firebase_sync.WRITABLE_COLLECTIONS}, []
 
 def install() -> None:
     global _INSTALLED, _BASE_WRITE_DOCUMENT
