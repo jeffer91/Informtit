@@ -43,6 +43,8 @@ def ensure_thesis_schema() -> None:
             "validation_json": "TEXT DEFAULT '{}'",
             "lowest_component": "TEXT DEFAULT ''",
             "lowest_parameter": "TEXT DEFAULT ''",
+            "tutor_name": "TEXT DEFAULT ''",
+            "reader_name": "TEXT DEFAULT ''",
         }
         for column, definition in additions.items():
             if column not in columns:
@@ -362,6 +364,8 @@ def _parse_block(report_id: int, raw_text: str, overrides: dict[str, Any] | None
         "modality": _field_text(raw_text, r"MODALIDAD"),
         "act_number": act_number_match.group(1) if act_number_match else "",
         "act_date": act_date_match.group(1) if act_date_match else "",
+        "tutor_name": _field_text(raw_text, r"NOMBRE\s+(?:DEL\s+)?TUTOR"),
+        "reader_name": _field_text(raw_text, r"NOMBRE\s+(?:DEL\s+)?LECTOR"),
         "tutor_grade": legacy._field_number(raw_text, r"CALIFICACI[ÓO]N\s+TUTOR"),
         "reader_grade": legacy._field_number(raw_text, r"CALIFICACI[ÓO]N\s+LECTOR"),
         "vocal_1": _between(raw_text, r"PRIMER\s+VOCAL", r"SEGUNDO\s+VOCAL"),
@@ -375,7 +379,7 @@ def _parse_block(report_id: int, raw_text: str, overrides: dict[str, Any] | None
     if overrides:
         for key in (
             "identification", "full_name", "career_code", "career_name", "project_title", "modality",
-            "act_number", "act_date", "tutor_grade", "reader_grade", "vocal_1", "vocal_2", "vocal_3",
+            "act_number", "act_date", "tutor_name", "reader_name", "tutor_grade", "reader_grade", "vocal_1", "vocal_2", "vocal_3",
         ):
             if key in overrides and overrides.get(key) not in (None, ""):
                 project[key] = overrides.get(key)
@@ -410,6 +414,8 @@ def _structured_project(report_id: int, payload: dict[str, Any]) -> dict[str, An
         "modality": clean_cell(payload.get("modality")),
         "act_number": clean_cell(payload.get("act_number")),
         "act_date": clean_cell(payload.get("act_date")),
+        "tutor_name": clean_cell(payload.get("tutor_name")),
+        "reader_name": clean_cell(payload.get("reader_name")),
         "tutor_grade": _number(payload.get("tutor_grade")),
         "reader_grade": _number(payload.get("reader_grade")),
         "vocal_1": clean_cell(payload.get("vocal_1")),
@@ -449,12 +455,12 @@ def save_project_data(report_id: int, payload: dict[str, Any]) -> dict[str, Any]
                 """
                 INSERT INTO thesis_projects
                 (report_id, student_id, identification, full_name, career_code, career_name,
-                 act_number, act_date, tutor_grade, reader_grade, written_average,
+                 act_number, act_date, tutor_name, reader_name, tutor_grade, reader_grade, written_average,
                  vocal_1, vocal_2, vocal_3, practical_average, defense_average,
                  oral_average, final_grade, source_final_grade, source_difference,
                  raw_text, created_at, updated_at, project_title, modality, final_status,
                  validation_json, lowest_component, lowest_parameter)
-                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(report_id, identification) DO UPDATE SET
                     student_id=NULL,
                     full_name=excluded.full_name,
@@ -462,6 +468,8 @@ def save_project_data(report_id: int, payload: dict[str, Any]) -> dict[str, Any]
                     career_name=excluded.career_name,
                     act_number=excluded.act_number,
                     act_date=excluded.act_date,
+                    tutor_name=excluded.tutor_name,
+                    reader_name=excluded.reader_name,
                     tutor_grade=excluded.tutor_grade,
                     reader_grade=excluded.reader_grade,
                     written_average=excluded.written_average,
@@ -491,6 +499,8 @@ def save_project_data(report_id: int, payload: dict[str, Any]) -> dict[str, Any]
                     project["career_name"],
                     project["act_number"],
                     project["act_date"],
+                    project["tutor_name"],
+                    project["reader_name"],
                     project["tutor_grade"],
                     project["reader_grade"],
                     project["written_average"],
