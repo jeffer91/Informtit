@@ -473,6 +473,21 @@ def get_period_students(report_id: int, *, sync: bool = True) -> dict[str, Any]:
     }
 
 
+def _validate_route_for_period(default_route: str, route: str) -> None:
+    """Impide que una llamada directa al API contradiga la política del período."""
+    if default_route == ROUTE_ARTICLE:
+        if route != ROUTE_ARTICLE:
+            raise ValueError(
+                "Los períodos PVC pertenecen automáticamente a Artículo Académico."
+            )
+        return
+    if route == ROUTE_ARTICLE:
+        raise ValueError(
+            "Artículo Académico solo corresponde a períodos PVC. "
+            "En períodos regulares use Complexivo o Trabajo de Titulación."
+        )
+
+
 def set_student_route(report_id: int, student_id: int, route: str) -> dict[str, Any]:
     ensure_student_domain_schema()
     route = str(route or "").strip().upper()
@@ -485,7 +500,13 @@ def set_student_route(report_id: int, student_id: int, route: str) -> dict[str, 
         ).fetchone()
         if not row:
             raise ValueError("El estudiante no existe en este período.")
+
+        default_route = _default_route_for_report(conn, report_id)
+        _validate_route_for_period(default_route, route)
         old = str(row["route"])
+        if default_route == ROUTE_ARTICLE and old == ROUTE_ARTICLE:
+            # En PVC la ruta es automática; no se convierte en una decisión manual.
+            return {"ok": True, "student_id": student_id, "route": ROUTE_ARTICLE}
         if old == route and str(row["route_source"]) == "MANUAL":
             return {"ok": True, "student_id": student_id, "route": route}
         now = utcnow()
