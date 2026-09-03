@@ -35,8 +35,12 @@ READ_ONLY_COLLECTIONS = {
     "matriculas",
     "periodos",
     "requisitos",
+    # Colecciones antiguas: Informtit puede leerlas para compatibilidad, pero
+    # desde esta versión ya no vuelve a escribirlas.
+    "titulacion",
+    "cronogramas",
 }
-WRITABLE_COLLECTIONS = {"nucleos", "complexivo", "titulacion", "cronogramas"}
+WRITABLE_COLLECTIONS = {"nucleos", "complexivo", "trabajoTitulacion", "articulo"}
 ALL_ALLOWED_COLLECTIONS = READ_ONLY_COLLECTIONS | WRITABLE_COLLECTIONS
 
 BASE_URL = (
@@ -355,15 +359,17 @@ def _make_requirement_record(
     values = requirement.get("valores") or {}
     if not isinstance(values, dict):
         values = {}
+    # Estudiante es la fuente maestra de identidad y datos actuales. Matrícula
+    # solo aporta contexto del período cuando el dato maestro no existe.
     career_code = clean_cell(
-        enrollment.get("codigoCarrera")
-        or student.get("codigoCarreraActual")
+        student.get("codigoCarreraActual")
+        or enrollment.get("codigoCarrera")
     )
     catalog = career_catalog.get(career_code, {})
     career_name = clean_cell(
-        enrollment.get("nombreCarrera")
+        student.get("nombreCarreraActual")
         or catalog.get("nombreCarrera")
-        or student.get("nombreCarreraActual")
+        or enrollment.get("nombreCarrera")
         or "Sin carrera"
     )
     modality = (
@@ -389,7 +395,8 @@ def _make_requirement_record(
         "personal_email": clean_cell(student.get("correoPersonal")),
         "email": clean_cell(student.get("correoInstitucional")).lower(),
         "phone": clean_cell(student.get("celular")),
-        "campus": clean_cell(enrollment.get("sede") or student.get("sede")),
+        "campus": clean_cell(student.get("sede") or enrollment.get("sede")),
+        "retired": bool(enrollment.get("retirado")),
     }
     for firebase_key, local_key in REQUIREMENT_MAP.items():
         row[local_key] = _clean_status(values.get(firebase_key))
@@ -508,7 +515,7 @@ def _load_requirements_to_local(
     enrollments = [
         item
         for item in query_equal("matriculas", "periodoId", period_id)
-        if _active(item) and not bool(item.get("retirado"))
+        if _active(item)
     ]
     req_by_id = {
         clean_cell(item.get("cedula")): item
@@ -1290,24 +1297,17 @@ def _restore_missing_modules(
 
 
 def sync_period(period_id: str) -> dict[str, Any]:
+    """Sincroniza exclusivamente las fuentes oficiales compartidas.
+
+    Leer Firebase nunca publica notas. Las colecciones académicas se escriben
+    únicamente mediante los botones explícitos de publicación de cada módulo.
+    """
     period_id = clean_cell(period_id)
     if not period_id:
         raise ValueError("Seleccione un periodo.")
     period = _period_doc(period_id)
     kind, label, report_ids = _ensure_reports(period_id, period)
     requirements_result = _load_requirements_to_local(
-        period_id,
-        kind,
-        report_ids,
-    )
-
-    restored = _restore_missing_modules(
-        period_id,
-        kind,
-        report_ids,
-        requirements_result["student_map"],
-    )
-    written, warnings = _push_new_collections(
         period_id,
         kind,
         report_ids,
@@ -1322,9 +1322,10 @@ def sync_period(period_id: str) -> dict[str, Any]:
         "report_ids": report_ids,
         "report_id": next(iter(report_ids.values())),
         "requirements": requirements_result,
-        "restored": restored,
-        "written": written,
-        "warnings": warnings,
+        "restored": {},
+        "written": {name: 0 for name in WRITABLE_COLLECTIONS},
+        "warnings": [],
+        "mode": "read_only_sources",
         "protected_collections": sorted(READ_ONLY_COLLECTIONS),
         "writable_collections": sorted(WRITABLE_COLLECTIONS),
     }
