@@ -218,18 +218,37 @@ def _report_project_id(conn: Any, report_id: int) -> int | None:
 
 
 def _default_route_for_report(conn: Any, report_id: int) -> str:
-    """PVC/Artículo es automático; los períodos regulares parten por Complexivo."""
-    row = conn.execute(
-        "SELECT report_type, period FROM reports WHERE id=?",
-        (report_id,),
-    ).fetchone()
+    """PVC/Artículo es automático; los períodos regulares parten por Complexivo.
+
+    Las bases antiguas y los tests mínimos pueden no tener todavía report_type;
+    un período no reconocible conserva la política histórica de Complexivo.
+    """
+    columns = _columns(conn, "reports")
+    if "report_type" in columns:
+        row = conn.execute(
+            "SELECT report_type, period FROM reports WHERE id=?",
+            (report_id,),
+        ).fetchone()
+        explicit = str(row["report_type"] or "").strip().lower() if row else ""
+    else:
+        row = conn.execute(
+            "SELECT period FROM reports WHERE id=?",
+            (report_id,),
+        ).fetchone()
+        explicit = ""
     if not row:
         return ROUTE_COMPLEXIVE
-    kind = str(row["report_type"] or "").strip().lower()
-    if not kind:
-        import period_policy_runtime
-        kind = period_policy_runtime.classify_period(row["period"])
-    return ROUTE_ARTICLE if kind == "pvc" else ROUTE_COMPLEXIVE
+    if explicit in {"normal", "pvc"}:
+        return ROUTE_ARTICLE if explicit == "pvc" else ROUTE_COMPLEXIVE
+
+    import period_policy_runtime
+    if period_policy_runtime.period_months(row["period"]) is None:
+        return ROUTE_COMPLEXIVE
+    return (
+        ROUTE_ARTICLE
+        if period_policy_runtime.classify_period(row["period"]) == "pvc"
+        else ROUTE_COMPLEXIVE
+    )
 
 
 def _official_flags(row: dict[str, Any]) -> tuple[bool, bool]:
