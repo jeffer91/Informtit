@@ -29,11 +29,11 @@ class FirebaseSourceSyncTests(unittest.TestCase):
                     "unmatched_students": [],
                 },
             ),
-            patch.object(firebase, "_push_new_collections") as bulk_publish,
+            patch.object(firebase, "write_document") as writer,
         ):
             result = firebase.sync_period("2026-04__2026-09")
 
-        bulk_publish.assert_not_called()
+        writer.assert_not_called()
         self.assertEqual(result["mode"], "read_only_sources")
         self.assertTrue(all(value == 0 for value in result["written"].values()))
 
