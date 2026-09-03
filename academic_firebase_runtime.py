@@ -369,6 +369,12 @@ def _thesis_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, d
                 f"{cedula}: existe evidencia histórica de Trabajo de Titulación fuera de su ruta activa; no se publicará."
             )
             continue
+        if clean_cell(master.get("process_status")).upper() != "ACTIVO":
+            warnings.append(
+                f"{cedula}: el estudiante no está activo en Trabajo de Titulación; "
+                "la evidencia se conserva localmente y no se publica como nota vigente."
+            )
+            continue
         if cedula in by_id:
             issues.append(f"{cedula}: existe más de un registro activo de Trabajo de Titulación.")
             continue
