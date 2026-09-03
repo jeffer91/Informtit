@@ -150,7 +150,7 @@ def _academic_consistency(row: dict[str, Any]) -> list[tuple[str, str]]:
             issues.append(("REVIEW_REQUIRED", "El estudiante está activo en la ruta Complexivo, pero no tiene registros conciliados de Núcleos."))
         elif titulation_completed and not row.get("has_nuclei"):
             issues.append(("REVIEW_REQUIRED", "Titulación consta CUMPLE en Requisitos, pero no se encontró evidencia de Núcleos para completar la trazabilidad."))
-    else:
+    elif route == "TRABAJO_TITULACION":
         has_grade = _has_thesis_grade(row.get("thesis_records", []))
         approved = _thesis_approved(row.get("thesis_records", []))
         if official_graduated and not has_grade:
@@ -159,6 +159,10 @@ def _academic_consistency(row: dict[str, Any]) -> list[tuple[str, str]]:
             issues.append(("OFFICIAL_DATA_CONFLICT", "Existe una nota aprobatoria de Trabajo de Titulación, pero Requisitos todavía no confirma la graduación oficial."))
         if titulation_completed and not row.get("has_thesis"):
             issues.append(("REVIEW_REQUIRED", "Titulación consta CUMPLE en Requisitos, pero no se encontró el Trabajo de Titulación para completar la trazabilidad."))
+    elif route == "ARTICULO":
+        # El detalle de Artículo Académico vive en pvc_records y tiene su propia
+        # auditoría 70/30. No debe interpretarse como Trabajo de Titulación.
+        pass
     return issues
 
 
