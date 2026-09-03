@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 
 import firebase_incremental_runtime
-import firebase_nuclei_bridge
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +29,7 @@ class StabilityHardeningTests(unittest.TestCase):
         self.assertIn("period_readonly_runtime.install()", entry)
 
     def test_nuclei_firebase_uses_modern_tables(self):
-        source = (ROOT / "firebase_nuclei_bridge.py").read_text(encoding="utf-8")
+        source = (ROOT / "academic_firebase_runtime.py").read_text(encoding="utf-8")
         self.assertIn("nucleus_course_instances", source)
         self.assertIn("nucleus_instance_students", source)
         self.assertNotIn("FROM nucleus_courses", source)
@@ -49,14 +48,12 @@ class StabilityHardeningTests(unittest.TestCase):
         self.assertEqual(left, right)
         self.assertNotEqual(left, changed)
 
-    def test_multicampus_course_ids_do_not_collide(self):
-        first = firebase_nuclei_bridge._document_id(
-            "P1", "PRESENCIAL", {"career_name": "Redes", "nucleus_number": 1, "course_key": "quito-a"}
-        )
-        second = firebase_nuclei_bridge._document_id(
-            "P1", "PRESENCIAL", {"career_name": "Redes", "nucleus_number": 1, "course_key": "manta-a"}
-        )
-        self.assertNotEqual(first, second)
+    def test_academic_nuclei_ids_use_official_student_and_nucleus(self):
+        source = (ROOT / "academic_firebase_runtime.py").read_text(encoding="utf-8")
+        entry = (ROOT / "desktop_entry.py").read_text(encoding="utf-8")
+        self.assertIn("grouped.setdefault((cedula, nucleus), []).append(row)", source)
+        self.assertIn('doc_id = f"{period_id}__{cedula}__N{nucleus}"', source)
+        self.assertNotIn("firebase_nuclei_bridge.install()", entry)
 
     def test_requirements_import_uses_final_student_sync_contract(self):
         source = (ROOT / "reconciliation_reliability_runtime.py").read_text(encoding="utf-8")
