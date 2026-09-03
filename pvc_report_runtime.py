@@ -189,6 +189,68 @@ def _decode_data_url(data_url: str) -> bytes:
         raise ValueError("No se pudo decodificar la Base PVC.") from exc
 
 
+PVC_REQUIRED_COLUMNS = (
+    "nombre_estudiante",
+    "identificacion_estudiante",
+    "evaluacionTutor",
+    "evaluacionLector",
+    "nota_defensa_oral",
+    "notaTrabajoTitulacion",
+)
+
+PVC_COLUMN_LABELS = {
+    "nombre_estudiante": "Nombre del estudiante",
+    "identificacion_estudiante": "Cédula / identificación",
+    "evaluacionTutor": "Calificación tutor",
+    "evaluacionLector": "Calificación lector",
+    "nota_defensa_oral": "Nota defensa oral",
+    "notaTrabajoTitulacion": "Calificación final",
+}
+
+PVC_COLUMN_ALIASES = {
+    "nombre_estudiante": (
+        "nombre_estudiante", "nombre estudiante", "estudiante", "nombres",
+        "nombres completos", "nombre completo",
+    ),
+    "identificacion_estudiante": (
+        "identificacion_estudiante", "identificación estudiante", "identificacion",
+        "identificación", "cedula", "cédula", "documento",
+    ),
+    "evaluacionTutor": (
+        "evaluacionTutor", "evaluacion tutor", "evaluación tutor",
+        "calificacion tutor", "calificación tutor", "nota tutor",
+    ),
+    "evaluacionLector": (
+        "evaluacionLector", "evaluacion lector", "evaluación lector",
+        "calificacion lector", "calificación lector", "nota lector",
+    ),
+    "nota_defensa_oral": (
+        "nota_defensa_oral", "nota defensa oral", "defensa oral",
+        "promedio defensa oral", "calificacion defensa oral",
+    ),
+    "notaTrabajoTitulacion": (
+        "notaTrabajoTitulacion", "nota trabajo titulacion",
+        "nota trabajo titulación", "nota final", "calificacion final",
+        "calificación final", "nota final titulacion",
+    ),
+    "periodo_academico": ("periodo_academico", "periodo academico", "período académico"),
+    "trabajoTitulacion": ("trabajoTitulacion", "trabajo titulacion", "trabajo titulación", "tipo trabajo"),
+    "numeroActaGrado": ("numeroActaGrado", "numero acta grado", "número acta de grado", "numero acta"),
+    "fechaActaGrado": ("fechaActaGrado", "fecha acta grado", "fecha acta de grado"),
+    "nombre_tutor": ("nombre_tutor", "nombre tutor", "tutor"),
+    "nombre_lector": ("nombre_lector", "nombre lector", "lector"),
+    "nombre_vocal1": ("nombre_vocal1", "nombre vocal 1", "primer vocal", "vocal 1"),
+    "nombre_vocal2": ("nombre_vocal2", "nombre vocal 2", "segundo vocal", "vocal 2"),
+    "nombre_vocal3": ("nombre_vocal3", "nombre vocal 3", "tercer vocal", "vocal 3"),
+    "promedio_trabajo_escrito": (
+        "promedio_trabajo_escrito", "promedio trabajo escrito", "trabajo escrito",
+    ),
+    "notaPromedioAcumulado": (
+        "notaPromedioAcumulado", "nota promedio acumulado", "promedio acumulado",
+    ),
+}
+
+
 def _headers(values: tuple[Any, ...]) -> dict[str, list[int]]:
     result: dict[str, list[int]] = defaultdict(list)
     for index, value in enumerate(values):
@@ -196,6 +258,71 @@ def _headers(values: tuple[Any, ...]) -> dict[str, list[int]]:
         if key:
             result[key].append(index)
     return dict(result)
+
+
+def _resolved_headers(
+    values: tuple[Any, ...],
+    column_map: dict[str, Any] | None = None,
+) -> dict[str, list[int]]:
+    """Normaliza variantes de encabezados y respeta un mapeo manual opcional."""
+    raw = _headers(values)
+    resolved = dict(raw)
+    manual = column_map if isinstance(column_map, dict) else {}
+
+    for canonical, aliases in PVC_COLUMN_ALIASES.items():
+        key = _fold(canonical)
+        selected = manual.get(canonical)
+        positions: list[int] = []
+        if selected is not None and selected != "":
+            if isinstance(selected, int) or (isinstance(selected, str) and selected.isdigit()):
+                index = int(selected)
+                if 0 <= index < len(values):
+                    positions = [index]
+            else:
+                positions = list(raw.get(_fold(selected), []))
+        if not positions:
+            for alias in aliases:
+                for position in raw.get(_fold(alias), []):
+                    if position not in positions:
+                        positions.append(position)
+        if positions:
+            resolved[key] = positions
+    return resolved
+
+
+def inspect_pvc_workbook(data: bytes) -> dict[str, Any]:
+    try:
+        workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError("No se pudo abrir la Base PVC. Utilice un archivo .xlsx válido.") from exc
+    sheet = workbook[workbook.sheetnames[0]]
+    rows = sheet.iter_rows(values_only=True)
+    try:
+        header = next(rows)
+    except StopIteration as exc:
+        raise ValueError("La Base PVC está vacía.") from exc
+    indexes = _resolved_headers(header)
+    headers = [_text(value) for value in header]
+    mapping: dict[str, int] = {}
+    for canonical in PVC_REQUIRED_COLUMNS:
+        positions = indexes.get(_fold(canonical), [])
+        if positions:
+            mapping[canonical] = int(positions[0])
+    missing = [
+        canonical
+        for canonical in PVC_REQUIRED_COLUMNS
+        if _fold(canonical) not in indexes
+    ]
+    return {
+        "ok": not missing,
+        "headers": headers,
+        "required": [
+            {"key": key, "label": PVC_COLUMN_LABELS.get(key, key)}
+            for key in PVC_REQUIRED_COLUMNS
+        ],
+        "mapping": mapping,
+        "missing": missing,
+    }
 
 
 def _cell(row: tuple[Any, ...], indexes: dict[str, list[int]], key: str, occurrence: int = 0) -> Any:
@@ -255,7 +382,10 @@ def _final_status(
     return "APROBADO" if final_source >= PASS_GRADE else "REPROBADO"
 
 
-def parse_pvc_workbook(data: bytes) -> list[dict[str, Any]]:
+def parse_pvc_workbook(
+    data: bytes,
+    column_map: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     try:
         workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception as exc:
@@ -266,17 +396,9 @@ def parse_pvc_workbook(data: bytes) -> list[dict[str, Any]]:
         header = next(rows)
     except StopIteration as exc:
         raise ValueError("La Base PVC está vacía.") from exc
-    indexes = _headers(header)
+    indexes = _resolved_headers(header, column_map)
 
-    required = (
-        "nombre_estudiante",
-        "identificacion_estudiante",
-        "evaluacionTutor",
-        "evaluacionLector",
-        "nota_defensa_oral",
-        "notaTrabajoTitulacion",
-    )
-    missing = [key for key in required if _fold(key) not in indexes]
+    missing = [key for key in PVC_REQUIRED_COLUMNS if _fold(key) not in indexes]
     if missing:
         raise ValueError("La Base PVC no contiene las columnas requeridas: " + ", ".join(missing))
 
@@ -381,14 +503,19 @@ def _requirements_by_id(report_id: int) -> dict[str, list[dict[str, Any]]]:
     return dict(groups)
 
 
-def import_pvc_results(report_id: int, data_url: str, filename: str) -> dict[str, Any]:
+def import_pvc_results(
+    report_id: int,
+    data_url: str,
+    filename: str,
+    column_map: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     ensure_schema()
     if not _is_pvc(report_id):
         raise ValueError("La Base PVC solo puede cargarse en un informe identificado como PVC.")
     if not str(filename or "").lower().endswith(".xlsx"):
         raise ValueError("La Base de resultados PVC debe cargarse en formato .xlsx.")
 
-    records = parse_pvc_workbook(_decode_data_url(data_url))
+    records = parse_pvc_workbook(_decode_data_url(data_url), column_map)
     requirements = _requirements_by_id(report_id)
     now = utcnow()
     matched = 0
@@ -2055,6 +2182,17 @@ def install() -> None:
         previous_get(self, path, query)
 
     def pvc_write(self: Any, method: str, path: str, payload: dict[str, Any]) -> None:
+        inspect_match = re.fullmatch(r"/api/reports/(\d+)/pvc/inspect", path)
+        if inspect_match and method == "POST":
+            report_id = int(inspect_match.group(1))
+            if not _is_pvc(report_id):
+                raise ValueError("El informe solicitado no corresponde a Artículo Académico / PVC.")
+            result = inspect_pvc_workbook(
+                _decode_data_url(str(payload.get("data_url") or ""))
+            )
+            self._send_json(result)
+            return
+
         import_match = re.fullmatch(r"/api/reports/(\d+)/pvc/import", path)
         if import_match and method == "POST":
             report_id = int(import_match.group(1))
@@ -2062,6 +2200,7 @@ def install() -> None:
                 report_id,
                 str(payload.get("data_url") or ""),
                 str(payload.get("filename") or "base_pvc.xlsx"),
+                payload.get("column_map") if isinstance(payload.get("column_map"), dict) else None,
             )
             self._send_json(result, 201)
             return
