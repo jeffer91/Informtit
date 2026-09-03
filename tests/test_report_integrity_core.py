@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import report_integrity_core as integrity
 import report_integrity_final_fixes as final_fixes
@@ -214,6 +215,59 @@ class ReportIntegrityCoreTests(unittest.TestCase):
         self.assertEqual(len(result["requirements"]), len(integrity_requirements.REQUIREMENTS))
         self.assertTrue(all(row["blank"] == 1 for row in result["requirements"]))
 
+
+    def test_failed_nuclei_do_not_require_complexive_result(self):
+        student = {
+            "id": 1,
+            "identification": "111",
+            "full_name": "ESTUDIANTE",
+            "career_name": "DESARROLLO DE SOFTWARE",
+            "route": "COMPLEXIVO",
+            "process_status": "ACTIVO",
+            "reconciliation_status": "OK",
+            "has_complexive": False,
+            "has_thesis": False,
+            "nuclei_records": [
+                {"nucleus_number": 1, "final_status": "APROBADO"},
+                {"nucleus_number": 2, "final_status": "APROBADO"},
+                {"nucleus_number": 3, "final_status": "REPROBADO"},
+                {"nucleus_number": 4, "final_status": "APROBADO"},
+            ],
+        }
+        with patch.object(
+            integrity.student_domain_read_model,
+            "consolidated_students",
+            return_value={"students": [student]},
+        ):
+            closure = integrity.final_student_closure(1)
+        self.assertEqual(closure["unresolved"], 0)
+
+    def test_approved_nuclei_require_complexive_result(self):
+        student = {
+            "id": 1,
+            "identification": "111",
+            "full_name": "ESTUDIANTE",
+            "career_name": "DESARROLLO DE SOFTWARE",
+            "route": "COMPLEXIVO",
+            "process_status": "ACTIVO",
+            "reconciliation_status": "OK",
+            "has_complexive": False,
+            "has_thesis": False,
+            "nuclei_records": [
+                {"nucleus_number": 1, "final_status": "APROBADO"},
+                {"nucleus_number": 2, "final_status": "APROBADO"},
+                {"nucleus_number": 3, "final_status": "APROBADO"},
+                {"nucleus_number": 4, "final_status": "APROBADO"},
+            ],
+        }
+        with patch.object(
+            integrity.student_domain_read_model,
+            "consolidated_students",
+            return_value={"students": [student]},
+        ):
+            closure = integrity.final_student_closure(1)
+        self.assertEqual(closure["unresolved"], 1)
+        self.assertIn("Examen Complexivo", closure["students"][0]["reasons"][0])
 
     def test_terminal_requirement_noncompliance_does_not_block_final_close(self):
         metrics = {
