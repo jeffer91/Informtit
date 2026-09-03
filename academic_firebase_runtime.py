@@ -12,6 +12,7 @@ import nuclei_population_integrity
 import period_policy_runtime
 import pvc_report_runtime
 import student_domain_bridge as student_bridge
+import student_domain_read_model
 from db import connection, rows_to_dicts, utcnow
 from import_service import clean_cell
 from student_domain_service import (
@@ -224,6 +225,27 @@ def _nuclei_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, d
 def _complexive_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, dict[str, Any]]], list[str], list[str]]:
     issues: list[str] = []
     warnings: list[str] = []
+
+    domain = student_domain_read_model.consolidated_students(report_id, sync=False)
+    route_students = [
+        row
+        for row in (domain.get("students") or [])
+        if clean_cell(row.get("route")).upper() == ROUTE_COMPLEXIVE
+        and clean_cell(row.get("process_status")).upper() == "ACTIVO"
+    ]
+    eligible_ids: set[str] = set()
+    blocked_ids: dict[str, str] = {}
+    for student in route_students:
+        cedula = clean_cell(student.get("identification"))
+        if not cedula:
+            continue
+        nucleus_state = nuclei_population_integrity.nuclei_route_state(student)
+        outcome = clean_cell(nucleus_state.get("outcome")).upper()
+        if outcome == "APPROVED":
+            eligible_ids.add(cedula)
+        else:
+            blocked_ids[cedula] = outcome or "INCOMPLETE"
+
     with connection() as conn:
         rows = rows_to_dicts(
             conn.execute(
@@ -252,6 +274,17 @@ def _complexive_documents(report_id: int, period_id: str) -> tuple[list[tuple[st
         if clean_cell(row.get("official_route")).upper() != ROUTE_COMPLEXIVE:
             continue
         if clean_cell(row.get("official_process")).upper() != "ACTIVO":
+            continue
+        if cedula in blocked_ids:
+            issues.append(
+                f"{cedula}: existe Examen Complexivo, pero Núcleos no habilita el avance "
+                f"(estado {blocked_ids[cedula]})."
+            )
+            continue
+        if cedula not in eligible_ids:
+            issues.append(
+                f"{cedula}: no se pudo confirmar la aprobación completa de Núcleos antes del Complexivo."
+            )
             continue
         if cedula in seen:
             issues.append(f"{cedula}: existe más de un registro activo de Examen Complexivo.")
@@ -290,6 +323,12 @@ def _complexive_documents(report_id: int, period_id: str) -> tuple[list[tuple[st
                     "updatedAt": utcnow(),
                 },
             )
+        )
+
+    missing_exam = sorted(eligible_ids - seen)
+    for cedula in missing_exam:
+        issues.append(
+            f"{cedula}: aprobó Núcleos pero no tiene resultado de Examen Complexivo."
         )
     return documents, list(dict.fromkeys(issues)), warnings
 
