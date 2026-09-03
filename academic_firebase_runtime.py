@@ -167,7 +167,7 @@ def _nuclei_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, d
             # Evidencia histórica de una ruta anterior: se conserva localmente,
             # pero no se publica como resultado académico vigente.
             continue
-        if clean_cell(row.get("process_status")).upper() == PROCESS_RETIRED:
+        if clean_cell(row.get("process_status")).upper() != "ACTIVO":
             continue
         nucleus = int(row.get("nucleus_number") or 0)
         if nucleus <= 0:
@@ -251,7 +251,7 @@ def _complexive_documents(report_id: int, period_id: str) -> tuple[list[tuple[st
             continue
         if clean_cell(row.get("official_route")).upper() != ROUTE_COMPLEXIVE:
             continue
-        if clean_cell(row.get("official_process")).upper() == PROCESS_RETIRED:
+        if clean_cell(row.get("official_process")).upper() != "ACTIVO":
             continue
         if cedula in seen:
             issues.append(f"{cedula}: existe más de un registro activo de Examen Complexivo.")
@@ -311,7 +311,7 @@ def _thesis_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, d
         clean_cell(row.get("identification"))
         for row in masters.values()
         if clean_cell(row.get("route")).upper() == ROUTE_THESIS
-        and clean_cell(row.get("process_status")).upper() != PROCESS_RETIRED
+        and clean_cell(row.get("process_status")).upper() == "ACTIVO"
         and clean_cell(row.get("identification"))
     }
     by_id: dict[str, dict[str, Any]] = {}
@@ -420,6 +420,10 @@ def _article_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, 
             continue
         if not cedula:
             issues.append("Artículo: existe un registro conciliado sin cédula.")
+            continue
+        if not bool(row.get("requirements_complete")):
+            # No cumplir requisitos es un resultado terminal del informe, no una
+            # nota académica publicable.
             continue
         if cedula in seen:
             issues.append(f"{cedula}: existe más de un resultado de Artículo Académico.")
