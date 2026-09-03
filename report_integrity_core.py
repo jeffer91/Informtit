@@ -707,8 +707,27 @@ def final_student_closure(report_id: int) -> dict[str, Any]:
             reasons.append(
                 str(row.get("reconciliation_detail") or reconciliation)
             )
-        if route == "COMPLEXIVO" and not bool(row.get("has_complexive")):
-            reasons.append("No existe resultado conciliado de Examen Complexivo.")
+        if route == "COMPLEXIVO":
+            nuclei_state = nuclei_population_integrity.nuclei_route_state(row)
+            outcome = str(nuclei_state.get("outcome") or "")
+            if outcome == "APPROVED":
+                if not bool(row.get("has_complexive")):
+                    reasons.append("Aprobó Núcleos, pero no existe resultado conciliado de Examen Complexivo.")
+            elif outcome == "FAILED":
+                # Reprobar Núcleos cierra negativamente esta ruta; no se exige
+                # Examen Complexivo. Si existe uno, la secuencia académica es inconsistente.
+                if bool(row.get("has_complexive")):
+                    reasons.append("Existe Examen Complexivo pese a tener Núcleos reprobados.")
+            elif outcome == "INCOMPLETE":
+                reasons.append(
+                    "La serie de Núcleos está incompleta: faltan "
+                    + ", ".join(str(value) for value in nuclei_state.get("missing", []))
+                    + "."
+                )
+            elif outcome == "UNEVALUATED":
+                reasons.append("Existen Núcleos sin resultado final clasificado.")
+            elif outcome == "CONFLICT":
+                reasons.append("Existen estados contradictorios en uno o más Núcleos.")
         elif route == "TRABAJO_TITULACION" and not bool(row.get("has_thesis")):
             reasons.append("No existe registro de Trabajo de Titulación.")
         elif route == "ARTICULO":
