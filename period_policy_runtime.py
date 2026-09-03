@@ -188,11 +188,16 @@ def ensure_schema() -> None:
 
         rows = conn.execute("SELECT id, period, report_type FROM reports").fetchall()
         for row in rows:
+            # El tipo no es una preferencia manual: por contrato institucional,
+            # Abril-Septiembre y Octubre-Marzo son regulares; cualquier otro
+            # rango es PVC/Artículo Académico. Recalcular evita que bases antiguas
+            # con el valor DEFAULT 'normal' clasifiquen mal un período PVC.
+            expected = classify_period(row["period"])
             current = clean_cell(row["report_type"]).lower()
-            if current not in {"normal", "pvc"}:
+            if current != expected:
                 conn.execute(
                     "UPDATE reports SET report_type=? WHERE id=?",
-                    (classify_period(row["period"]), int(row["id"])),
+                    (expected, int(row["id"])),
                 )
 
 
