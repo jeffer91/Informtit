@@ -192,8 +192,14 @@ def ensure_schema() -> None:
             # Abril-Septiembre y Octubre-Marzo son regulares; cualquier otro
             # rango es PVC/Artículo Académico. Recalcular evita que bases antiguas
             # con el valor DEFAULT 'normal' clasifiquen mal un período PVC.
-            expected = classify_period(row["period"])
             current = clean_cell(row["report_type"]).lower()
+            months = period_months(row["period"])
+            if months is None:
+                # Etiquetas técnicas/antiguas sin rango reconocible no deben
+                # convertirse a PVC por accidente.
+                expected = current if current in {"normal", "pvc"} else "normal"
+            else:
+                expected = "normal" if months in NORMAL_PERIODS else "pvc"
             if current != expected:
                 conn.execute(
                     "UPDATE reports SET report_type=? WHERE id=?",
