@@ -35,7 +35,7 @@ import report_quality
 import report_structure
 import requirements_store
 from db import connection, rows_to_dicts, utcnow
-from workflow_rules import prerequisite_state
+from workflow_rules import downstream_state, prerequisite_state
 
 
 PASS_GRADE = 7.0
@@ -695,7 +695,22 @@ def get_pvc_summary(report_id: int, include_records: bool = True) -> dict[str, A
         report = conn.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
 
     records = [_record_dict(row) for row in raw_records]
-    eligible = [row for row in requirements if prerequisite_state(row)["complete"]]
+
+    # En el informe final, NO CUMPLE REQUISITOS y RETIRADO son resultados
+    # terminales válidos. Solo quienes estaban habilitados y no retirados deben
+    # tener una evaluación académica de Artículo.
+    eligible = [
+        row
+        for row in requirements
+        if prerequisite_state(row)["complete"] and not bool(row.get("retired"))
+    ]
+    unresolved_requirements = [
+        row
+        for row in requirements
+        if not bool(row.get("retired"))
+        and not prerequisite_state(row)["pending"]
+        and bool(prerequisite_state(row)["blank"])
+    ]
     evaluated = [row for row in records if row["final_status"] in {"APROBADO", "REPROBADO"}]
     approved = [row for row in evaluated if row["final_status"] == "APROBADO"]
     failed = [row for row in evaluated if row["final_status"] == "REPROBADO"]
@@ -703,6 +718,38 @@ def get_pvc_summary(report_id: int, include_records: bool = True) -> dict[str, A
     matched = [row for row in records if row["match_status"] == "MATCHED"]
     unmatched = [row for row in records if row["match_status"] != "MATCHED"]
     formula_warnings = [row for row in records if row["formula_status"] == "WARNING"]
+
+    requirements_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in requirements:
+        key = _identification(row.get("identification"))
+        if key:
+            requirements_by_id[key].append(row)
+
+    evaluated_ids = {
+        _identification(row.get("identification"))
+        for row in evaluated
+        if row.get("match_status") == "MATCHED"
+    }
+    missing_evaluations = [
+        row
+        for row in eligible
+        if _identification(row.get("identification")) not in evaluated_ids
+    ]
+    active_not_evaluated = []
+    for record in not_evaluated:
+        key = _identification(record.get("identification"))
+        candidates = requirements_by_id.get(key, [])
+        if len(candidates) == 1 and prerequisite_state(candidates[0])["complete"] and not bool(candidates[0].get("retired")):
+            active_not_evaluated.append(record)
+
+    approved_not_official = []
+    for record in approved:
+        if record.get("match_status") != "MATCHED":
+            continue
+        key = _identification(record.get("identification"))
+        candidates = requirements_by_id.get(key, [])
+        if len(candidates) == 1 and not downstream_state(candidates[0])["titles_uploaded"]:
+            approved_not_official.append(record)
 
     requirements_by_career: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in requirements:
@@ -777,6 +824,15 @@ def get_pvc_summary(report_id: int, include_records: bool = True) -> dict[str, A
         "defense_average": _safe_mean([_number(row.get("defense_source")) for row in evaluated]),
         "final_average": _safe_mean([row["final_grade"] for row in evaluated]),
         "formula_warnings": len(formula_warnings),
+        "requirements_unresolved": len(unresolved_requirements),
+        "missing_evaluations": len(missing_evaluations),
+        "active_not_evaluated": len(active_not_evaluated),
+        "approved_not_official": len(approved_not_official),
+        "retired": sum(bool(row.get("retired")) for row in requirements),
+        "requirement_noncompliance": sum(
+            bool(prerequisite_state(row)["pending"]) and not bool(row.get("retired"))
+            for row in requirements
+        ),
     }
     return {
         "ok": True,
@@ -912,6 +968,42 @@ def pvc_audit(report_id: int) -> dict[str, Any]:
         "ok" if summary["formula_warnings"] == 0 else "error",
         f"{summary['formula_warnings']} registros presentan diferencia superior a {FORMULA_TOLERANCE:.2f} entre la nota fuente y el cálculo 70 % trabajo escrito + 30 % defensa.",
         blocking=bool(summary["formula_warnings"]),
+    )
+    add(
+        "Clasificación final de requisitos",
+        "ok" if summary["requirements_unresolved"] == 0 else "error",
+        (
+            f"{summary['requirements_unresolved']} estudiante(s) tienen requisitos sin clasificación final."
+            if summary["requirements_unresolved"]
+            else (
+                "Los requisitos están clasificados. Los casos NO CUMPLE y RETIRADO "
+                "se conservan como resultados terminales y no bloquean el informe."
+            )
+        ),
+        blocking=bool(summary["requirements_unresolved"]),
+    )
+    academic_open = int(summary["missing_evaluations"]) + int(summary["active_not_evaluated"])
+    add(
+        "Cierre académico de Artículo",
+        "ok" if academic_open == 0 else "error",
+        (
+            f"{summary['missing_evaluations']} estudiante(s) habilitados sin resultado final y "
+            f"{summary['active_not_evaluated']} con estado No evaluado."
+            if academic_open
+            else "Todos los estudiantes habilitados y no retirados tienen resultado final de Artículo."
+        ),
+        blocking=bool(academic_open),
+    )
+    add(
+        "Aprobación oficial de titulación",
+        "ok" if summary["approved_not_official"] == 0 else "error",
+        (
+            f"{summary['approved_not_official']} estudiante(s) aprobaron Artículo, pero "
+            "AprobacionTitulacion todavía no consta CUMPLE en Requisitos."
+            if summary["approved_not_official"]
+            else "Los estudiantes aprobados cuentan con el cierre institucional de titulación."
+        ),
+        blocking=bool(summary["approved_not_official"]),
     )
     if source_periods:
         normalized_report = period_policy_runtime.canonical_period_id(report_period)
