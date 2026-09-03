@@ -451,6 +451,18 @@ def _article_documents(report_id: int, period_id: str) -> tuple[list[tuple[str, 
                 (report_id,),
             ).fetchall()
         )
+        requirement_rows = rows_to_dicts(
+            conn.execute(
+                "SELECT identification, retired FROM requirements_students WHERE report_id=? ORDER BY id",
+                (report_id,),
+            ).fetchall()
+        )
+
+    requirements_by_id: dict[str, list[dict[str, Any]]] = {}
+    for requirement in requirement_rows:
+        key = clean_cell(requirement.get("identification"))
+        if key:
+            requirements_by_id.setdefault(key, []).append(requirement)
 
     if not rows:
         issues.append("No existen resultados de Artículo Académico importados.")
