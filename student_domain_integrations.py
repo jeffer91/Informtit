@@ -5,6 +5,7 @@ from typing import Any
 import eligibility_service as eligibility
 import thesis_independent as thesis
 from student_domain_service import (
+    ROUTE_ARTICLE,
     ROUTE_COMPLEXIVE,
     ROUTE_THESIS,
     get_period_students,
@@ -79,13 +80,21 @@ def _get_eligibility(report_id: int) -> dict[str, Any]:
         if master["route"] == ROUTE_THESIS:
             row["option"] = "Trabajo de Titulación"
             row["eligible_for_complexive"] = False
+            row["eligible_for_nuclei"] = False
             row["status"] = "Trabajo de Titulación"
             row["stage_status"] = "Trabajo de Titulación"
+        elif master["route"] == ROUTE_ARTICLE:
+            row["option"] = "Artículo Académico"
+            row["eligible_for_complexive"] = False
+            row["eligible_for_nuclei"] = False
+            row["status"] = "Artículo Académico"
+            row["stage_status"] = "Artículo Académico"
         elif row.get("eligible_for_nuclei"):
             row["option"] = "Examen Complexivo"
     summary = result.get("summary") or {}
     master_rows = list(master_by_req.values())
     summary["thesis_students"] = sum(row.get("route") == ROUTE_THESIS for row in master_rows)
+    summary["article_students"] = sum(row.get("route") == ROUTE_ARTICLE for row in master_rows)
     summary["complexive_candidates"] = sum(
         row.get("route") == ROUTE_COMPLEXIVE and row.get("process_status") != "RETIRADO"
         for row in master_rows
