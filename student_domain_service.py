@@ -242,11 +242,12 @@ def _official_flags(row: dict[str, Any]) -> tuple[bool, bool]:
 def _derived_process(row: dict[str, Any]) -> tuple[str, list[str]]:
     state = prerequisite_state(row)
     missing = list(state["missing"])
+    if bool(row.get("retired")):
+        return PROCESS_RETIRED, missing
     if not missing:
         return PROCESS_ACTIVE, missing
     # No cumplir varios requisitos NO significa que el estudiante esté retirado.
-    # RETIRADO es una condición administrativa explícita y se preserva únicamente
-    # cuando llega como estado real/manual.
+    # RETIRADO proviene exclusivamente de la matrícula/estado administrativo.
     return PROCESS_WITH_ONE_MISSING, missing
 
 
