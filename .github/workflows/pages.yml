@@ -21,6 +21,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate GitHub Pages runtimes
+        run: |
+          node --check static/web-runtime.js
+          node --check static/firebase-pages-runtime.js
+          node --check static/github-pages-guard.js
+
       - name: Prepare GitHub Pages site
         env:
           INFORMTIT_API_BASE: ${{ vars.INFORMTIT_API_BASE }}
@@ -46,10 +52,11 @@ jobs:
           bridge = (
               '  <script src="./web-config.js?v=1.0"></script>\n'
               '  <script src="./web-runtime.js?v=1.0"></script>\n'
-              '  <script src="./github-pages-guard.js?v=1.1"></script>\n'
+              '  <script src="./firebase-pages-runtime.js?v=1.0"></script>\n'
+              '  <script src="./github-pages-guard.js?v=1.2"></script>\n'
           )
           app_script = '  <script src="./app.js?v=4.6"></script>\n'
-          if 'github-pages-guard.js?v=1.1' not in text:
+          if 'firebase-pages-runtime.js?v=1.0' not in text:
               text = text.replace(app_script, bridge + app_script)
           index.write_text(text, encoding='utf-8')
 
