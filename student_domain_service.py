@@ -11,7 +11,8 @@ from workflow_rules import downstream_state, prerequisite_state
 
 ROUTE_COMPLEXIVE = "COMPLEXIVO"
 ROUTE_THESIS = "TRABAJO_TITULACION"
-ROUTES = {ROUTE_COMPLEXIVE, ROUTE_THESIS}
+ROUTE_ARTICLE = "ARTICULO"
+ROUTES = {ROUTE_COMPLEXIVE, ROUTE_THESIS, ROUTE_ARTICLE}
 
 PROCESS_ACTIVE = "ACTIVO"
 PROCESS_WITH_ONE_MISSING = "NO_APROBADO_REQUISITO"
@@ -216,6 +217,21 @@ def _report_project_id(conn: Any, report_id: int) -> int | None:
     return int(row[0]) if row and row[0] is not None else None
 
 
+def _default_route_for_report(conn: Any, report_id: int) -> str:
+    """PVC/Artículo es automático; los períodos regulares parten por Complexivo."""
+    row = conn.execute(
+        "SELECT report_type, period FROM reports WHERE id=?",
+        (report_id,),
+    ).fetchone()
+    if not row:
+        return ROUTE_COMPLEXIVE
+    kind = str(row["report_type"] or "").strip().lower()
+    if not kind:
+        import period_policy_runtime
+        kind = period_policy_runtime.classify_period(row["period"])
+    return ROUTE_ARTICLE if kind == "pvc" else ROUTE_COMPLEXIVE
+
+
 def _official_flags(row: dict[str, Any]) -> tuple[bool, bool]:
     downstream = downstream_state(row)
     titulation_completed = bool(downstream["titulation_marked"])
@@ -228,9 +244,10 @@ def _derived_process(row: dict[str, Any]) -> tuple[str, list[str]]:
     missing = list(state["missing"])
     if not missing:
         return PROCESS_ACTIVE, missing
-    if len(missing) == 1:
-        return PROCESS_WITH_ONE_MISSING, missing
-    return PROCESS_RETIRED, missing
+    # No cumplir varios requisitos NO significa que el estudiante esté retirado.
+    # RETIRADO es una condición administrativa explícita y se preserva únicamente
+    # cuando llega como estado real/manual.
+    return PROCESS_WITH_ONE_MISSING, missing
 
 
 def _official_conflicts(row: dict[str, Any]) -> list[str]:
@@ -263,6 +280,7 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
         created = 0
         updated = 0
         seen_ids: set[int] = set()
+        default_route = _default_route_for_report(conn, report_id)
 
         for row in source:
             identification = _stable_identification(row)
@@ -282,12 +300,17 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
                 if process_source != "MANUAL":
                     final_process = process_status
                     process_source = "DERIVED"
+                final_route = str(existing["route"] or default_route)
+                route_source = str(existing["route_source"] or "DEFAULT")
+                if route_source != "MANUAL":
+                    final_route = default_route
+                    route_source = "DEFAULT"
                 conn.execute(
                     """
                     UPDATE period_students SET
                         period_project_id=?, requirements_student_id=?, identification=?, full_name=?,
                         email=?, personal_email=?, career_code=?, career_name=?, modality=?, campus=?,
-                        schedule=?, process_status=?, process_status_source=?, reconciliation_status=?,
+                        schedule=?, route=?, route_source=?, process_status=?, process_status_source=?, reconciliation_status=?,
                         reconciliation_detail=?, official_graduated=?, official_titulation_completed=?,
                         missing_requirements_json=?, source_snapshot_json=?, updated_at=?
                     WHERE id=?
@@ -304,6 +327,8 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
                         row.get("modality") or "",
                         row.get("campus") or "",
                         row.get("schedule") or "",
+                        final_route,
+                        route_source,
                         final_process,
                         process_source,
                         reconciliation_status,
@@ -341,7 +366,7 @@ def sync_report_students(report_id: int) -> dict[str, Any]:
                         row.get("modality") or "",
                         row.get("campus") or "",
                         row.get("schedule") or "",
-                        ROUTE_COMPLEXIVE,
+                        default_route,
                         process_status,
                         reconciliation_status,
                         detail,
@@ -413,6 +438,7 @@ def get_period_students(report_id: int, *, sync: bool = True) -> dict[str, Any]:
             "students": len(rows),
             "complexive": sum(row["route"] == ROUTE_COMPLEXIVE for row in rows),
             "thesis": sum(row["route"] == ROUTE_THESIS for row in rows),
+            "article": sum(row["route"] == ROUTE_ARTICLE for row in rows),
             "graduated": sum(bool(row["official_graduated"]) for row in rows),
             "retired": sum(row["process_status"] == PROCESS_RETIRED for row in rows),
             "one_missing": sum(row["process_status"] == PROCESS_WITH_ONE_MISSING for row in rows),
@@ -426,7 +452,7 @@ def set_student_route(report_id: int, student_id: int, route: str) -> dict[str, 
     ensure_student_domain_schema()
     route = str(route or "").strip().upper()
     if route not in ROUTES:
-        raise ValueError("La ruta debe ser COMPLEXIVO o TRABAJO_TITULACION.")
+        raise ValueError("La ruta debe ser COMPLEXIVO, TRABAJO_TITULACION o ARTICULO.")
     with connection() as conn:
         row = conn.execute(
             "SELECT * FROM period_students WHERE id=? AND report_id=?",
