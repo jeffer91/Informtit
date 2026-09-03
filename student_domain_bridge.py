@@ -324,15 +324,20 @@ def reconcile_nuclei(
                 if status == MATCH_OK and sid:
                     master = masters.get(int(sid))
                     if master and master.get("route") != ROUTE_COMPLEXIVE:
-                        status = "ROUTE_CONFLICT"
-                        detail = "El estudiante tiene ruta Trabajo de Titulación pero aparece en Núcleos."
-                        route_conflicts += 1
+                        # Una nota antigua de Núcleos puede permanecer como evidencia
+                        # histórica después de pasar a Trabajo de Titulación. No es
+                        # un conflicto de ruta y no debe volver a entrar al informe.
+                        matched += 1
                         save_source_link(
                             report_id,
                             "NUCLEI",
                             source_key,
                             candidate,
-                            {**result, "status": status, "detail": detail},
+                            {
+                                **result,
+                                "status": MATCH_OK,
+                                "detail": "Evidencia histórica fuera de la ruta académica activa.",
+                            },
                         )
                     else:
                         matched += 1
@@ -409,15 +414,19 @@ def reconcile_complexive(
             if status == MATCH_OK and sid:
                 master = masters.get(int(sid))
                 if master and master.get("route") != ROUTE_COMPLEXIVE:
-                    status = "ROUTE_CONFLICT"
-                    detail = "El estudiante tiene ruta Trabajo de Titulación pero existen notas de Complexivo."
-                    route_conflicts += 1
+                    # Al cambiar a Trabajo, las notas previas de Complexivo se
+                    # conservan históricamente pero dejan de ser ruta vigente.
+                    matched += 1
                     save_source_link(
                         report_id,
                         "COMPLEXIVE",
                         source_key,
                         row,
-                        {**result, "status": status, "detail": detail},
+                        {
+                            **result,
+                            "status": MATCH_OK,
+                            "detail": "Evidencia histórica fuera de la ruta académica activa.",
+                        },
                     )
                 else:
                     matched += 1
