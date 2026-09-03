@@ -46,7 +46,7 @@ class FirebaseProtectionTests(unittest.TestCase):
     def test_only_four_new_collections_are_writable(self) -> None:
         self.assertEqual(
             firebase_sync_runtime.WRITABLE_COLLECTIONS,
-            {"nucleos", "complexivo", "titulacion", "cronogramas"},
+            {"nucleos", "complexivo", "trabajoTitulacion", "articulo"},
         )
 
     def test_write_guard_blocks_existing_collection(self) -> None:
