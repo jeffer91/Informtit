@@ -63,8 +63,8 @@
       <form method="dialog" class="dialog-form" id="firebase-sync-form">
         <div class="dialog-head">
           <div>
-            <h2>Sincronizar Firebase</h2>
-            <p>Seleccione el periodo. Informtit hará el resto.</p>
+            <h2>Sincronizar fuentes Firebase</h2>
+            <p>Actualiza Estudiante, Requisitos y datos oficiales del periodo. No publica notas.</p>
           </div>
           <button class="icon-button" value="cancel" aria-label="Cerrar">×</button>
         </div>
@@ -113,13 +113,7 @@
         const typeText = result.report_type === "pvc"
           ? "PVC"
           : "Presencial + Online";
-        const warningText = (result.warnings || []).length
-          ? " Algunos módulos no pudieron respaldarse; revise las reglas de Firebase."
-          : "";
-        toast(`Sincronizado: ${typeText}.${warningText}`, !!warningText);
-        if (result.warnings?.length) {
-          console.warn("[Informtit Firebase]", result.warnings);
-        }
+        toast(`Fuentes oficiales sincronizadas: ${typeText}. Las notas no fueron publicadas.`, false);
       } catch (error) {
         toast(error.message || "No se pudo sincronizar Firebase.", true);
       } finally {
@@ -162,16 +156,139 @@
     }
   }
 
+  function activeReportId() {
+    const candidates = [
+      typeof state !== "undefined" && state.activeReport && state.activeReport.id,
+      typeof state !== "undefined" && state.activeReportId,
+      document.body.dataset.reportId,
+    ];
+    const value = candidates.find(item => Number(item) > 0);
+    return value ? Number(value) : 0;
+  }
+
+  function moduleStatusHtml(item) {
+    const issues = Array.isArray(item.issues) ? item.issues : [];
+    const warnings = Array.isArray(item.warnings) ? item.warnings : [];
+    const status = item.ready ? "Listo para publicar" : "Publicación bloqueada";
+    const issueHtml = issues.length
+      ? `<ul style="margin:8px 0 0 18px">${issues.slice(0, 8).map(value => `<li>${escapeHtml(value)}</li>`).join("")}</ul>`
+      : "";
+    const warningHtml = warnings.length
+      ? `<p class="empty-mini" style="margin-top:8px">${escapeHtml(warnings.join(" "))}</p>`
+      : "";
+    return `
+      <div class="panel" data-firebase-module="${escapeHtml(item.module)}" style="margin-top:12px">
+        <div class="panel-head">
+          <div>
+            <h3 style="margin:0">${escapeHtml(item.label)}</h3>
+            <p>${escapeHtml(status)} · ${Number(item.documents || 0)} documento(s)</p>
+          </div>
+          <button type="button" class="button ${item.ready ? "primary" : "secondary"} firebase-publish-module"
+                  data-module="${escapeHtml(item.module)}" ${item.ready ? "" : "disabled"}>
+            Publicar
+          </button>
+        </div>
+        ${issueHtml}${warningHtml}
+      </div>`;
+  }
+
+  function ensurePublicationDialog() {
+    let dialog = document.querySelector("#firebase-publication-dialog");
+    if (dialog) return dialog;
+    dialog = document.createElement("dialog");
+    dialog.id = "firebase-publication-dialog";
+    dialog.innerHTML = `
+      <div class="dialog-form" style="min-width:min(760px,90vw)">
+        <div class="dialog-head">
+          <div>
+            <h2>Publicar notas en Firebase</h2>
+            <p>Cada módulo se audita y publica por separado. Nunca se borran notas porque falten en una carga posterior.</p>
+          </div>
+          <button class="icon-button" type="button" id="firebase-publication-close" aria-label="Cerrar">×</button>
+        </div>
+        <div id="firebase-publication-content"><p>Cargando auditoría...</p></div>
+        <div class="dialog-actions">
+          <button class="button secondary" type="button" id="firebase-publication-refresh">Volver a auditar</button>
+          <button class="button secondary" type="button" id="firebase-publication-done">Cerrar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector("#firebase-publication-close")?.addEventListener("click", () => dialog.close());
+    dialog.querySelector("#firebase-publication-done")?.addEventListener("click", () => dialog.close());
+    dialog.querySelector("#firebase-publication-refresh")?.addEventListener("click", () => refreshPublicationDialog(dialog));
+    return dialog;
+  }
+
+  async function refreshPublicationDialog(dialog) {
+    const reportId = activeReportId();
+    const content = dialog.querySelector("#firebase-publication-content");
+    if (!reportId) {
+      content.innerHTML = "<p>Seleccione un informe antes de publicar.</p>";
+      return;
+    }
+    content.innerHTML = "<p>Conciliando estudiantes y auditando los módulos...</p>";
+    try {
+      const result = await api(`/api/firebase/publication-status?report_id=${reportId}`);
+      content.innerHTML = (result.modules || []).map(moduleStatusHtml).join("")
+        || "<p>No hay módulos publicables para este informe.</p>";
+      content.querySelectorAll(".firebase-publish-module").forEach(button => {
+        button.addEventListener("click", async () => {
+          const module = button.dataset.module;
+          const original = button.textContent;
+          button.disabled = true;
+          button.textContent = "Publicando...";
+          try {
+            const published = await api("/api/firebase/publish", {
+              method: "POST",
+              body: JSON.stringify({ report_id: reportId, module }),
+            });
+            toast(
+              `${published.label}: ${published.written || 0} actualizado(s), ${published.unchanged || 0} sin cambios.`,
+              false
+            );
+            await refreshPublicationDialog(dialog);
+          } catch (error) {
+            toast(error.message || "No se pudo publicar el módulo.", true);
+            await refreshPublicationDialog(dialog);
+          } finally {
+            button.textContent = original;
+          }
+        });
+      });
+    } catch (error) {
+      content.innerHTML = `<div class="empty-state"><h3>No se pudo auditar</h3><p>${escapeHtml(error.message || "Error de publicación")}</p></div>`;
+    }
+  }
+
+  async function openPublication() {
+    const dialog = ensurePublicationDialog();
+    dialog.showModal();
+    await refreshPublicationDialog(dialog);
+  }
+
   function installButton() {
     const actions = document.querySelector(".top-actions");
-    if (!actions || document.querySelector("#firebase-sync-btn")) return;
-    const button = document.createElement("button");
-    button.className = "button secondary";
-    button.id = "firebase-sync-btn";
-    button.type = "button";
-    button.textContent = "Sincronizar Firebase";
-    button.addEventListener("click", openSync);
-    actions.insertBefore(button, document.querySelector("#new-report-btn"));
+    if (!actions) return;
+    if (!document.querySelector("#firebase-sync-btn")) {
+      const button = document.createElement("button");
+      button.className = "button secondary";
+      button.id = "firebase-sync-btn";
+      button.type = "button";
+      button.textContent = "Sincronizar Firebase";
+      button.addEventListener("click", openSync);
+      actions.insertBefore(button, document.querySelector("#new-report-btn"));
+    }
+    let publish = document.querySelector("#firebase-publish-btn");
+    if (!publish) {
+      publish = document.createElement("button");
+      publish.className = "button primary";
+      publish.id = "firebase-publish-btn";
+      publish.type = "button";
+      publish.textContent = "Publicar notas";
+      publish.addEventListener("click", openPublication);
+      actions.insertBefore(publish, document.querySelector("#new-report-btn"));
+    }
+    publish.hidden = !activeReportId();
   }
 
   installButton();
