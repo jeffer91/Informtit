@@ -33,6 +33,7 @@ jobs:
           node --check static/firebase-nuclei-paste-runtime.js
           node --check static/nuclei-paste-course-detection-fix.js
           node --check static/firebase-nuclei-definitive-runtime.js
+          node --check static/firebase-nuclei-shared-runtime.js
           node --check static/firebase-global-period-final-ui.js
           node --check static/firebase-schedule-runtime.js
           node --check static/firebase-schedule-completion-runtime.js
@@ -77,6 +78,7 @@ jobs:
               '  <script src="./firebase-nuclei-paste-runtime.js?v=1.0"></script>\n'
               '  <script src="./nuclei-paste-course-detection-fix.js?v=1.0"></script>\n'
               '  <script src="./firebase-nuclei-definitive-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-nuclei-shared-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-schedule-runtime.js?v=1.2"></script>\n'
               '  <script src="./firebase-schedule-completion-runtime.js?v=1.0"></script>\n'
               '  <script src="./github-pages-runtime-fixes.js?v=1.0"></script>\n'
@@ -87,7 +89,7 @@ jobs:
               '  <script src="./unified-period-ui.js?v=1.0"></script>\n'
               '  <script src="./firebase-period-selector-ui.js?v=1.3"></script>\n'
           )
-          if 'firebase-nuclei-definitive-runtime.js?v=1.0' not in text:
+          if 'firebase-nuclei-shared-runtime.js?v=1.0' not in text:
               text = text.replace(app_script, bridge + app_script + after_app)
           elif 'unified-period-ui.js?v=1.0' not in text:
               text = text.replace(app_script, app_script + after_app)
