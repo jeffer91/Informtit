@@ -13,6 +13,7 @@
   const help = document.getElementById('report-type-help');
   const periodPreview = document.getElementById('report-period-preview');
   const namePreview = document.getElementById('report-name-preview');
+  const codePreview = document.getElementById('report-code-preview');
   const submit = document.getElementById('create-report-submit');
 
   const selectorSection = document.createElement('section');
@@ -29,9 +30,6 @@
     <strong id="firebase-report-period-label" hidden>—</strong>`;
 
   if (legacyBuilder) {
-    // El periodo se define exclusivamente desde Firebase. Conservamos los
-    // controles antiguos en el DOM porque app.js los usa internamente para
-    // derivar campos, pero nunca deben mostrarse ni editarse en GitHub Pages.
     legacyBuilder.hidden = true;
     legacyBuilder.setAttribute('aria-hidden', 'true');
     legacyBuilder.style.setProperty('display', 'none', 'important');
@@ -74,6 +72,33 @@
     };
   }
 
+  function reportMonth(period) {
+    const parsed = parseCanonicalPeriodId(clean(period?.periodoId || period?._id));
+    if (!parsed) return null;
+    const index = (parsed.startYear * 12) + (parsed.startMonth - 1) + 2;
+    return {
+      year: Math.floor(index / 12),
+      month: (index % 12) + 1,
+    };
+  }
+
+  function monthValue(period) {
+    const result = reportMonth(period);
+    return result ? `${result.year}-${String(result.month).padStart(2, '0')}` : '';
+  }
+
+  function codeFor(period, modality) {
+    const ym = monthValue(period);
+    if (!ym) return '';
+    const suffix = modality === 'en_linea' ? '02' : '01';
+    return `UTET-INF-${suffix}-PRO-95-${ym}`;
+  }
+
+  function localToday() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+
   function currentPeriod() {
     return periods.find(item => clean(item.periodoId || item._id) === clean(periodSelect.value)) || null;
   }
@@ -99,6 +124,54 @@
     return input;
   }
 
+  function lockAutomaticFields() {
+    const codeMonth = form.elements.code_month;
+    const version = form.elements.version;
+    const elaboration = form.elements.elaboration_date;
+
+    if (codeMonth) {
+      codeMonth.readOnly = true;
+      codeMonth.tabIndex = -1;
+      codeMonth.style.pointerEvents = 'none';
+      codeMonth.title = 'Se calcula automáticamente: tercer mes desde el inicio del periodo.';
+    }
+    if (version) {
+      version.value = '1.0';
+      version.readOnly = true;
+      version.tabIndex = -1;
+      version.title = 'La versión institucional siempre es 1.0.';
+    }
+    if (elaboration) {
+      elaboration.value = localToday();
+      elaboration.readOnly = true;
+      elaboration.tabIndex = -1;
+      elaboration.style.pointerEvents = 'none';
+      elaboration.title = 'Se completa automáticamente con la fecha de creación del informe.';
+    }
+  }
+
+  function applyAutomaticReportFields(period) {
+    const ym = monthValue(period);
+    const presencialCode = codeFor(period, 'presencial');
+    const onlineCode = codeFor(period, 'en_linea');
+    const pvc = normalizeType(typeSelect?.value) === 'pvc';
+
+    if (form.elements.code_month && ym) form.elements.code_month.value = ym;
+    if (form.elements.version) form.elements.version.value = '1.0';
+    if (form.elements.elaboration_date) form.elements.elaboration_date.value = localToday();
+    if (form.elements.code) form.elements.code.value = presencialCode;
+
+    if (codePreview) {
+      if (pvc) {
+        codePreview.textContent = presencialCode || '—';
+      } else {
+        codePreview.innerHTML = presencialCode
+          ? `<span style="display:block">Presencial: ${presencialCode}</span><span style="display:block;margin-top:4px">Online: ${onlineCode}</span>`
+          : '—';
+      }
+    }
+  }
+
   function applySelectedPeriod() {
     const period = currentPeriod();
     if (!period) {
@@ -111,8 +184,6 @@
     const id = clean(period.periodoId || period._id);
     setLegacyPeriodFields(period);
 
-    // Dejar que el código existente actualice el código institucional y demás
-    // campos derivados, pero restaurar después el label exacto de Firebase.
     if (typeof window.refreshDerivedReportFields === 'function') {
       try { window.refreshDerivedReportFields(); } catch (_) {}
     }
@@ -122,6 +193,9 @@
       form.elements.name.value = `Informe Final del Proceso de Titulación - ${label}`;
     }
     ensureFirebasePeriodInput().value = id;
+
+    applyAutomaticReportFields(period);
+    lockAutomaticFields();
 
     selectedLabel.textContent = label;
     if (periodPreview) periodPreview.textContent = label;
@@ -216,5 +290,6 @@
     }, 0);
   }, true);
 
+  lockAutomaticFields();
   loadPeriods();
 })();
