@@ -84,13 +84,26 @@
     if (!ids.size) return;
 
     const ym = reportYearMonth(payload);
+    const presencialCode = reportCode('presencial', ym);
+    const onlineCode = reportCode('en_linea', ym);
     const reports = loadReports();
     let changed = false;
     reports.forEach(report => {
       if (!ids.has(Number(report.id))) return;
-      const code = reportCode(report.modality, ym);
-      if (code && report.code !== code) {
-        report.code = code;
+      const unified = clean(report.modality) === 'unified' || Boolean(report.unified_period);
+      const pvc = clean(report.report_type).toLowerCase() === 'pvc';
+
+      if (presencialCode && report.code !== presencialCode) {
+        report.code = presencialCode;
+        changed = true;
+      }
+      if (presencialCode && report.code_presencial !== presencialCode) {
+        report.code_presencial = presencialCode;
+        changed = true;
+      }
+      const expectedOnline = pvc ? '' : onlineCode;
+      if ((unified || !pvc) && report.code_online !== expectedOnline) {
+        report.code_online = expectedOnline;
         changed = true;
       }
       if (report.version !== '1.0') {
@@ -123,7 +136,12 @@
       payload.version = '1.0';
       if (!clean(payload.elaboration_date)) payload.elaboration_date = localToday();
       const ym = reportYearMonth(payload);
-      if (ym) payload.code_month = ym;
+      if (ym) {
+        payload.code_month = ym;
+        payload.code_presencial = reportCode('presencial', ym);
+        payload.code_online = reportCode('en_linea', ym);
+        payload.code = payload.code_presencial;
+      }
 
       const nextInit = { ...(init || {}), body: JSON.stringify(payload) };
       const response = await previousFetch(input, nextInit);
