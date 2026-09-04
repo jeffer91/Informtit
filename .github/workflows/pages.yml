@@ -34,6 +34,7 @@ jobs:
           node --check static/firebase-schedule-runtime.js
           node --check static/firebase-schedule-completion-runtime.js
           node --check static/schedule-auto-completion-ui.js
+          node --check static/report-health-ui.js
           node --check static/github-pages-runtime-fixes.js
           node --check static/firebase-period-selector-ui.js
           node --check static/unified-period-ui.js
@@ -88,8 +89,9 @@ jobs:
           final_ui = (
               '  <script src="./firebase-global-period-final-ui.js?v=1.0"></script>\n'
               '  <script src="./schedule-auto-completion-ui.js?v=1.0"></script>\n'
+              '  <script src="./report-health-ui.js?v=1.0"></script>\n'
           )
-          if 'schedule-auto-completion-ui.js?v=1.0' not in text:
+          if 'report-health-ui.js?v=1.0' not in text:
               text = text.replace('</body>', final_ui + '</body>')
 
           index.write_text(text, encoding='utf-8')
