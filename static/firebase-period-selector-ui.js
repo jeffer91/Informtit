@@ -43,6 +43,8 @@
 
   const periodSelect = selectorSection.querySelector('#firebase-report-period');
   const selectedLabel = selectorSection.querySelector('#firebase-report-period-label');
+  const namePreviewCard = namePreview?.closest('.report-derived-preview');
+  const automaticFieldsGrid = form.elements.code_month?.closest('.form-grid');
   let periods = [];
 
   if (dialogHeadText) {
@@ -59,6 +61,15 @@
 
   function exactLabel(period) {
     return clean(period?.label || period?.periodoId || period?._id);
+  }
+
+  function hideDerivedPresentation() {
+    [namePreviewCard, automaticFieldsGrid].forEach(node => {
+      if (!node) return;
+      node.hidden = true;
+      node.setAttribute('aria-hidden', 'true');
+      node.style.setProperty('display', 'none', 'important');
+    });
   }
 
   function parseCanonicalPeriodId(value) {
@@ -133,20 +144,17 @@
       codeMonth.readOnly = true;
       codeMonth.tabIndex = -1;
       codeMonth.style.pointerEvents = 'none';
-      codeMonth.title = 'Se calcula automáticamente: tercer mes desde el inicio del periodo.';
     }
     if (version) {
       version.value = '1.0';
       version.readOnly = true;
       version.tabIndex = -1;
-      version.title = 'La versión institucional siempre es 1.0.';
     }
     if (elaboration) {
       elaboration.value = localToday();
       elaboration.readOnly = true;
       elaboration.tabIndex = -1;
       elaboration.style.pointerEvents = 'none';
-      elaboration.title = 'Se completa automáticamente con la fecha de creación del informe.';
     }
   }
 
@@ -177,6 +185,7 @@
     if (!period) {
       selectedLabel.textContent = '—';
       if (submit) submit.disabled = true;
+      hideDerivedPresentation();
       return;
     }
 
@@ -196,6 +205,7 @@
 
     applyAutomaticReportFields(period);
     lockAutomaticFields();
+    hideDerivedPresentation();
 
     selectedLabel.textContent = label;
     if (periodPreview) periodPreview.textContent = label;
@@ -217,6 +227,7 @@
       periodSelect.disabled = true;
       selectedLabel.textContent = '—';
       if (submit) submit.disabled = true;
+      hideDerivedPresentation();
       return;
     }
 
@@ -238,6 +249,7 @@
     periodSelect.innerHTML = '<option value="">Cargando periodos...</option>';
     selectedLabel.textContent = 'Consultando Firebase...';
     if (submit) submit.disabled = true;
+    hideDerivedPresentation();
 
     try {
       let data;
@@ -257,6 +269,7 @@
       selectedLabel.textContent = clean(error?.message) || 'No se pudo consultar Firebase.';
       periodSelect.disabled = true;
       if (submit) submit.disabled = true;
+      hideDerivedPresentation();
     }
   }
 
@@ -269,6 +282,7 @@
         : 'Regular usa un periodo existente de Firebase y genera Presencial + Online.';
     }
     renderOptions({ preserve: false });
+    hideDerivedPresentation();
   }
 
   periodSelect.addEventListener('change', applySelectedPeriod);
@@ -285,11 +299,13 @@
     window.setTimeout(async () => {
       const wanted = button.id === 'new-pvc-report-btn' ? 'pvc' : 'normal';
       if (typeSelect) typeSelect.value = wanted;
+      hideDerivedPresentation();
       if (!periods.length) await loadPeriods();
       else refreshTypePresentation();
     }, 0);
   }, true);
 
   lockAutomaticFields();
+  hideDerivedPresentation();
   loadPeriods();
 })();
