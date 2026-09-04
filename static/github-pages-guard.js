@@ -21,11 +21,10 @@
       ok: true,
       build: directFirebase ? 'GitHub Pages + Firebase' : 'GitHub Pages',
       reports: 0,
-      database: directFirebase ? 'Firebase UTET' : (backendConnected ? 'Servidor web' : 'Servidor pendiente'),
+      database: directFirebase ? 'Firebase UTET + local web' : (backendConnected ? 'Servidor web' : 'Servidor pendiente'),
       backend_connected: backendConnected,
       firebase_direct: directFirebase,
     }],
-    ['/api/reports', { ok: true, reports: [] }],
   ]);
 
   function pathOf(input) {
@@ -93,7 +92,7 @@
       else dashboard?.insertBefore(note, dashboard.firstChild);
     }
     note.textContent = directFirebase
-      ? 'Firebase UTET está conectado. Esta acción específica necesita además el motor de informes/PDF de Informtit.'
+      ? 'Firebase UTET está conectado. Esta función todavía necesita el motor de informes/PDF del servidor.'
       : 'Esta acción necesita conectar el servidor web de Informtit.';
     window.setTimeout(() => { if (note) note.remove(); }, 6000);
   }
@@ -109,6 +108,10 @@
 
     if (id === 'refresh-btn' || id === 'firebase-sync-btn') return;
     if (target.closest('#firebase-sync-dialog')) return;
+
+    // En GitHub Pages + Firebase, crear y abrir informes ya funciona con
+    // almacenamiento local del navegador. No se debe bloquear el formulario.
+    if (directFirebase && (id === 'new-report-btn' || id === 'new-pvc-report-btn')) return;
 
     const operational = id === 'new-report-btn'
       || id === 'new-pvc-report-btn'
