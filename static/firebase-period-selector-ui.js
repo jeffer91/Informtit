@@ -26,13 +26,18 @@
         <option value="">Cargando periodos...</option>
       </select>
     </label>
-    <div class="report-derived-preview" style="margin-top:12px">
-      <span>Periodo seleccionado</span>
-      <strong id="firebase-report-period-label">—</strong>
-    </div>`;
+    <strong id="firebase-report-period-label" hidden>—</strong>`;
 
   if (legacyBuilder) {
+    // El periodo se define exclusivamente desde Firebase. Conservamos los
+    // controles antiguos en el DOM porque app.js los usa internamente para
+    // derivar campos, pero nunca deben mostrarse ni editarse en GitHub Pages.
     legacyBuilder.hidden = true;
+    legacyBuilder.setAttribute('aria-hidden', 'true');
+    legacyBuilder.style.setProperty('display', 'none', 'important');
+    legacyBuilder.querySelectorAll('input, select, button').forEach(control => {
+      control.tabIndex = -1;
+    });
     legacyBuilder.insertAdjacentElement('beforebegin', selectorSection);
   } else {
     form.querySelector('.form-grid')?.insertAdjacentElement('afterend', selectorSection);
