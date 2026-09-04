@@ -30,11 +30,13 @@ jobs:
           node --check static/firebase-active-report-runtime.js
           node --check static/firebase-unified-data-runtime.js
           node --check static/firebase-global-period-runtime.js
+          node --check static/firebase-nuclei-paste-runtime.js
           node --check static/firebase-global-period-final-ui.js
           node --check static/firebase-schedule-runtime.js
           node --check static/firebase-schedule-completion-runtime.js
           node --check static/schedule-auto-completion-ui.js
           node --check static/report-health-ui.js
+          node --check static/nuclei-paste-ui.js
           node --check static/github-pages-runtime-fixes.js
           node --check static/firebase-period-selector-ui.js
           node --check static/unified-period-ui.js
@@ -71,6 +73,7 @@ jobs:
               '  <script src="./firebase-active-report-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-unified-data-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-global-period-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-nuclei-paste-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-schedule-runtime.js?v=1.2"></script>\n'
               '  <script src="./firebase-schedule-completion-runtime.js?v=1.0"></script>\n'
               '  <script src="./github-pages-runtime-fixes.js?v=1.0"></script>\n'
@@ -81,7 +84,7 @@ jobs:
               '  <script src="./unified-period-ui.js?v=1.0"></script>\n'
               '  <script src="./firebase-period-selector-ui.js?v=1.3"></script>\n'
           )
-          if 'firebase-schedule-completion-runtime.js?v=1.0' not in text:
+          if 'firebase-nuclei-paste-runtime.js?v=1.0' not in text:
               text = text.replace(app_script, bridge + app_script + after_app)
           elif 'unified-period-ui.js?v=1.0' not in text:
               text = text.replace(app_script, app_script + after_app)
@@ -90,8 +93,9 @@ jobs:
               '  <script src="./firebase-global-period-final-ui.js?v=1.0"></script>\n'
               '  <script src="./schedule-auto-completion-ui.js?v=1.0"></script>\n'
               '  <script src="./report-health-ui.js?v=1.0"></script>\n'
+              '  <script src="./nuclei-paste-ui.js?v=1.0"></script>\n'
           )
-          if 'report-health-ui.js?v=1.0' not in text:
+          if 'nuclei-paste-ui.js?v=1.0' not in text:
               text = text.replace('</body>', final_ui + '</body>')
 
           index.write_text(text, encoding='utf-8')
