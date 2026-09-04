@@ -26,6 +26,7 @@ jobs:
           node --check static/web-runtime.js
           node --check static/firebase-pages-runtime.js
           node --check static/firebase-report-pages-runtime.js
+          node --check static/firebase-report-code-runtime.js
           node --check static/firebase-period-selector-ui.js
           node --check static/github-pages-guard.js
 
@@ -56,13 +57,14 @@ jobs:
               '  <script src="./web-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-pages-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-report-pages-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-report-code-runtime.js?v=1.0"></script>\n'
               '  <script src="./github-pages-guard.js?v=1.3"></script>\n'
           )
           app_script = '  <script src="./app.js?v=4.6"></script>\n'
-          selector_script = '  <script src="./firebase-period-selector-ui.js?v=1.1"></script>\n'
-          if 'firebase-report-pages-runtime.js?v=1.0' not in text:
+          selector_script = '  <script src="./firebase-period-selector-ui.js?v=1.2"></script>\n'
+          if 'firebase-report-code-runtime.js?v=1.0' not in text:
               text = text.replace(app_script, bridge + app_script + selector_script)
-          elif 'firebase-period-selector-ui.js?v=1.1' not in text:
+          elif 'firebase-period-selector-ui.js?v=1.2' not in text:
               text = text.replace(app_script, app_script + selector_script)
           index.write_text(text, encoding='utf-8')
 
