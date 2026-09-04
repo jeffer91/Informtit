@@ -11,6 +11,7 @@ import dual_modality_runtime
 import firebase_catalog_runtime
 import firebase_incremental_runtime
 import firebase_integrity_runtime
+import firebase_nuclei_shared_runtime
 import firebase_sync_runtime
 import import_preview_runtime
 import layout_v3
@@ -238,6 +239,11 @@ def prepare() -> None:
     # Núcleos, Complexivo, Trabajo y Artículo se publican por separado y solo
     # después de pasar conciliación/auditoría.
     academic_firebase_runtime.install()
+
+    # Núcleos usa Firebase como fuente compartida entre GitHub Pages y npm start.
+    # Al abrir, migra faltantes locales sin pisar notas remotas y restaura Firebase
+    # en SQLite. Una edición explícita desde escritorio se publica de inmediato.
+    firebase_nuclei_shared_runtime.install()
 
     # Última capa de escritura: conserva el PDF entre reinicios y solo lo marca
     # desactualizado cuando una operación real modifica ese informe/período.
