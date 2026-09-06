@@ -47,7 +47,6 @@ jobs:
           import json
           import os
           import time
-          import urllib.error
           import urllib.request
           from pathlib import Path
           from urllib.parse import urlparse
@@ -66,41 +65,44 @@ jobs:
           version = json.loads(Path('package.json').read_text(encoding='utf-8'))['version']
 
           def get_json(path: str):
-              last_error = None
-              for attempt in range(8):
-                  try:
-                      request = urllib.request.Request(
-                          f'{api_base}{path}',
-                          headers={'Accept': 'application/json', 'User-Agent': 'Informtit-Pages-Parity'},
-                      )
-                      with urllib.request.urlopen(request, timeout=20) as response:
-                          if response.status < 200 or response.status >= 300:
-                              raise RuntimeError(f'HTTP {response.status}')
-                          return json.loads(response.read().decode('utf-8'))
-                  except Exception as exc:
-                      last_error = exc
-                      if attempt < 7:
-                          time.sleep(5)
-              raise SystemExit(f'El backend de Informtit no respondió correctamente en {path}: {last_error}')
-
-          health = get_json('/api/health')
-          capabilities = set(health.get('capabilities') or [])
-          if health.get('ok') is not True or 'schedules' not in capabilities:
-              raise SystemExit(
-                  'El backend configurado no corresponde a la versión completa de Informtit '
-                  '(falta la capacidad schedules).'
+              request = urllib.request.Request(
+                  f'{api_base}{path}',
+                  headers={'Accept': 'application/json', 'User-Agent': 'Informtit-Pages-Parity'},
               )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  if response.status < 200 or response.status >= 300:
+                      raise RuntimeError(f'HTTP {response.status}')
+                  return json.loads(response.read().decode('utf-8'))
 
-          runtime = get_json('/api/runtime-info')
-          if runtime.get('ok') is not True:
-              raise SystemExit('El backend no reportó un runtime válido.')
-          if str(runtime.get('build') or '').strip() != version:
+          deadline = time.time() + 600
+          last_detail = 'backend todavía no comprobado'
+          while time.time() < deadline:
+              try:
+                  health = get_json('/api/health')
+                  runtime = get_json('/api/runtime-info')
+                  capabilities = set(health.get('capabilities') or [])
+                  build = str(runtime.get('build') or '').strip()
+                  if (
+                      health.get('ok') is True
+                      and 'schedules' in capabilities
+                      and runtime.get('ok') is True
+                      and build == version
+                  ):
+                      print(f'Paridad confirmada: Informtit {version} · {api_base}')
+                      break
+                  last_detail = (
+                      f'health.ok={health.get("ok")!r}, schedules={"schedules" in capabilities}, '
+                      f'runtime.ok={runtime.get("ok")!r}, backend_build={build!r}, repo_version={version!r}'
+                  )
+              except Exception as exc:
+                  last_detail = str(exc)
+              print(f'Esperando backend del mismo commit: {last_detail}')
+              time.sleep(10)
+          else:
               raise SystemExit(
-                  f'Versiones distintas: repositorio={version}, backend={runtime.get("build")!r}. '
-                  'Espere a que el backend termine de desplegar el mismo commit y vuelva a ejecutar Pages.'
+                  'No se confirmó la paridad con el backend dentro de 10 minutos. '
+                  f'Último estado: {last_detail}'
               )
-
-          print(f'Paridad confirmada: Informtit {version} · {api_base}')
           PY
 
       - name: Prepare GitHub Pages site
