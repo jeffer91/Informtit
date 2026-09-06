@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import firebase_bootstrap_runtime
 import period_policy_runtime
 from db import connection
 
@@ -7,6 +8,7 @@ from db import connection
 def install() -> None:
     """Hace que el panel cuente carreras/estudiantes desde Requisitos sincronizados."""
     if getattr(period_policy_runtime, "_firebase_catalog_installed", False):
+        firebase_bootstrap_runtime.install()
         return
 
     previous = period_policy_runtime.visible_reports
@@ -36,3 +38,8 @@ def install() -> None:
 
     period_policy_runtime.visible_reports = visible_reports
     period_policy_runtime._firebase_catalog_installed = True
+
+    # GitHub Pages usa informesTitulacion como catálogo de informes. El escritorio
+    # instala el mismo bootstrap para restaurar metadatos y Requisitos antes de
+    # entregar /api/reports por primera vez.
+    firebase_bootstrap_runtime.install()
