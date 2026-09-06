@@ -16,7 +16,8 @@ BUILD_ID = "0.3.5"
 
 def _serve_static_no_cache(self: Any, path: str) -> None:
     static_dir = Path(core.STATIC_DIR).resolve()
-    if path in {"", "/"}:
+    root_request = path in {"", "/"}
+    if root_request:
         target = static_dir / "index.html"
     else:
         target = (static_dir / path.lstrip("/")).resolve()
@@ -32,6 +33,17 @@ def _serve_static_no_cache(self: Any, path: str) -> None:
 
     body = target.read_bytes()
     content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+
+    # En escritorio la cantidad de tarjetas representa informes publicados, pero
+    # la métrica Períodos debe conservar el total oficial de Firebase igual que
+    # GitHub Pages. El script solo corrige esa métrica; no altera los informes.
+    if root_request and target.name == "index.html":
+        text = body.decode("utf-8")
+        marker = '<script src="/firebase-dashboard-parity.js?v=1.0"></script>'
+        if marker not in text:
+            text = text.replace("</body>", f"  {marker}\n</body>")
+        body = text.encode("utf-8")
+
     self.send_response(200)
     self.send_header("Content-Type", content_type)
     self.send_header("Content-Length", str(len(body)))
@@ -98,9 +110,8 @@ def install() -> None:
     core.InformtitHandler._handle_api_get = handle_get
     _INSTALLED = True
 
-    # La interfaz de escritorio y el backend web deben arrancar viendo el mismo
-    # catálogo oficial. El bootstrap solo crea/restaura contenedores de períodos;
-    # no reemplaza Requisitos, notas, cronogramas ni evidencias locales.
+    # El escritorio restaura los mismos informes publicados que GitHub Pages y
+    # descarga sus fuentes oficiales de Requisitos antes del primer /api/reports.
     import firebase_bootstrap_runtime
 
     firebase_bootstrap_runtime.install()
