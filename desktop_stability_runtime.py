@@ -11,7 +11,7 @@ from db import connection
 
 
 _INSTALLED = False
-BUILD_ID = "0.3.4-stability"
+BUILD_ID = "0.3.5"
 
 
 def _serve_static_no_cache(self: Any, path: str) -> None:
