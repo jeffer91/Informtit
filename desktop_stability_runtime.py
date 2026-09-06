@@ -97,3 +97,10 @@ def install() -> None:
 
     core.InformtitHandler._handle_api_get = handle_get
     _INSTALLED = True
+
+    # La interfaz de escritorio y el backend web deben arrancar viendo el mismo
+    # catálogo oficial. El bootstrap solo crea/restaura contenedores de períodos;
+    # no reemplaza Requisitos, notas, cronogramas ni evidencias locales.
+    import firebase_bootstrap_runtime
+
+    firebase_bootstrap_runtime.install()
