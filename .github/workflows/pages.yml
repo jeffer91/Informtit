@@ -21,30 +21,87 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate GitHub Pages runtimes
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate shared frontend
         run: |
-          node --check static/web-runtime.js
-          node --check static/firebase-pages-runtime.js
-          node --check static/firebase-report-pages-runtime.js
-          node --check static/firebase-report-code-runtime.js
-          node --check static/firebase-active-report-runtime.js
-          node --check static/firebase-unified-data-runtime.js
-          node --check static/firebase-global-period-runtime.js
-          node --check static/firebase-nuclei-paste-runtime.js
-          node --check static/nuclei-paste-course-detection-fix.js
-          node --check static/firebase-nuclei-definitive-runtime.js
-          node --check static/firebase-nuclei-shared-runtime.js
-          node --check static/firebase-global-period-final-ui.js
-          node --check static/firebase-schedule-runtime.js
-          node --check static/firebase-schedule-completion-runtime.js
-          node --check static/schedule-auto-completion-ui.js
-          node --check static/report-health-ui.js
-          node --check static/nuclei-paste-ui.js
-          node --check static/nuclei-paste-definitive-ui.js
-          node --check static/github-pages-runtime-fixes.js
-          node --check static/firebase-period-selector-ui.js
-          node --check static/unified-period-ui.js
-          node --check static/github-pages-guard.js
+          node --check electron/main.cjs
+          node --check electron/preload.cjs
+          for file in static/*.js; do
+            node --check "$file"
+          done
+
+      - name: Verify shared backend parity
+        env:
+          INFORMTIT_API_BASE: ${{ vars.INFORMTIT_API_BASE }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          api_base = os.environ.get('INFORMTIT_API_BASE', '').strip().rstrip('/')
+          if not api_base:
+              raise SystemExit(
+                  'INFORMTIT_API_BASE no está configurada. GitHub Pages no se desplegará en modo reducido: '
+                  'debe usar el mismo backend de Informtit que npm start.'
+              )
+
+          parsed = urlparse(api_base)
+          if parsed.scheme != 'https' or not parsed.netloc:
+              raise SystemExit('INFORMTIT_API_BASE debe ser una URL pública HTTPS válida.')
+
+          version = json.loads(Path('package.json').read_text(encoding='utf-8'))['version']
+
+          def get_json(path: str):
+              last_error = None
+              for attempt in range(8):
+                  try:
+                      request = urllib.request.Request(
+                          f'{api_base}{path}',
+                          headers={'Accept': 'application/json', 'User-Agent': 'Informtit-Pages-Parity'},
+                      )
+                      with urllib.request.urlopen(request, timeout=20) as response:
+                          if response.status < 200 or response.status >= 300:
+                              raise RuntimeError(f'HTTP {response.status}')
+                          return json.loads(response.read().decode('utf-8'))
+                  except Exception as exc:
+                      last_error = exc
+                      if attempt < 7:
+                          time.sleep(5)
+              raise SystemExit(f'El backend de Informtit no respondió correctamente en {path}: {last_error}')
+
+          health = get_json('/api/health')
+          capabilities = set(health.get('capabilities') or [])
+          if health.get('ok') is not True or 'schedules' not in capabilities:
+              raise SystemExit(
+                  'El backend configurado no corresponde a la versión completa de Informtit '
+                  '(falta la capacidad schedules).'
+              )
+
+          runtime = get_json('/api/runtime-info')
+          if runtime.get('ok') is not True:
+              raise SystemExit('El backend no reportó un runtime válido.')
+          if str(runtime.get('build') or '').strip() != version:
+              raise SystemExit(
+                  f'Versiones distintas: repositorio={version}, backend={runtime.get("build")!r}. '
+                  'Espere a que el backend termine de desplegar el mismo commit y vuelva a ejecutar Pages.'
+              )
+
+          print(f'Paridad confirmada: Informtit {version} · {api_base}')
+          PY
 
       - name: Prepare GitHub Pages site
         env:
@@ -64,54 +121,41 @@ jobs:
           index = site / 'index.html'
           text = index.read_text(encoding='utf-8')
 
+          # GitHub Pages vive bajo /Informtit/. Los mismos archivos de static se
+          # conservan; únicamente las URLs de recursos se vuelven relativas.
           text = re.sub(r'(href|src)="/', r'\1="./', text)
 
+          # La única diferencia de arranque web es el puente hacia el backend.
+          # No se cargan emuladores Firebase/localStorage: todas las funciones
+          # pasan por el mismo Python que ejecuta npm start.
           bridge = (
-              '  <script src="./web-config.js?v=1.0"></script>\n'
-              '  <script src="./web-runtime.js?v=1.0"></script>\n'
-              '  <script src="./firebase-pages-runtime.js?v=1.0"></script>\n'
-              '  <script src="./firebase-report-pages-runtime.js?v=2.0"></script>\n'
-              '  <script src="./firebase-report-code-runtime.js?v=2.0"></script>\n'
-              '  <script src="./firebase-active-report-runtime.js?v=1.0"></script>\n'
-              '  <script src="./firebase-unified-data-runtime.js?v=1.0"></script>\n'
-              '  <script src="./firebase-global-period-runtime.js?v=1.0"></script>\n'
-              '  <script src="./firebase-nuclei-paste-runtime.js?v=1.0"></script>\n'
-              '  <script src="./nuclei-paste-course-detection-fix.js?v=1.0"></script>\n'
-              '  <script src="./firebase-nuclei-definitive-runtime.js?v=1.0"></script>\n'
-              '  <script src="./firebase-nuclei-shared-runtime.js?v=1.0"></script>\n'
-              '  <script src="./firebase-schedule-runtime.js?v=1.2"></script>\n'
-              '  <script src="./firebase-schedule-completion-runtime.js?v=1.0"></script>\n'
-              '  <script src="./github-pages-runtime-fixes.js?v=1.0"></script>\n'
-              '  <script src="./github-pages-guard.js?v=1.3"></script>\n'
+              '  <script src="./web-config.js?v=2.0"></script>\n'
+              '  <script src="./web-runtime.js?v=2.0"></script>\n'
           )
           app_script = '  <script src="./app.js?v=4.6"></script>\n'
-          after_app = (
-              '  <script src="./unified-period-ui.js?v=1.0"></script>\n'
-              '  <script src="./firebase-period-selector-ui.js?v=1.3"></script>\n'
-          )
-          if 'firebase-nuclei-shared-runtime.js?v=1.0' not in text:
-              text = text.replace(app_script, bridge + app_script + after_app)
-          elif 'unified-period-ui.js?v=1.0' not in text:
-              text = text.replace(app_script, app_script + after_app)
-
-          final_ui = (
-              '  <script src="./firebase-global-period-final-ui.js?v=1.0"></script>\n'
-              '  <script src="./schedule-auto-completion-ui.js?v=1.0"></script>\n'
-              '  <script src="./report-health-ui.js?v=1.0"></script>\n'
-              '  <script src="./nuclei-paste-ui.js?v=1.0"></script>\n'
-              '  <script src="./nuclei-paste-definitive-ui.js?v=1.0"></script>\n'
-          )
-          if 'nuclei-paste-definitive-ui.js?v=1.0' not in text:
-              text = text.replace('</body>', final_ui + '</body>')
+          if 'web-runtime.js?v=2.0' not in text:
+              if app_script not in text:
+                  raise SystemExit('No se encontró app.js en static/index.html.')
+              text = text.replace(app_script, bridge + app_script)
 
           index.write_text(text, encoding='utf-8')
 
-          api_base = os.environ.get('INFORMTIT_API_BASE', '').strip().rstrip('/')
+          api_base = os.environ['INFORMTIT_API_BASE'].strip().rstrip('/')
           (site / 'web-config.js').write_text(
               'window.INFORMTIT_API_BASE = ' + json.dumps(api_base) + ';\n',
               encoding='utf-8',
           )
           PY
+
+      - name: Verify Pages uses the shared runtime only
+        run: |
+          grep -q './web-config.js?v=2.0' _site/index.html
+          grep -q './web-runtime.js?v=2.0' _site/index.html
+          grep -q './app.js?v=4.6' _site/index.html
+          if grep -q '<script src="./firebase-pages-runtime.js' _site/index.html; then exit 1; fi
+          if grep -q '<script src="./firebase-report-pages-runtime.js' _site/index.html; then exit 1; fi
+          if grep -q '<script src="./github-pages-guard.js' _site/index.html; then exit 1; fi
+          if grep -q '<script src="./firebase-global-period-runtime.js' _site/index.html; then exit 1; fi
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
