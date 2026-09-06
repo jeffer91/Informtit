@@ -31,11 +31,11 @@ class WebDesktopParityTests(unittest.TestCase):
     def test_pages_uses_same_static_frontend_without_web_emulators(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
         self.assertIn("cp -a static/. _site/", workflow)
-        self.assertIn('<script src=\"./web-runtime.js?v=2.0\"></script>', workflow)
-        self.assertNotIn('<script src=\"./firebase-pages-runtime.js?v=', workflow)
-        self.assertNotIn('<script src=\"./firebase-report-pages-runtime.js?v=', workflow)
-        self.assertNotIn('<script src=\"./github-pages-guard.js?v=', workflow)
-        self.assertNotIn('<script src=\"./firebase-global-period-runtime.js?v=', workflow)
+        self.assertIn('<script src="./web-runtime.js?v=2.0"></script>', workflow)
+        self.assertNotIn('<script src="./firebase-pages-runtime.js?v=', workflow)
+        self.assertNotIn('<script src="./firebase-report-pages-runtime.js?v=', workflow)
+        self.assertNotIn('<script src="./github-pages-guard.js?v=', workflow)
+        self.assertNotIn('<script src="./firebase-global-period-runtime.js?v=', workflow)
 
     def test_shared_index_keeps_single_application_entrypoint(self) -> None:
         index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
