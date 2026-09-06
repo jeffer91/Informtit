@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import threading
+from collections import defaultdict
 from typing import Any
 
 import app as core
 import firebase_sync_runtime as firebase
 import period_policy_runtime as period_policy
 import period_unified_runtime as unified
-from db import connection, create_default_sections, utcnow
-from import_service import clean_cell, settings_for_report
+from db import connection
+from import_service import clean_cell
 
 
+REPORTS_COLLECTION = "informesTitulacion"
 _LOCK = threading.Lock()
 _ATTEMPTED = False
 _LAST_RESULT: dict[str, Any] = {
@@ -18,168 +20,254 @@ _LAST_RESULT: dict[str, Any] = {
     "attempted": False,
     "source": "Firebase",
     "periods": 0,
-    "created": 0,
-    "updated": 0,
+    "reports": 0,
+    "students": 0,
     "warnings": [],
 }
 
 
-def _catalog_name(kind: str, label: str) -> str:
-    if kind == "pvc":
-        return f"Informe PVC - {label}" if label else "Informe PVC"
-    return period_policy.automatic_report_name(label)
+def _list_remote_reports() -> list[dict[str, Any]]:
+    """Lee la misma colección de metadatos que usa GitHub Pages."""
+    rows: list[dict[str, Any]] = []
+    token = ""
+    while True:
+        params: dict[str, Any] = {"pageSize": 1000}
+        if token:
+            params["pageToken"] = token
+        payload = firebase._request(
+            "GET",
+            f"/documents/{REPORTS_COLLECTION}",
+            params=params,
+            allow_404=True,
+        ) or {}
+        rows.extend(
+            firebase._decode_document(document)
+            for document in (payload.get("documents") or [])
+        )
+        token = clean_cell(payload.get("nextPageToken"))
+        if not token:
+            break
+    return [row for row in rows if row.get("active") is not False]
 
 
-def _ensure_catalog_period(period: dict[str, Any]) -> dict[str, Any]:
-    """Crea únicamente el contenedor local del período oficial.
+def _remote_period_id(row: dict[str, Any]) -> str:
+    period_id = clean_cell(row.get("periodId") or row.get("firebase_period_id"))
+    if period_id:
+        return period_id
+    period_key = clean_cell(row.get("periodKey"))
+    if ":" in period_key:
+        candidate = period_key.split(":", 1)[1]
+        if period_policy.canonical_period_id(candidate):
+            return period_policy.canonical_period_id(candidate)
+    return period_policy.canonical_period_id(row.get("period"))
 
-    Esta operación no toca Requisitos, notas, cronogramas ni evidencias. Tampoco
-    cambia firebase_synced_at: ese campo continúa representando una sincronización
-    académica completa ejecutada por el usuario.
+
+def _remote_kind(row: dict[str, Any], fallback: str = "normal") -> str:
+    value = clean_cell(row.get("reportType") or row.get("report_type")).lower()
+    return value if value in {"normal", "pvc"} else fallback
+
+
+def _dedupe_remote_reports(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        period_id = _remote_period_id(row)
+        if not period_id:
+            continue
+        kind = _remote_kind(row, period_policy.classify_period(period_id))
+        key = f"{kind}:{period_id}"
+        current = deduped.get(key)
+        if current is None or clean_cell(row.get("_updateTime")) >= clean_cell(current.get("_updateTime")):
+            deduped[key] = row
+    return list(deduped.values())
+
+
+def _table_exists(conn: Any, table: str) -> bool:
+    return bool(
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+    )
+
+
+def _report_has_real_data(conn: Any, report_id: int) -> bool:
+    row = conn.execute(
+        "SELECT source_import_id, firebase_synced_at FROM reports WHERE id=?",
+        (report_id,),
+    ).fetchone()
+    if not row:
+        return False
+    if row["source_import_id"] or clean_cell(row["firebase_synced_at"]):
+        return True
+
+    checks = (
+        ("requirements_students", "report_id"),
+        ("careers", "report_id"),
+        ("nucleus_course_instances", "report_id"),
+        ("thesis_projects", "report_id"),
+        ("schedule_items", "report_id"),
+        ("images", "report_id"),
+    )
+    for table, column in checks:
+        if not _table_exists(conn, table):
+            continue
+        if conn.execute(
+            f"SELECT 1 FROM {table} WHERE {column}=? LIMIT 1",
+            (report_id,),
+        ).fetchone():
+            return True
+    return False
+
+
+def _prune_legacy_catalog_shells(remote_period_ids: set[str]) -> int:
+    """Elimina solo contenedores vacíos creados por el bootstrap anterior.
+
+    Nunca elimina un período que tenga una sincronización real, una importación o
+    contenido académico/local. Así se corrige el exceso de PVC sin arriesgar datos.
     """
-
-    period_policy.ensure_schema()
-    period_id = clean_cell(period.get("periodoId") or period.get("_id"))
-    if not period_id:
-        raise ValueError("Firebase devolvió un período sin identificador.")
-
-    kind = period_policy.classify_period(period_id)
-    label = clean_cell(period.get("label")) or period_policy.period_label(period_id)
-    wanted = ["presencial"] if kind == "pvc" else ["presencial", "en_linea"]
-    settings = settings_for_report()
-    now = utcnow()
-    created = 0
-    updated = 0
-    report_ids: dict[str, int] = {}
-
+    groups: dict[int, list[int]] = defaultdict(list)
+    direct: list[int] = []
     with connection() as conn:
         rows = conn.execute(
             """
-            SELECT * FROM reports
-            WHERE firebase_period_id=? OR period=?
-            ORDER BY updated_at DESC, id DESC
-            """,
-            (period_id, label),
+            SELECT id, firebase_period_id, period_project_id
+            FROM reports
+            WHERE COALESCE(firebase_period_id, '') <> ''
+            """
         ).fetchall()
-
-        for modality in wanted:
-            local_modality = "presencial" if kind == "pvc" else modality
-            row = next(
-                (
-                    item
-                    for item in rows
-                    if (
-                        kind == "pvc"
-                        and (
-                            clean_cell(item["report_type"]) == "pvc"
-                            or period_policy.classify_period(item["period"]) == "pvc"
-                        )
-                    )
-                    or (
-                        kind == "normal"
-                        and clean_cell(item["modality"]) == modality
-                        and clean_cell(item["report_type"]) in {"", "normal"}
-                    )
-                ),
-                None,
-            )
-
-            if row:
-                report_id = int(row["id"])
-                current = (
-                    clean_cell(row["period"]),
-                    clean_cell(row["modality"]),
-                    clean_cell(row["report_type"]),
-                    clean_cell(row["firebase_period_id"]),
-                )
-                expected = (label, local_modality, kind, period_id)
-                if current != expected:
-                    conn.execute(
-                        """
-                        UPDATE reports
-                        SET period=?, modality=?, report_type=?, firebase_period_id=?
-                        WHERE id=?
-                        """,
-                        (*expected, report_id),
-                    )
-                    updated += 1
+        for row in rows:
+            period_id = clean_cell(row["firebase_period_id"])
+            if not period_id or period_id in remote_period_ids:
+                continue
+            report_id = int(row["id"])
+            if _report_has_real_data(conn, report_id):
+                continue
+            project_id = int(row["period_project_id"] or 0)
+            if project_id:
+                groups[project_id].append(report_id)
             else:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO reports
-                    (name, period, modality, code, version, elaboration_date,
-                     prepared_by, prepared_role, reviewed_by, reviewed_role,
-                     approved_by, approved_role, status, created_at, updated_at,
-                     report_type, firebase_period_id, firebase_synced_at)
-                    VALUES (?, ?, ?, '', '1.0', '', ?, ?, ?, ?, ?, ?,
-                            'borrador', ?, ?, ?, ?, '')
-                    """,
-                    (
-                        _catalog_name(kind, label),
-                        label,
-                        local_modality,
-                        settings["prepared_by"],
-                        settings["prepared_role"],
-                        settings["reviewed_by"],
-                        settings["reviewed_role"],
-                        settings["approved_by"],
-                        settings["approved_role"],
-                        now,
-                        now,
-                        kind,
-                        period_id,
-                    ),
-                )
-                report_id = int(cursor.lastrowid)
-                create_default_sections(conn, report_id)
-                created += 1
-                rows = conn.execute(
-                    "SELECT * FROM reports WHERE firebase_period_id=? ORDER BY id",
-                    (period_id,),
+                direct.append(report_id)
+
+    removed = 0
+    for project_id, report_ids in groups.items():
+        with connection() as conn:
+            all_members = [
+                int(row[0])
+                for row in conn.execute(
+                    "SELECT id FROM reports WHERE period_project_id=?",
+                    (project_id,),
                 ).fetchall()
+            ]
+            if not all_members or any(_report_has_real_data(conn, rid) for rid in all_members):
+                continue
+        try:
+            unified._delete_project(report_ids[0])
+            removed += 1
+        except Exception:
+            continue
 
-            report_ids["pvc" if kind == "pvc" else modality] = report_id
+    if direct:
+        with connection() as conn:
+            for report_id in direct:
+                if not _report_has_real_data(conn, report_id):
+                    conn.execute("DELETE FROM reports WHERE id=?", (report_id,))
+                    removed += 1
+    return removed
 
-    return {
-        "periodoId": period_id,
-        "period": label,
-        "report_type": kind,
-        "report_ids": report_ids,
-        "created": created,
-        "updated": updated,
-    }
+
+def _apply_remote_metadata(
+    row: dict[str, Any],
+    sync_result: dict[str, Any],
+) -> None:
+    report_ids = dict(sync_result.get("report_ids") or {})
+    fallback_kind = clean_cell(sync_result.get("report_type")) or "normal"
+    kind = _remote_kind(row, fallback_kind)
+    period_id = _remote_period_id(row)
+    period = clean_cell(row.get("period") or sync_result.get("period"))
+    name = clean_cell(row.get("name")) or (
+        f"Informe PVC - {period}" if kind == "pvc" else period_policy.automatic_report_name(period)
+    )
+    version = clean_cell(row.get("version")) or "1.0"
+    elaboration_date = clean_cell(row.get("elaborationDate") or row.get("elaboration_date"))
+    code_presencial = clean_cell(row.get("codePresencial") or row.get("code_presencial") or row.get("code"))
+    code_online = clean_cell(row.get("codeOnline") or row.get("code_online"))
+
+    with connection() as conn:
+        for modality, report_id in report_ids.items():
+            code = code_presencial
+            if modality == "en_linea" and code_online:
+                code = code_online
+            conn.execute(
+                """
+                UPDATE reports SET
+                    name=?, period=?, code=?, version=?, elaboration_date=?,
+                    report_type=?, firebase_period_id=?
+                WHERE id=?
+                """,
+                (
+                    name,
+                    period,
+                    code,
+                    version,
+                    elaboration_date,
+                    kind,
+                    period_id,
+                    int(report_id),
+                ),
+            )
 
 
 def bootstrap_catalog() -> dict[str, Any]:
-    """Replica el catálogo de períodos Firebase sin reemplazar trabajo local."""
-
+    """Restaura exactamente los informes publicados y sus fuentes oficiales."""
     periods = firebase.list_periods()
+    remote_reports = _dedupe_remote_reports(_list_remote_reports())
+    remote_period_ids = {_remote_period_id(row) for row in remote_reports if _remote_period_id(row)}
+
+    # Corrige los contenedores vacíos que la versión anterior creó a partir de
+    # todos los documentos de periodos, aunque no existiera un informe publicado.
+    removed_shells = _prune_legacy_catalog_shells(remote_period_ids)
+
     details: list[dict[str, Any]] = []
     warnings: list[str] = []
-    created = 0
-    updated = 0
+    students = 0
+    synced = 0
 
-    for period in periods:
+    for row in remote_reports:
+        period_id = _remote_period_id(row)
+        if not period_id:
+            warnings.append("Un informe de Firebase no tiene período reconocible.")
+            continue
         try:
-            result = _ensure_catalog_period(period)
-            details.append(result)
-            created += int(result.get("created") or 0)
-            updated += int(result.get("updated") or 0)
+            sync_result = firebase.sync_period(period_id)
+            _apply_remote_metadata(row, sync_result)
+            requirements = dict(sync_result.get("requirements") or {})
+            students += int(requirements.get("students") or 0)
+            synced += 1
+            details.append(
+                {
+                    "periodoId": period_id,
+                    "period": sync_result.get("period"),
+                    "report_type": _remote_kind(row, clean_cell(sync_result.get("report_type")) or "normal"),
+                    "report_ids": sync_result.get("report_ids") or {},
+                    "students": int(requirements.get("students") or 0),
+                    "presencial": int(requirements.get("presencial") or 0),
+                    "en_linea": int(requirements.get("en_linea") or 0),
+                    "code": clean_cell(row.get("codePresencial") or row.get("code")),
+                }
+            )
         except Exception as exc:
-            period_id = clean_cell(period.get("periodoId") or period.get("_id")) or "sin-id"
             warnings.append(f"{period_id}: {exc}")
 
-    reconciliation: dict[str, Any] = {"ok": True, "skipped": True}
-    if created or updated:
-        reconciliation = unified.reconcile_projects()
-
+    reconciliation = unified.reconcile_projects()
     return {
         "ok": True,
         "attempted": True,
         "source": "Firebase",
         "periods": len(periods),
-        "created": created,
-        "updated": updated,
+        "reports": len(remote_reports),
+        "synced": synced,
+        "students": students,
+        "removed_legacy_shells": removed_shells,
         "details": details,
         "warnings": warnings,
         "reconciliation": reconciliation,
@@ -200,15 +288,13 @@ def _bootstrap_once() -> dict[str, Any]:
         try:
             _LAST_RESULT = bootstrap_catalog()
         except Exception as exc:
-            # Informtit debe seguir abriendo sin Internet. En ese caso conserva
-            # íntegramente SQLite y el botón Sincronizar Firebase queda disponible.
             _LAST_RESULT = {
                 "ok": False,
                 "attempted": True,
                 "source": "Firebase",
                 "periods": 0,
-                "created": 0,
-                "updated": 0,
+                "reports": 0,
+                "students": 0,
                 "warnings": [str(exc)],
                 "fallback": "local",
                 "preserved_local_data": True,
@@ -217,8 +303,7 @@ def _bootstrap_once() -> dict[str, Any]:
 
 
 def install() -> None:
-    """Carga el catálogo Firebase antes del primer GET /api/reports."""
-
+    """Restaura Firebase antes del primer GET /api/reports del escritorio."""
     if getattr(core.InformtitHandler, "_firebase_bootstrap_installed", False):
         return
 
@@ -229,8 +314,7 @@ def install() -> None:
             result = _bootstrap_once()
             if not result.get("ok"):
                 print(
-                    "[Informtit] No se pudo restaurar el catálogo Firebase; "
-                    "se mantiene el respaldo local: "
+                    "[Informtit] Firebase no pudo restaurarse; se conserva SQLite local: "
                     + "; ".join(result.get("warnings") or []),
                     flush=True,
                 )
