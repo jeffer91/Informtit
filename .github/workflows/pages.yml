@@ -140,6 +140,12 @@ jobs:
                   raise SystemExit('No se encontró app.js en static/index.html.')
               text = text.replace(app_script, bridge + app_script)
 
+          # La presentación aprobada de GitHub Pages es la presentación canónica.
+          # El mismo runtime se inyecta en Electron desde desktop_stability_runtime.py.
+          parity = '  <script src="./gitpages-parity-ui.js?v=1.0"></script>\n'
+          if 'gitpages-parity-ui.js?v=1.0' not in text:
+              text = text.replace('</body>', parity + '</body>')
+
           index.write_text(text, encoding='utf-8')
 
           api_base = os.environ['INFORMTIT_API_BASE'].strip().rstrip('/')
@@ -154,6 +160,7 @@ jobs:
           grep -q './web-config.js?v=2.0' _site/index.html
           grep -q './web-runtime.js?v=2.0' _site/index.html
           grep -q './app.js?v=4.6' _site/index.html
+          grep -q './gitpages-parity-ui.js?v=1.0' _site/index.html
           if grep -q '<script src="./firebase-pages-runtime.js' _site/index.html; then exit 1; fi
           if grep -q '<script src="./firebase-report-pages-runtime.js' _site/index.html; then exit 1; fi
           if grep -q '<script src="./github-pages-guard.js' _site/index.html; then exit 1; fi
