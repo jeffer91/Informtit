@@ -26,10 +26,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate Informtit frontend
+      - name: Validate GitHub Pages frontend
         run: |
-          node --check electron/main.cjs
-          node --check electron/preload.cjs
           for file in static/*.js; do
             node --check "$file"
           done
@@ -55,9 +53,8 @@ jobs:
           # GitHub Pages vive bajo /Informtit/.
           text = re.sub(r'(href|src)="/', r'\1="./', text)
 
-          # Se conserva el runtime web/Firebase que ya utiliza la versión aprobada
-          # de GitHub Pages. INFORMTIT_API_BASE continúa siendo opcional: si existe,
-          # web-runtime puede usarlo; si no existe, Pages conserva su fuente Firebase.
+          # Runtime actual de GitHub Pages + Firebase. No existe aplicación de
+          # escritorio ni backend Python dentro de este repositorio.
           bridge = (
               '  <script src="./web-config.js?v=1.0"></script>\n'
               '  <script src="./web-runtime.js?v=1.0"></script>\n'
@@ -108,7 +105,7 @@ jobs:
           )
           PY
 
-      - name: Verify canonical Pages presentation
+      - name: Verify GitHub Pages bundle
         run: |
           grep -q './firebase-pages-runtime.js?v=1.0' _site/index.html
           grep -q './firebase-global-period-final-ui.js?v=1.0' _site/index.html
