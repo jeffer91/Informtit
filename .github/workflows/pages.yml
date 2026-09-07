@@ -21,89 +21,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Validate shared frontend
+      - name: Validate Informtit frontend
         run: |
           node --check electron/main.cjs
           node --check electron/preload.cjs
           for file in static/*.js; do
             node --check "$file"
           done
-
-      - name: Verify shared backend parity
-        env:
-          INFORMTIT_API_BASE: ${{ vars.INFORMTIT_API_BASE }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import time
-          import urllib.request
-          from pathlib import Path
-          from urllib.parse import urlparse
-
-          api_base = os.environ.get('INFORMTIT_API_BASE', '').strip().rstrip('/')
-          if not api_base:
-              raise SystemExit(
-                  'INFORMTIT_API_BASE no está configurada. GitHub Pages no se desplegará en modo reducido: '
-                  'debe usar el mismo backend de Informtit que npm start.'
-              )
-
-          parsed = urlparse(api_base)
-          if parsed.scheme != 'https' or not parsed.netloc:
-              raise SystemExit('INFORMTIT_API_BASE debe ser una URL pública HTTPS válida.')
-
-          version = json.loads(Path('package.json').read_text(encoding='utf-8'))['version']
-
-          def get_json(path: str):
-              request = urllib.request.Request(
-                  f'{api_base}{path}',
-                  headers={'Accept': 'application/json', 'User-Agent': 'Informtit-Pages-Parity'},
-              )
-              with urllib.request.urlopen(request, timeout=20) as response:
-                  if response.status < 200 or response.status >= 300:
-                      raise RuntimeError(f'HTTP {response.status}')
-                  return json.loads(response.read().decode('utf-8'))
-
-          deadline = time.time() + 600
-          last_detail = 'backend todavía no comprobado'
-          while time.time() < deadline:
-              try:
-                  health = get_json('/api/health')
-                  runtime = get_json('/api/runtime-info')
-                  capabilities = set(health.get('capabilities') or [])
-                  build = str(runtime.get('build') or '').strip()
-                  if (
-                      health.get('ok') is True
-                      and 'schedules' in capabilities
-                      and runtime.get('ok') is True
-                      and build == version
-                  ):
-                      print(f'Paridad confirmada: Informtit {version} · {api_base}')
-                      break
-                  last_detail = (
-                      f'health.ok={health.get("ok")!r}, schedules={"schedules" in capabilities}, '
-                      f'runtime.ok={runtime.get("ok")!r}, backend_build={build!r}, repo_version={version!r}'
-                  )
-              except Exception as exc:
-                  last_detail = str(exc)
-              print(f'Esperando backend del mismo commit: {last_detail}')
-              time.sleep(10)
-          else:
-              raise SystemExit(
-                  'No se confirmó la paridad con el backend dentro de 10 minutos. '
-                  f'Último estado: {last_detail}'
-              )
-          PY
 
       - name: Prepare GitHub Pages site
         env:
@@ -123,48 +52,69 @@ jobs:
           index = site / 'index.html'
           text = index.read_text(encoding='utf-8')
 
-          # GitHub Pages vive bajo /Informtit/. Los mismos archivos de static se
-          # conservan; únicamente las URLs de recursos se vuelven relativas.
+          # GitHub Pages vive bajo /Informtit/.
           text = re.sub(r'(href|src)="/', r'\1="./', text)
 
-          # La única diferencia de arranque web es el puente hacia el backend.
-          # No se cargan emuladores Firebase/localStorage: todas las funciones
-          # pasan por el mismo Python que ejecuta npm start.
+          # Se conserva el runtime web/Firebase que ya utiliza la versión aprobada
+          # de GitHub Pages. INFORMTIT_API_BASE continúa siendo opcional: si existe,
+          # web-runtime puede usarlo; si no existe, Pages conserva su fuente Firebase.
           bridge = (
-              '  <script src="./web-config.js?v=2.0"></script>\n'
-              '  <script src="./web-runtime.js?v=2.0"></script>\n'
+              '  <script src="./web-config.js?v=1.0"></script>\n'
+              '  <script src="./web-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-pages-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-report-pages-runtime.js?v=2.0"></script>\n'
+              '  <script src="./firebase-report-code-runtime.js?v=2.0"></script>\n'
+              '  <script src="./firebase-active-report-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-unified-data-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-global-period-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-nuclei-paste-runtime.js?v=1.0"></script>\n'
+              '  <script src="./nuclei-paste-course-detection-fix.js?v=1.0"></script>\n'
+              '  <script src="./firebase-nuclei-definitive-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-nuclei-shared-runtime.js?v=1.0"></script>\n'
+              '  <script src="./firebase-schedule-runtime.js?v=1.2"></script>\n'
+              '  <script src="./firebase-schedule-completion-runtime.js?v=1.0"></script>\n'
+              '  <script src="./github-pages-runtime-fixes.js?v=1.0"></script>\n'
+              '  <script src="./github-pages-guard.js?v=1.3"></script>\n'
           )
           app_script = '  <script src="./app.js?v=4.6"></script>\n'
-          if 'web-runtime.js?v=2.0' not in text:
+          after_app = (
+              '  <script src="./unified-period-ui.js?v=1.0"></script>\n'
+              '  <script src="./firebase-period-selector-ui.js?v=1.3"></script>\n'
+          )
+          if 'firebase-nuclei-shared-runtime.js?v=1.0' not in text:
               if app_script not in text:
                   raise SystemExit('No se encontró app.js en static/index.html.')
-              text = text.replace(app_script, bridge + app_script)
+              text = text.replace(app_script, bridge + app_script + after_app)
+          elif 'unified-period-ui.js?v=1.0' not in text:
+              text = text.replace(app_script, app_script + after_app)
 
-          # La presentación aprobada de GitHub Pages es la presentación canónica.
-          # El mismo runtime se inyecta en Electron desde desktop_stability_runtime.py.
-          parity = '  <script src="./gitpages-parity-ui.js?v=1.0"></script>\n'
+          final_ui = (
+              '  <script src="./firebase-global-period-final-ui.js?v=1.0"></script>\n'
+              '  <script src="./schedule-auto-completion-ui.js?v=1.0"></script>\n'
+              '  <script src="./report-health-ui.js?v=1.0"></script>\n'
+              '  <script src="./nuclei-paste-ui.js?v=1.0"></script>\n'
+              '  <script src="./nuclei-paste-definitive-ui.js?v=1.0"></script>\n'
+              '  <script src="./gitpages-parity-ui.js?v=1.0"></script>\n'
+          )
           if 'gitpages-parity-ui.js?v=1.0' not in text:
-              text = text.replace('</body>', parity + '</body>')
+              text = text.replace('</body>', final_ui + '</body>')
 
           index.write_text(text, encoding='utf-8')
 
-          api_base = os.environ['INFORMTIT_API_BASE'].strip().rstrip('/')
+          api_base = os.environ.get('INFORMTIT_API_BASE', '').strip().rstrip('/')
           (site / 'web-config.js').write_text(
               'window.INFORMTIT_API_BASE = ' + json.dumps(api_base) + ';\n',
               encoding='utf-8',
           )
           PY
 
-      - name: Verify Pages uses the shared runtime only
+      - name: Verify canonical Pages presentation
         run: |
-          grep -q './web-config.js?v=2.0' _site/index.html
-          grep -q './web-runtime.js?v=2.0' _site/index.html
-          grep -q './app.js?v=4.6' _site/index.html
+          grep -q './firebase-pages-runtime.js?v=1.0' _site/index.html
+          grep -q './firebase-global-period-final-ui.js?v=1.0' _site/index.html
+          grep -q './report-health-ui.js?v=1.0' _site/index.html
           grep -q './gitpages-parity-ui.js?v=1.0' _site/index.html
-          if grep -q '<script src="./firebase-pages-runtime.js' _site/index.html; then exit 1; fi
-          if grep -q '<script src="./firebase-report-pages-runtime.js' _site/index.html; then exit 1; fi
-          if grep -q '<script src="./github-pages-guard.js' _site/index.html; then exit 1; fi
-          if grep -q '<script src="./firebase-global-period-runtime.js' _site/index.html; then exit 1; fi
+          grep -q './app.js?v=4.6' _site/index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
