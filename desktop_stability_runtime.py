@@ -34,14 +34,18 @@ def _serve_static_no_cache(self: Any, path: str) -> None:
     body = target.read_bytes()
     content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
 
-    # En escritorio la cantidad de tarjetas representa informes publicados, pero
-    # la métrica Períodos debe conservar el total oficial de Firebase igual que
-    # GitHub Pages. El script solo corrige esa métrica; no altera los informes.
+    # Escritorio y GitHub Pages deben terminar con la misma presentación. El
+    # runtime de paridad elimina controles exclusivos de diagnóstico, conserva
+    # las pestañas compartidas y activa el Resumen automático también en Electron.
     if root_request and target.name == "index.html":
         text = body.decode("utf-8")
-        marker = '<script src="/firebase-dashboard-parity.js?v=1.0"></script>'
-        if marker not in text:
-            text = text.replace("</body>", f"  {marker}\n</body>")
+        markers = (
+            '<script src="/firebase-dashboard-parity.js?v=1.0"></script>',
+            '<script src="/gitpages-parity-ui.js?v=1.0"></script>',
+        )
+        for marker in markers:
+            if marker not in text:
+                text = text.replace("</body>", f"  {marker}\n</body>")
         body = text.encode("utf-8")
 
     self.send_response(200)
