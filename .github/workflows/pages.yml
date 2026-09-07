@@ -64,6 +64,7 @@ jobs:
               '  <script src="./firebase-active-report-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-unified-data-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-global-period-runtime.js?v=1.0"></script>\n'
+              '  <script src="./nuclei-career-runtime.js?v=1.0"></script>\n'
               '  <script src="./firebase-nuclei-paste-runtime.js?v=1.0"></script>\n'
               '  <script src="./nuclei-paste-course-detection-fix.js?v=1.0"></script>\n'
               '  <script src="./firebase-nuclei-definitive-runtime.js?v=1.0"></script>\n'
@@ -109,6 +110,7 @@ jobs:
         run: |
           grep -q './firebase-pages-runtime.js?v=1.0' _site/index.html
           grep -q './firebase-global-period-final-ui.js?v=1.0' _site/index.html
+          grep -q './nuclei-career-runtime.js?v=1.0' _site/index.html
           grep -q './report-health-ui.js?v=1.0' _site/index.html
           grep -q './gitpages-parity-ui.js?v=1.0' _site/index.html
           grep -q './app.js?v=4.6' _site/index.html
