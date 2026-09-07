@@ -1,10 +1,14 @@
 (() => {
+  'use strict';
+
   window.INFORMTIT_MINIMAL_NUCLEI = true;
 
   const previousRenderReport = renderReport;
   let activeNucleiReportId = 0;
-  let selectedCareer = '';
   let searchText = '';
+  let filterMode = 'all';
+  let lastGroups = [];
+  let loadTarget = null;
 
   function esc(value = '') {
     return typeof escapeHtml === 'function'
@@ -33,28 +37,25 @@
     return Number.isFinite(number) ? number.toFixed(2).replace('.', ',') : '—';
   }
 
+  const CANONICAL_LABELS = new Map([
+    ['administracion', 'ADMINISTRACIÓN'],
+    ['educacion basica', 'EDUCACIÓN BÁSICA'],
+    ['educacion inicial', 'EDUCACIÓN INICIAL'],
+    ['gestion del talento humano', 'GESTIÓN DEL TALENTO HUMANO'],
+    ['marketing digital y comercio electronico', 'MARKETING DIGITAL Y COMERCIO ELECTRÓNICO'],
+    ['redes y telecomunicaciones', 'REDES Y TELECOMUNICACIONES'],
+  ]);
+
   function canonicalCareer(value = '') {
     const external = window.informtitNucleiCareer?.canonicalCareer;
-    if (typeof external === 'function') return external(value);
-
-    let text = String(value || '').replace(/\u00a0/g, ' ').trim().replace(/\s+/g, ' ');
-    text = text
+    let text = typeof external === 'function' ? external(value) : String(value || '');
+    text = String(text || '').replace(/\u00a0/g, ' ').trim().replace(/\s+/g, ' ')
       .replace(/^(?:TECNOLOG[IÍ]A|T[EÉ]CNICO)\s+SUPERIOR(?:\s+UNIVERSITARIA)?\s+EN\s+/i, '')
       .replace(/\s+(?:ONLINE|EN\s+L[IÍ]NEA|VIRTUAL|PRESENCIAL)\s*$/i, '')
       .trim();
     const key = normalize(text);
     if (key.includes('redes') && key.includes('telecomunicaciones')) return 'REDES Y TELECOMUNICACIONES';
-    return text ? text.toLocaleUpperCase('es') : 'SIN CARRERA';
-  }
-
-  function unique(values) {
-    const seen = new Map();
-    values.forEach(value => {
-      const career = canonicalCareer(value);
-      const key = normalize(career);
-      if (key && !seen.has(key)) seen.set(key, career);
-    });
-    return [...seen.values()].sort(compareText);
+    return CANONICAL_LABELS.get(key) || (text ? text.toLocaleUpperCase('es') : 'SIN CARRERA');
   }
 
   function studentIdentity(student = {}) {
@@ -69,6 +70,11 @@
   function numericGrade(student = {}) {
     const value = Number(student.final_grade ?? student.notaFinal ?? student.nota_final);
     return Number.isFinite(value) ? value : null;
+  }
+
+  function isReviewStudent(student = {}) {
+    const matchStatus = normalize(student.matchStatus || student.match_status || '');
+    return matchStatus === 'review' || matchStatus === 'sin coincidencia' || !studentIdentity(student);
   }
 
   function statusCounts(students) {
@@ -86,11 +92,12 @@
   function blankNucleus(number) {
     return {
       number,
-      sources: [],
       studentsByIdentity: new Map(),
       students: [],
+      sources: [],
       duplicateCount: 0,
       conflictCount: 0,
+      reviewCount: 0,
       average: null,
       counts: { approved: 0, failed: 0, pending: 0 },
     };
@@ -105,16 +112,10 @@
       if (!groups.has(key)) {
         groups.set(key, {
           career,
-          nuclei: {
-            1: blankNucleus(1),
-            2: blankNucleus(2),
-            3: blankNucleus(3),
-            4: blankNucleus(4),
-          },
+          nuclei: { 1: blankNucleus(1), 2: blankNucleus(2), 3: blankNucleus(3), 4: blankNucleus(4) },
           uniqueStudents: 0,
           loadedNuclei: 0,
-          duplicates: 0,
-          conflicts: 0,
+          reviewCount: 0,
           search: '',
         });
       }
@@ -127,21 +128,14 @@
       const group = ensure(course.career_name);
       const nucleusNumber = Number(course.nucleus_number || 0);
       if (![1, 2, 3, 4].includes(nucleusNumber)) return;
-
       const slot = group.nuclei[nucleusNumber];
       const sourceTimestamp = courseTimestamp(course);
       slot.sources.push(course);
 
       (course.students || []).forEach((student, index) => {
         const identity = studentIdentity(student) || `anonymous:${normalize(student.full_name)}:${index}`;
-        const candidate = {
-          ...student,
-          _sourceTimestamp: sourceTimestamp,
-          _sourceTitle: course.course_title || `Núcleo ${nucleusNumber}`,
-          _sourceTeacher: course.teacher_name || '',
-        };
+        const candidate = { ...student, _sourceTimestamp: sourceTimestamp };
         const existing = slot.studentsByIdentity.get(identity);
-
         if (!existing) {
           slot.studentsByIdentity.set(identity, candidate);
           return;
@@ -152,13 +146,10 @@
         const candidateGrade = numericGrade(candidate);
         const existingStatus = normalize(existing.final_status || existing.estado);
         const candidateStatus = normalize(candidate.final_status || candidate.estado);
-
         if (
           (existingGrade !== null && candidateGrade !== null && Math.abs(existingGrade - candidateGrade) > 0.001)
           || (existingStatus && candidateStatus && existingStatus !== candidateStatus)
-        ) {
-          slot.conflictCount += 1;
-        }
+        ) slot.conflictCount += 1;
 
         const candidateIsNewer = candidate._sourceTimestamp > (existing._sourceTimestamp || 0);
         const candidateHasBetterData = existingGrade === null && candidateGrade !== null;
@@ -168,21 +159,21 @@
 
     const output = [...groups.values()];
     output.forEach(group => {
-      const careerStudentIds = new Set();
+      const careerStudents = new Set();
       for (let number = 1; number <= 4; number += 1) {
         const slot = group.nuclei[number];
         slot.students = [...slot.studentsByIdentity.values()].sort((a, b) => compareText(a.full_name, b.full_name));
         slot.students.forEach(student => {
           const identity = studentIdentity(student);
-          if (identity) careerStudentIds.add(identity);
+          if (identity) careerStudents.add(identity);
         });
         const grades = slot.students.map(numericGrade).filter(value => value !== null);
         slot.average = grades.length ? grades.reduce((sum, value) => sum + value, 0) / grades.length : null;
         slot.counts = statusCounts(slot.students);
-        group.duplicates += slot.duplicateCount;
-        group.conflicts += slot.conflictCount;
+        slot.reviewCount = slot.students.filter(isReviewStudent).length + slot.conflictCount;
+        group.reviewCount += slot.reviewCount;
       }
-      group.uniqueStudents = careerStudentIds.size;
+      group.uniqueStudents = careerStudents.size;
       group.loadedNuclei = [1, 2, 3, 4].filter(number => group.nuclei[number].students.length > 0).length;
       group.search = normalize([
         group.career,
@@ -195,7 +186,7 @@
     return output.sort((a, b) => compareText(a.career, b.career));
   }
 
-  renderReport = function renderReportWithCareerNuclei() {
+  renderReport = function renderReportWithNucleiMatrix() {
     previousRenderReport();
     if (state.activeReport?.id) renderNucleiModule();
   };
@@ -207,302 +198,379 @@
 
     if (activeNucleiReportId !== reportId) {
       activeNucleiReportId = reportId;
-      selectedCareer = '';
       searchText = '';
+      filterMode = 'all';
     }
 
-    tab.dataset.nucleiReportId = String(reportId);
     bindDelegatedEvents(tab);
     tab.innerHTML = '<div class="panel"><div class="empty-mini">Cargando Núcleos...</div></div>';
 
     try {
       const data = await api(`/api/reports/${reportId}/nuclei`);
       if (Number(state.activeReport?.id || 0) !== reportId) return;
-      const groups = organizeCareers(data?.courses || [], data?.careers || []);
-      normalizeSelection(groups);
-      tab.innerHTML = markup(groups, data?.excel_import || null);
-      tab.dataset.nucleiReportId = String(reportId);
+      lastGroups = organizeCareers(data?.courses || [], data?.careers || []);
+      tab.innerHTML = markup(lastGroups);
       applyFilters(tab);
     } catch (error) {
       tab.innerHTML = `<div class="panel"><div class="empty-mini">${esc(error.message)}</div></div>`;
     }
   }
 
-  function normalizeSelection(groups) {
-    const careers = groups.map(group => group.career);
-    if (selectedCareer && !careers.some(career => normalize(career) === normalize(selectedCareer))) {
-      selectedCareer = '';
-    }
-  }
-
-  function markup(groups, sourceSummary) {
-    return `
-      <div class="process-stack excel-nuclei" data-minimal-nuclei>
-        <section class="panel excel-nuclei-upload">
-          <div class="panel-head">
-            <div>
-              <h2>Cargar Núcleos</h2>
-              <p>Seleccione una carrera y cargue sus cuatro Núcleos. Informtit consolida la información por estudiante y evita mostrar materias o grupos repetidos.</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel excel-nuclei-results">
-          <div class="panel-head">
-            <div>
-              <h2>Núcleos por carrera</h2>
-              <p>Cada carrera aparece una sola vez y contiene Núcleo 1, Núcleo 2, Núcleo 3 y Núcleo 4. Las variantes del nombre de carrera se normalizan automáticamente.</p>
-            </div>
-          </div>
-          ${summaryMarkup(groups, sourceSummary)}
-          ${careersMarkup(groups)}
-        </section>
-      </div>`;
-  }
-
-  function summaryMarkup(groups, sourceSummary) {
-    const careerStudents = new Set();
-    let results = 0;
+  function summary(groups) {
+    const students = new Set();
     let loaded = 0;
-    let duplicates = 0;
+    let review = 0;
     groups.forEach(group => {
+      review += group.reviewCount;
       [1, 2, 3, 4].forEach(number => {
         const slot = group.nuclei[number];
         if (slot.students.length) loaded += 1;
-        results += slot.students.length;
-        duplicates += slot.duplicateCount;
         slot.students.forEach(student => {
           const identity = studentIdentity(student);
-          if (identity) careerStudents.add(`${normalize(group.career)}|${identity}`);
+          if (identity) students.add(`${normalize(group.career)}|${identity}`);
         });
       });
     });
-
-    return `<div class="nuclei-import-summary nuclei-career-summary">
-      <div><strong>${groups.length}</strong><span>Carreras</span></div>
-      <div><strong>${careerStudents.size}</strong><span>Estudiantes únicos</span></div>
-      <div><strong>${results}</strong><span>Resultados de Núcleos</span></div>
-      <div><strong>${loaded}</strong><span>Núcleos cargados</span></div>
-      <div><strong>${duplicates}</strong><span>Duplicados consolidados</span></div>
-      <div class="nuclei-import-file"><strong>${esc(sourceSummary?.filename || 'Firebase UTET')}</strong><span>Fuente actual</span></div>
-    </div>`;
+    return { students: students.size, careers: groups.length, loaded, total: groups.length * 4, review };
   }
 
-  function careersMarkup(groups) {
-    if (!groups.length) {
-      return '<div class="empty-mini">No se encontraron carreras para este período.</div>';
-    }
-
-    const careers = unique(groups.map(group => group.career));
+  function markup(groups) {
+    const totals = summary(groups);
     return `
-      <div class="nuclei-result-bar">
-        <div class="nuclei-result-count">${groups.length} carrera${groups.length === 1 ? '' : 's'} · cada carrera dispone de 4 Núcleos</div>
-        <div class="nuclei-result-filters">
-          <label>Carrera
-            <select data-nuclei-career-filter>
-              <option value="">Todas</option>
-              ${careers.map(career => `<option value="${esc(career)}" ${normalize(career) === normalize(selectedCareer) ? 'selected' : ''}>${esc(career)}</option>`).join('')}
-            </select>
-          </label>
-          <label>Buscar
-            <input data-nuclei-search value="${esc(searchText)}" placeholder="Carrera, cédula o estudiante">
-          </label>
+      <div class="nuclei-matrix-shell" data-nuclei-matrix>
+        <div class="nuclei-matrix-heading">
+          <div>
+            <h2>Núcleos</h2>
+            <p>${esc(state.activeReport?.period || '')}</p>
+          </div>
+          <div class="nuclei-legend"><span><i class="dot ok"></i>Cargado</span><span><i class="dot warn"></i>Revisar</span><span><i class="dot pending"></i>Pendiente</span></div>
         </div>
-      </div>
-      <div class="nuclei-career-list">
-        ${groups.map(careerMarkup).join('')}
+
+        <div class="nuclei-kpis">
+          ${kpi(totals.students, 'Estudiantes')}
+          ${kpi(totals.careers, 'Carreras')}
+          ${kpi(`${totals.loaded}/${totals.total}`, 'Núcleos cargados')}
+          ${kpi(totals.review, 'Por revisar', totals.review > 0 ? 'attention' : '')}
+        </div>
+
+        <div class="nuclei-toolbar">
+          <label class="nuclei-search"><span>Buscar</span><input type="search" data-nuclei-search value="${esc(searchText)}" placeholder="Carrera, estudiante o cédula"></label>
+          <div class="nuclei-filter-tabs" role="group" aria-label="Filtrar Núcleos">
+            ${filterButton('all', 'Todos')}
+            ${filterButton('pending', 'Pendientes')}
+            ${filterButton('review', 'Con errores')}
+          </div>
+        </div>
+
+        ${matrixMarkup(groups)}
+        ${loadDialogMarkup()}
+        ${detailDialogMarkup()}
       </div>`;
   }
 
-  function careerMarkup(group) {
-    return `<article class="nuclei-career-card" data-nuclei-career-card data-career="${esc(group.career)}" data-search="${esc(group.search)}">
-      <div class="nuclei-career-head">
-        <div>
-          <h3>${esc(group.career)}</h3>
-          <p>${group.uniqueStudents} estudiante${group.uniqueStudents === 1 ? '' : 's'} · ${group.loadedNuclei}/4 Núcleos cargados</p>
-        </div>
-        ${group.conflicts ? `<span class="nuclei-conflict-badge">${group.conflicts} registro${group.conflicts === 1 ? '' : 's'} por revisar</span>` : ''}
-      </div>
-      <div class="nuclei-slot-grid">
-        ${[1, 2, 3, 4].map(number => nucleusMarkup(group.career, group.nuclei[number])).join('')}
-      </div>
-    </article>`;
+  function kpi(value, label, className = '') {
+    return `<div class="nuclei-kpi ${className}"><strong>${esc(value)}</strong><span>${esc(label)}</span></div>`;
   }
 
-  function nucleusMarkup(career, slot) {
+  function filterButton(mode, label) {
+    return `<button type="button" class="nuclei-filter-button ${filterMode === mode ? 'active' : ''}" data-nuclei-filter="${mode}">${label}</button>`;
+  }
+
+  function matrixMarkup(groups) {
+    if (!groups.length) return '<div class="empty-mini">No se encontraron carreras para este período.</div>';
+    return `
+      <div class="nuclei-matrix-wrap">
+        <table class="nuclei-matrix-table">
+          <thead><tr><th>Carrera</th><th>Núcleo 1</th><th>Núcleo 2</th><th>Núcleo 3</th><th>Núcleo 4</th></tr></thead>
+          <tbody>
+            ${groups.map(group => `
+              <tr data-nuclei-row data-career="${esc(group.career)}" data-search="${esc(group.search)}" data-loaded="${group.loadedNuclei}" data-review="${group.reviewCount}">
+                <th scope="row"><strong>${esc(group.career)}</strong><span>${group.loadedNuclei}/4 cargados${group.reviewCount ? ` · ${group.reviewCount} por revisar` : ''}</span></th>
+                ${[1, 2, 3, 4].map(number => matrixCell(group, group.nuclei[number])).join('')}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function matrixCell(group, slot) {
     const loaded = slot.students.length > 0;
-    const safeCareer = normalize(career).replace(/\s+/g, '-');
-    const detailId = `nucleus-detail-${safeCareer}-${slot.number}`;
-    const counts = slot.counts;
-
-    return `<section class="nuclei-slot ${loaded ? 'loaded' : 'pending'}">
-      <div class="nuclei-slot-head">
-        <strong>Núcleo ${slot.number}</strong>
-        <span class="nuclei-slot-state">${loaded ? 'Cargado' : 'Pendiente'}</span>
-      </div>
-      ${loaded ? `
-        <div class="nuclei-slot-stats">
-          <span><b>${slot.students.length}</b> estudiantes</span>
-          <span>Promedio <b>${fmt(slot.average)}</b></span>
-          <span class="nuclei-status-ok">${counts.approved} APR</span>
-          ${counts.failed ? `<span class="nuclei-status-fail">${counts.failed} REP</span>` : ''}
-          ${counts.pending ? `<span class="nuclei-status-pending">${counts.pending} sin evaluación</span>` : ''}
-        </div>
-        ${slot.sources.length > 1 ? `<small class="nuclei-merged-note">${slot.sources.length} cargas/grupos consolidados en un solo Núcleo</small>` : ''}
-        <div class="nuclei-slot-actions">
-          <button class="button secondary small" type="button" data-toggle-nuclei-detail="${detailId}">Ver estudiantes</button>
-          <button class="button secondary small" type="button" data-load-nucleus data-career="${esc(career)}" data-nucleus="${slot.number}">Actualizar</button>
-        </div>
-        <div class="nuclei-course-detail" id="${detailId}" hidden>
-          ${studentsTable(slot.students, slot.conflictCount)}
-        </div>
-      ` : `
-        <div class="nuclei-slot-empty">
-          <span>Sin información cargada</span>
-          <button class="button primary small" type="button" data-load-nucleus data-career="${esc(career)}" data-nucleus="${slot.number}">Cargar Núcleo ${slot.number}</button>
-        </div>
-      `}
-    </section>`;
+    const hasReview = slot.reviewCount > 0;
+    const statusClass = hasReview ? 'review' : loaded ? 'loaded' : 'pending';
+    const icon = hasReview ? '!' : loaded ? '✓' : '+';
+    const label = hasReview ? `${slot.students.length} · revisar` : loaded ? `${slot.students.length}` : 'Cargar';
+    const title = loaded
+      ? `${group.career} · Núcleo ${slot.number}: ${slot.students.length} estudiantes, promedio ${fmt(slot.average)}${hasReview ? `, ${slot.reviewCount} por revisar` : ''}`
+      : `${group.career} · Núcleo ${slot.number}: pendiente`;
+    return `<td>
+      <button type="button" class="nuclei-cell ${statusClass}" data-nuclei-cell data-career="${esc(group.career)}" data-nucleus="${slot.number}" title="${esc(title)}">
+        <span class="nuclei-cell-icon">${icon}</span>
+        <span class="nuclei-cell-label">${esc(label)}</span>
+      </button>
+    </td>`;
   }
 
-  function studentsTable(students, conflicts = 0) {
-    return `<div class="student-table-wrap nuclei-student-table-wrap">
-      ${conflicts ? `<div class="nuclei-detail-warning">${conflicts} duplicado${conflicts === 1 ? '' : 's'} tenía información diferente. Se muestra el registro más reciente disponible.</div>` : ''}
-      <table class="student-table compact-table nuclei-student-table">
-        <thead><tr><th>Cédula</th><th>Estudiante</th><th>Nota final</th><th>Estado</th></tr></thead>
-        <tbody>${students.map(student => `<tr>
-          <td>${esc(student.identification || student.cedula || '—')}</td>
-          <td>${esc(student.full_name || '—')}</td>
-          <td><strong>${fmt(numericGrade(student))}</strong></td>
-          <td>${esc(student.final_status || student.estado || 'No evaluado')}</td>
-        </tr>`).join('')}</tbody>
-      </table>
-    </div>`;
+  function loadDialogMarkup() {
+    return `
+      <dialog class="nuclei-dialog" data-nuclei-load-dialog>
+        <form method="dialog" class="nuclei-dialog-card" data-nuclei-load-form>
+          <div class="nuclei-dialog-head">
+            <div><span class="eyebrow">Cargar calificaciones</span><h3 data-load-title>Núcleo</h3><p data-load-subtitle></p></div>
+            <button class="icon-button" value="cancel" aria-label="Cerrar">×</button>
+          </div>
+          <label class="nuclei-paste-field">Pega aquí la tabla copiada desde Moodle
+            <textarea name="text" rows="10" required placeholder="Pega la tabla completa de calificaciones..."></textarea>
+          </label>
+          <p class="nuclei-dialog-help">Informtit identificará los estudiantes y verificará la carrera antes de guardar.</p>
+          <div data-load-result></div>
+          <div class="nuclei-dialog-actions">
+            <button class="button secondary" value="cancel">Cancelar</button>
+            <button class="button primary" type="submit" value="default">Procesar y guardar</button>
+          </div>
+        </form>
+      </dialog>`;
+  }
+
+  function detailDialogMarkup() {
+    return `
+      <dialog class="nuclei-dialog nuclei-detail-dialog" data-nuclei-detail-dialog>
+        <div class="nuclei-dialog-card">
+          <div class="nuclei-dialog-head">
+            <div><span class="eyebrow">Detalle</span><h3 data-detail-title>Núcleo</h3><p data-detail-subtitle></p></div>
+            <button class="icon-button" type="button" data-close-detail aria-label="Cerrar">×</button>
+          </div>
+          <div data-detail-body></div>
+          <div class="nuclei-dialog-actions">
+            <button class="button secondary" type="button" data-close-detail>Cerrar</button>
+            <button class="button primary" type="button" data-detail-update>Actualizar Núcleo</button>
+          </div>
+        </div>
+      </dialog>`;
   }
 
   function bindDelegatedEvents(tab) {
-    if (tab.dataset.nucleiDelegatedBound === '1') return;
-    tab.dataset.nucleiDelegatedBound = '1';
-    tab.addEventListener('click', handleTabClick);
-    tab.addEventListener('change', handleTabChange);
-    tab.addEventListener('input', handleTabInput);
+    if (tab.dataset.nucleiMatrixBound === '1') return;
+    tab.dataset.nucleiMatrixBound = '1';
+    tab.addEventListener('click', handleClick);
+    tab.addEventListener('input', handleInput);
+    tab.addEventListener('submit', handleSubmit);
   }
 
-  function handleTabClick(event) {
-    const toggle = event.target.closest('[data-toggle-nuclei-detail]');
-    if (toggle) {
-      const tab = event.currentTarget;
-      const detail = tab.querySelector(`#${CSS.escape(toggle.dataset.toggleNucleiDetail)}`);
-      if (!detail) return;
-      detail.hidden = !detail.hidden;
-      toggle.textContent = detail.hidden ? 'Ver estudiantes' : 'Ocultar estudiantes';
-      return;
-    }
-
-    const load = event.target.closest('[data-load-nucleus]');
-    if (!load) return;
+  function handleClick(event) {
     const tab = event.currentTarget;
-    const career = load.dataset.career || '';
-    const nucleus = Number(load.dataset.nucleus || 0);
-    const box = tab.querySelector('[data-nuclei-final-box]');
-    const form = box?.querySelector('[data-nuclei-final-form]');
-    const select = form?.elements?.nucleus_number;
-
-    if (!box || !form || !select) {
-      toast('El formulario de carga de Núcleos todavía no está disponible.', true);
+    const filter = event.target.closest('[data-nuclei-filter]');
+    if (filter) {
+      filterMode = filter.dataset.nucleiFilter || 'all';
+      tab.querySelectorAll('[data-nuclei-filter]').forEach(button => button.classList.toggle('active', button === filter));
+      applyFilters(tab);
       return;
     }
 
-    select.value = String(nucleus);
-    let target = box.querySelector('[data-nuclei-target]');
-    if (!target) {
-      target = document.createElement('div');
-      target.dataset.nucleiTarget = '1';
-      target.className = 'nuclei-target';
-      const title = box.querySelector('.nuclei-final-title');
-      title?.insertAdjacentElement('afterend', target);
+    const cell = event.target.closest('[data-nuclei-cell]');
+    if (cell) {
+      const career = cell.dataset.career || '';
+      const nucleus = Number(cell.dataset.nucleus || 0);
+      const group = lastGroups.find(item => normalize(item.career) === normalize(career));
+      const slot = group?.nuclei?.[nucleus];
+      if (slot?.students?.length) openDetail(tab, group, slot);
+      else openLoad(tab, career, nucleus);
+      return;
     }
-    target.innerHTML = `<span>Está cargando</span><strong>${esc(career)} · Núcleo ${nucleus}</strong>`;
-    form.dataset.targetCareer = career;
-    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    window.setTimeout(() => form.elements.text?.focus(), 350);
+
+    const close = event.target.closest('[data-close-detail]');
+    if (close) {
+      tab.querySelector('[data-nuclei-detail-dialog]')?.close();
+      return;
+    }
+
+    const update = event.target.closest('[data-detail-update]');
+    if (update) {
+      const dialog = tab.querySelector('[data-nuclei-detail-dialog]');
+      const career = dialog?.dataset.career || '';
+      const nucleus = Number(dialog?.dataset.nucleus || 0);
+      dialog?.close();
+      openLoad(tab, career, nucleus);
+    }
   }
 
-  function handleTabChange(event) {
-    if (!event.target.matches('[data-nuclei-career-filter]')) return;
-    selectedCareer = event.target.value;
-    applyFilters(event.currentTarget);
-  }
-
-  function handleTabInput(event) {
+  function handleInput(event) {
     if (!event.target.matches('[data-nuclei-search]')) return;
     searchText = event.target.value;
     applyFilters(event.currentTarget);
   }
 
-  function applyFilters(tab) {
-    const career = tab.querySelector('[data-nuclei-career-filter]')?.value || selectedCareer;
-    const query = normalize(tab.querySelector('[data-nuclei-search]')?.value || searchText);
-    selectedCareer = career;
-    searchText = tab.querySelector('[data-nuclei-search]')?.value || searchText;
+  async function handleSubmit(event) {
+    const form = event.target.closest('[data-nuclei-load-form]');
+    if (!form) return;
+    event.preventDefault();
+    const reportId = Number(state.activeReport?.id || 0);
+    if (!reportId || !loadTarget) return;
 
-    tab.querySelectorAll('[data-nuclei-career-card]').forEach(card => {
-      const sameCareer = !career || normalize(card.dataset.career) === normalize(career);
-      const matchesSearch = !query || String(card.dataset.search || '').includes(query);
-      card.hidden = !(sameCareer && matchesSearch);
+    const text = String(form.elements.text?.value || '').trim();
+    if (!text) {
+      form.elements.text?.focus();
+      return;
+    }
+
+    const submit = form.querySelector('button[type="submit"]');
+    const resultBox = form.querySelector('[data-load-result]');
+    const original = submit?.textContent || 'Procesar y guardar';
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = 'Procesando...';
+    }
+    if (resultBox) resultBox.innerHTML = '';
+
+    try {
+      const result = await api(`/api/reports/${reportId}/nuclei/import-text-v2`, {
+        method: 'POST',
+        body: JSON.stringify({ text, nucleus_number: loadTarget.nucleus, target_career: loadTarget.career }),
+      });
+      const s = result.summary || {};
+      if (resultBox) resultBox.innerHTML = resultMarkup(result);
+      toast(`Núcleo ${loadTarget.nucleus} guardado: ${Number(s.matched || 0)} de ${Number(s.detected || 0)} estudiantes conciliados.`, Number(s.review || 0) > 0);
+      await renderNucleiModule();
+      const refreshedDialog = document.querySelector('#tab-nuclei [data-nuclei-load-dialog]');
+      refreshedDialog?.close();
+      loadTarget = null;
+    } catch (error) {
+      if (resultBox) resultBox.innerHTML = `<div class="nuclei-load-error">${esc(error.message)}</div>`;
+    } finally {
+      if (submit && document.contains(submit)) {
+        submit.disabled = false;
+        submit.textContent = original;
+      }
+    }
+  }
+
+  function resultMarkup(result) {
+    const s = result?.summary || {};
+    const unmatched = Array.isArray(result?.unmatched) ? result.unmatched : [];
+    return `<div class="nuclei-load-result ${Number(s.review || 0) ? 'warn' : 'ok'}">
+      <strong>${Number(s.review || 0) ? 'Guardado con casos por revisar' : 'Guardado correctamente'}</strong>
+      <span>${Number(s.matched || 0)}/${Number(s.detected || 0)} estudiantes conciliados · ${Number(s.approved || 0)} aprobados · ${Number(s.failed || 0)} reprobados</span>
+      ${unmatched.length ? `<details><summary>${unmatched.length} caso${unmatched.length === 1 ? '' : 's'} por revisar</summary>${unmatched.map(item => `<p>${esc(item.name || item.email || 'Sin identificar')} · ${esc(item.grade ?? '—')}</p>`).join('')}</details>` : ''}
+    </div>`;
+  }
+
+  function openLoad(tab, career, nucleus) {
+    loadTarget = { career, nucleus };
+    const dialog = tab.querySelector('[data-nuclei-load-dialog]');
+    const form = dialog?.querySelector('[data-nuclei-load-form]');
+    if (!dialog || !form) return;
+    form.reset();
+    form.querySelector('[data-load-title]').textContent = `Núcleo ${nucleus}`;
+    form.querySelector('[data-load-subtitle]').textContent = career;
+    form.querySelector('[data-load-result]').innerHTML = '';
+    dialog.showModal();
+    window.setTimeout(() => form.elements.text?.focus(), 80);
+  }
+
+  function openDetail(tab, group, slot) {
+    const dialog = tab.querySelector('[data-nuclei-detail-dialog]');
+    if (!dialog) return;
+    dialog.dataset.career = group.career;
+    dialog.dataset.nucleus = String(slot.number);
+    dialog.querySelector('[data-detail-title]').textContent = `${group.career} · Núcleo ${slot.number}`;
+    dialog.querySelector('[data-detail-subtitle]').textContent = `${slot.students.length} estudiantes · promedio ${fmt(slot.average)}`;
+    dialog.querySelector('[data-detail-body]').innerHTML = detailMarkup(slot);
+    dialog.showModal();
+  }
+
+  function detailMarkup(slot) {
+    const counts = slot.counts;
+    const reviewStudents = slot.students.filter(isReviewStudent);
+    return `
+      <div class="nuclei-detail-summary">
+        <span><strong>${slot.students.length}</strong> estudiantes</span>
+        <span><strong>${fmt(slot.average)}</strong> promedio</span>
+        <span><strong>${counts.approved}</strong> aprobados</span>
+        <span><strong>${counts.failed}</strong> reprobados</span>
+      </div>
+      ${slot.reviewCount ? `<div class="nuclei-review-banner"><strong>${slot.reviewCount} por revisar</strong><span>${slot.conflictCount ? `${slot.conflictCount} duplicado${slot.conflictCount === 1 ? '' : 's'} con información diferente. ` : ''}${reviewStudents.length ? `${reviewStudents.length} estudiante${reviewStudents.length === 1 ? '' : 's'} sin conciliación completa.` : ''}</span></div>` : ''}
+      <div class="student-table-wrap nuclei-detail-table-wrap">
+        <table class="student-table compact-table"><thead><tr><th>Cédula</th><th>Estudiante</th><th>Nota</th><th>Estado</th></tr></thead><tbody>
+          ${slot.students.map(student => `<tr class="${isReviewStudent(student) ? 'needs-review' : ''}"><td>${esc(student.identification || student.cedula || '—')}</td><td>${esc(student.full_name || student.nombre || '—')}</td><td><strong>${fmt(numericGrade(student))}</strong></td><td>${esc(student.final_status || student.estado || 'No evaluado')}</td></tr>`).join('')}
+        </tbody></table>
+      </div>`;
+  }
+
+  function applyFilters(tab) {
+    const query = normalize(tab.querySelector('[data-nuclei-search]')?.value || searchText);
+    tab.querySelectorAll('[data-nuclei-row]').forEach(row => {
+      const matchesSearch = !query || String(row.dataset.search || '').includes(query) || normalize(row.dataset.career).includes(query);
+      const loaded = Number(row.dataset.loaded || 0);
+      const review = Number(row.dataset.review || 0);
+      const matchesMode = filterMode === 'pending' ? loaded < 4 : filterMode === 'review' ? review > 0 : true;
+      row.hidden = !(matchesSearch && matchesMode);
     });
   }
 
   const style = document.createElement('style');
   style.textContent = `
-    .excel-nuclei { gap: 14px; }
-    .excel-nuclei-upload .panel-head p, .excel-nuclei-results .panel-head p { margin: 4px 0 0; color: #64748b; max-width: 980px; }
-    .nuclei-import-summary { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)) minmax(220px, 1.4fr); gap: 9px; margin: 14px 0; }
-    .nuclei-import-summary > div { padding: 11px 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; display: grid; gap: 2px; }
-    .nuclei-import-summary strong { color: #173b57; font-size: 16px; }
-    .nuclei-import-summary span { color: #64748b; font-size: 11px; }
-    .nuclei-import-file strong { font-size: 12px; overflow-wrap: anywhere; }
-    .nuclei-result-bar { display: grid; gap: 12px; margin: 10px 0 14px; }
-    .nuclei-result-count { color: #64748b; font-size: 12px; font-weight: 700; }
-    .nuclei-result-filters { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(280px, 1fr); gap: 12px; }
-    .nuclei-career-list { display: grid; gap: 14px; }
-    .nuclei-career-card { border: 1px solid #dbe5ee; border-radius: 15px; background: #fff; padding: 15px; }
-    .nuclei-career-card[hidden], .nuclei-course-detail[hidden] { display: none !important; }
-    .nuclei-career-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; margin-bottom: 12px; }
-    .nuclei-career-head h3 { margin: 0; color: #173b57; font-size: 17px; }
-    .nuclei-career-head p { margin: 4px 0 0; color: #64748b; font-size: 12px; }
-    .nuclei-conflict-badge { padding: 5px 8px; border-radius: 999px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 10px; font-weight: 800; }
-    .nuclei-slot-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-    .nuclei-slot { min-width: 0; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; background: #f8fafc; }
-    .nuclei-slot.loaded { background: #fbfefc; border-color: #cce8d7; }
-    .nuclei-slot.pending { background: #fafafa; border-style: dashed; }
-    .nuclei-slot-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .nuclei-slot-head strong { color: #173b57; }
-    .nuclei-slot-state { font-size: 10px; font-weight: 800; padding: 4px 7px; border-radius: 999px; background: #e2e8f0; color: #475569; }
-    .nuclei-slot.loaded .nuclei-slot-state { background: #dcfce7; color: #166534; }
-    .nuclei-slot-stats { display: flex; flex-wrap: wrap; gap: 6px 9px; margin-top: 10px; }
-    .nuclei-slot-stats span { color: #64748b; font-size: 11px; }
-    .nuclei-status-ok { color: #166534 !important; font-weight: 800; }
-    .nuclei-status-fail { color: #991b1b !important; font-weight: 800; }
-    .nuclei-status-pending { color: #92400e !important; font-weight: 800; }
-    .nuclei-merged-note { display: block; margin-top: 8px; color: #64748b; font-size: 10px; line-height: 1.4; }
-    .nuclei-slot-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-    .nuclei-slot-empty { display: grid; gap: 11px; align-content: start; min-height: 92px; margin-top: 10px; }
-    .nuclei-slot-empty span { color: #94a3b8; font-size: 11px; }
-    .nuclei-course-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
-    .nuclei-student-table-wrap { max-height: 360px; overflow: auto; }
-    .nuclei-student-table { min-width: 590px; }
-    .nuclei-detail-warning { margin-bottom: 8px; padding: 8px 9px; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: 10px; }
-    .nuclei-target { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; display: grid; gap: 2px; }
-    .nuclei-target span { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
-    .nuclei-target strong { color: #173b57; font-size: 13px; }
-    @media (max-width: 1200px) {
-      .nuclei-slot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .nuclei-import-summary { grid-template-columns: repeat(3, 1fr); }
-    }
-    @media (max-width: 760px) {
-      .nuclei-result-filters, .nuclei-import-summary, .nuclei-slot-grid { grid-template-columns: 1fr; }
-      .nuclei-career-head { display: grid; }
+    [data-nuclei-final-box], [data-nuclei-paste-box], .excel-nuclei-upload { display:none !important; }
+    .nuclei-matrix-shell { display:grid; gap:16px; }
+    .nuclei-matrix-heading { display:flex; justify-content:space-between; gap:18px; align-items:flex-end; }
+    .nuclei-matrix-heading h2 { margin:0; font-size:22px; color:#173b57; }
+    .nuclei-matrix-heading p { margin:4px 0 0; color:#64748b; font-size:12px; }
+    .nuclei-legend { display:flex; gap:14px; flex-wrap:wrap; color:#64748b; font-size:11px; }
+    .nuclei-legend span { display:flex; align-items:center; gap:6px; }
+    .nuclei-legend .dot { width:8px; height:8px; border-radius:50%; display:inline-block; background:#cbd5e1; }
+    .nuclei-legend .dot.ok { background:#22c55e; } .nuclei-legend .dot.warn { background:#f59e0b; }
+    .nuclei-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid #e2e8f0; border-radius:14px; background:#fff; overflow:hidden; }
+    .nuclei-kpi { padding:14px 16px; display:grid; gap:2px; border-right:1px solid #edf2f7; }
+    .nuclei-kpi:last-child { border-right:0; } .nuclei-kpi strong { font-size:20px; color:#173b57; } .nuclei-kpi span { font-size:11px; color:#64748b; }
+    .nuclei-kpi.attention strong { color:#b45309; }
+    .nuclei-toolbar { display:flex; justify-content:space-between; align-items:end; gap:14px; }
+    .nuclei-search { display:grid; gap:5px; width:min(430px,100%); color:#64748b; font-size:11px; font-weight:700; }
+    .nuclei-search input { min-height:40px; border-radius:10px; }
+    .nuclei-filter-tabs { display:inline-flex; gap:4px; padding:4px; background:#f1f5f9; border-radius:10px; }
+    .nuclei-filter-button { border:0; background:transparent; padding:7px 11px; border-radius:8px; color:#64748b; cursor:pointer; font-weight:700; font-size:11px; }
+    .nuclei-filter-button.active { background:#fff; color:#173b57; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+    .nuclei-matrix-wrap { overflow:auto; border:1px solid #e2e8f0; border-radius:14px; background:#fff; }
+    .nuclei-matrix-table { width:100%; min-width:850px; border-collapse:collapse; table-layout:fixed; }
+    .nuclei-matrix-table th, .nuclei-matrix-table td { border-bottom:1px solid #edf2f7; padding:10px 12px; text-align:center; }
+    .nuclei-matrix-table thead th { position:sticky; top:0; z-index:2; background:#f8fafc; color:#64748b; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+    .nuclei-matrix-table thead th:first-child { text-align:left; width:37%; }
+    .nuclei-matrix-table tbody th { text-align:left; font-weight:400; background:#fff; }
+    .nuclei-matrix-table tbody th strong { display:block; color:#173b57; font-size:12px; }
+    .nuclei-matrix-table tbody th span { display:block; margin-top:3px; color:#94a3b8; font-size:10px; }
+    .nuclei-matrix-table tbody tr:last-child th, .nuclei-matrix-table tbody tr:last-child td { border-bottom:0; }
+    .nuclei-matrix-table tr[hidden] { display:none; }
+    .nuclei-cell { width:100%; min-height:48px; border:1px solid transparent; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:7px; cursor:pointer; font:inherit; font-weight:800; transition:.15s ease; }
+    .nuclei-cell:hover { transform:translateY(-1px); }
+    .nuclei-cell.loaded { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
+    .nuclei-cell.review { background:#fffbeb; border-color:#fde68a; color:#92400e; }
+    .nuclei-cell.pending { background:#f8fafc; border-color:#e2e8f0; color:#64748b; }
+    .nuclei-cell-icon { width:22px; height:22px; border-radius:50%; display:grid; place-items:center; background:rgba(255,255,255,.75); font-size:12px; }
+    .nuclei-cell-label { font-size:11px; }
+    .nuclei-dialog { width:min(760px,calc(100vw - 32px)); max-height:88vh; padding:0; border:0; border-radius:16px; box-shadow:0 24px 70px rgba(15,23,42,.22); }
+    .nuclei-dialog::backdrop { background:rgba(15,23,42,.38); backdrop-filter:blur(2px); }
+    .nuclei-dialog-card { padding:20px; display:grid; gap:16px; margin:0; }
+    .nuclei-dialog-head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+    .nuclei-dialog-head h3 { margin:3px 0 2px; color:#173b57; font-size:19px; }
+    .nuclei-dialog-head p { margin:0; color:#64748b; font-size:12px; }
+    .nuclei-paste-field { display:grid; gap:7px; color:#334155; font-size:12px; font-weight:700; }
+    .nuclei-paste-field textarea { width:100%; min-height:220px; resize:vertical; border-radius:11px; font-family:inherit; }
+    .nuclei-dialog-help { margin:-6px 0 0; color:#64748b; font-size:11px; }
+    .nuclei-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
+    .nuclei-load-result, .nuclei-load-error, .nuclei-review-banner { padding:11px 12px; border-radius:10px; display:grid; gap:3px; font-size:11px; }
+    .nuclei-load-result.ok { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+    .nuclei-load-result.warn, .nuclei-review-banner { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+    .nuclei-load-error { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+    .nuclei-load-result details { margin-top:5px; }
+    .nuclei-load-result p { margin:4px 0 0; }
+    .nuclei-detail-summary { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; }
+    .nuclei-detail-summary span { padding:10px; display:grid; gap:2px; border-right:1px solid #edf2f7; color:#64748b; font-size:10px; }
+    .nuclei-detail-summary span:last-child { border-right:0; } .nuclei-detail-summary strong { color:#173b57; font-size:15px; }
+    .nuclei-detail-table-wrap { max-height:430px; overflow:auto; }
+    .nuclei-detail-table-wrap tr.needs-review { background:#fffbeb; }
+    @media (max-width:760px) {
+      .nuclei-matrix-heading, .nuclei-toolbar { align-items:stretch; flex-direction:column; }
+      .nuclei-kpis { grid-template-columns:repeat(2,1fr); }
+      .nuclei-kpi:nth-child(2) { border-right:0; } .nuclei-kpi:nth-child(-n+2) { border-bottom:1px solid #edf2f7; }
+      .nuclei-filter-tabs { width:100%; } .nuclei-filter-button { flex:1; }
+      .nuclei-detail-summary { grid-template-columns:repeat(2,1fr); }
     }
   `;
   document.head.appendChild(style);
