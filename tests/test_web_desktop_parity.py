@@ -15,35 +15,33 @@ class WebDesktopParityTests(unittest.TestCase):
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
         self.assertEqual(desktop_stability_runtime.BUILD_ID, package["version"])
 
-    def test_web_backend_boots_the_same_python_stack(self) -> None:
+    def test_web_backend_still_boots_the_desktop_python_stack(self) -> None:
         source = (ROOT / "web_entry.py").read_text(encoding="utf-8")
         self.assertIn("desktop_entry.prepare()", source)
         self.assertIn("InformtitWebHandler(core.InformtitHandler)", source)
 
-    def test_pages_requires_the_shared_backend(self) -> None:
+    def test_pages_can_deploy_with_optional_backend(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
-        self.assertIn("Verify shared backend parity", workflow)
         self.assertIn("INFORMTIT_API_BASE", workflow)
-        self.assertIn("/api/health", workflow)
-        self.assertIn("/api/runtime-info", workflow)
-        self.assertIn("runtime.get('build')", workflow)
+        self.assertIn("os.environ.get('INFORMTIT_API_BASE', '')", workflow)
+        self.assertNotIn("Verify shared backend parity", workflow)
+        self.assertNotIn("INFORMTIT_API_BASE no está configurada", workflow)
 
-    def test_pages_uses_same_static_frontend_without_web_emulators(self) -> None:
+    def test_pages_keeps_the_approved_firebase_presentation_stack(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
         self.assertIn("cp -a static/. _site/", workflow)
-        self.assertIn('<script src="./web-runtime.js?v=2.0"></script>', workflow)
-        self.assertNotIn('<script src="./firebase-pages-runtime.js?v=', workflow)
-        self.assertNotIn('<script src="./firebase-report-pages-runtime.js?v=', workflow)
-        self.assertNotIn('<script src="./github-pages-guard.js?v=', workflow)
-        self.assertNotIn('<script src="./firebase-global-period-runtime.js?v=', workflow)
+        self.assertIn('<script src="./firebase-pages-runtime.js?v=1.0"></script>', workflow)
+        self.assertIn('<script src="./firebase-global-period-final-ui.js?v=1.0"></script>', workflow)
+        self.assertIn('<script src="./report-health-ui.js?v=1.0"></script>', workflow)
+        self.assertIn('<script src="./gitpages-parity-ui.js?v=1.0"></script>', workflow)
 
     def test_gitpages_presentation_is_canonical_in_both_targets(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
         desktop = (ROOT / "desktop_stability_runtime.py").read_text(encoding="utf-8")
         parity = (ROOT / "static" / "gitpages-parity-ui.js").read_text(encoding="utf-8")
 
-        self.assertIn('gitpages-parity-ui.js?v=1.0', workflow)
-        self.assertIn('gitpages-parity-ui.js?v=1.0', desktop)
+        self.assertIn("gitpages-parity-ui.js?v=1.0", workflow)
+        self.assertIn("gitpages-parity-ui.js?v=1.0", desktop)
         self.assertIn("report-health-ui.js?v=1.0", parity)
         self.assertIn("Período académico global", parity)
         self.assertIn("VALIDACION PENDIENTE", parity)
