@@ -53,8 +53,8 @@ jobs:
           # GitHub Pages vive bajo /Informtit/.
           text = re.sub(r'(href|src)="/', r'\1="./', text)
 
-          # Runtime actual de GitHub Pages + Firebase. Se mantiene temporalmente
-          # mientras los módulos restantes migran a Google Sheets.
+          # Runtime legado de Firebase: se conserva de forma temporal para los
+          # módulos regulares todavía no migrados a Google Sheets.
           bridge = (
               '  <script src="./web-config.js?v=1.0"></script>\n'
               '  <script src="./web-runtime.js?v=1.0"></script>\n'
@@ -93,12 +93,13 @@ jobs:
               '  <script src="./nuclei-paste-ui.js?v=1.0"></script>\n'
               '  <script src="./nuclei-paste-definitive-ui.js?v=1.0"></script>\n'
               '  <script src="./nuclei-population-ui.js?v=1.0"></script>\n'
-              '  <script src="./sheets-api.js?v=1.0"></script>\n'
+              '  <script src="./sheets-api.js?v=1.2"></script>\n'
               '  <script src="./results-import-ui.js?v=1.0"></script>\n'
               '  <script src="./pvc-schedules-ui.js?v=1.0"></script>\n'
+              '  <script src="./pvc-workspace-v2.js?v=2.0"></script>\n'
               '  <script src="./gitpages-parity-ui.js?v=1.0"></script>\n'
           )
-          if 'results-import-ui.js?v=1.0' not in text:
+          if 'pvc-workspace-v2.js?v=2.0' not in text:
               text = text.replace('</body>', final_ui + '</body>')
 
           index.write_text(text, encoding='utf-8')
@@ -117,9 +118,10 @@ jobs:
           grep -q './nuclei-career-runtime.js?v=1.0' _site/index.html
           grep -q './nuclei-population-ui.js?v=1.0' _site/index.html
           grep -q './report-health-ui.js?v=1.1' _site/index.html
-          grep -q './sheets-api.js?v=1.0' _site/index.html
+          grep -q './sheets-api.js?v=1.2' _site/index.html
           grep -q './results-import-ui.js?v=1.0' _site/index.html
           grep -q './pvc-schedules-ui.js?v=1.0' _site/index.html
+          grep -q './pvc-workspace-v2.js?v=2.0' _site/index.html
           grep -q './gitpages-parity-ui.js?v=1.0' _site/index.html
           grep -q './app.js?v=4.6' _site/index.html
 
