@@ -89,7 +89,7 @@ jobs:
           final_ui = (
               '  <script src="./firebase-global-period-final-ui.js?v=1.0"></script>\n'
               '  <script src="./schedule-auto-completion-ui.js?v=1.0"></script>\n'
-              '  <script src="./report-health-ui.js?v=1.0"></script>\n'
+              '  <script src="./report-health-ui.js?v=1.1"></script>\n'
               '  <script src="./nuclei-paste-ui.js?v=1.0"></script>\n'
               '  <script src="./nuclei-paste-definitive-ui.js?v=1.0"></script>\n'
               '  <script src="./nuclei-population-ui.js?v=1.0"></script>\n'
@@ -116,7 +116,7 @@ jobs:
           grep -q './firebase-global-period-final-ui.js?v=1.0' _site/index.html
           grep -q './nuclei-career-runtime.js?v=1.0' _site/index.html
           grep -q './nuclei-population-ui.js?v=1.0' _site/index.html
-          grep -q './report-health-ui.js?v=1.0' _site/index.html
+          grep -q './report-health-ui.js?v=1.1' _site/index.html
           grep -q './sheets-api.js?v=1.0' _site/index.html
           grep -q './results-import-ui.js?v=1.0' _site/index.html
           grep -q './pvc-schedules-ui.js?v=1.0' _site/index.html
