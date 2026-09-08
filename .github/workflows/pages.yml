@@ -53,7 +53,7 @@ jobs:
           # GitHub Pages vive bajo /Informtit/.
           text = re.sub(r'(href|src)="/', r'\1="./', text)
 
-          # Runtime legado de Firebase: se conserva de forma temporal para los
+          # Runtime legado de Firebase: se conserva temporalmente para los
           # módulos regulares todavía no migrados a Google Sheets.
           bridge = (
               '  <script src="./web-config.js?v=1.0"></script>\n'
@@ -86,6 +86,8 @@ jobs:
           elif 'unified-period-ui.js?v=1.0' not in text:
               text = text.replace(app_script, app_script + after_app)
 
+          # IMPORTANTE: pvc-workspace-v2 se deshabilitó porque mantenía un
+          # MutationObserver recursivo que podía bloquear la interfaz al abrir PVC.
           final_ui = (
               '  <script src="./firebase-global-period-final-ui.js?v=1.0"></script>\n'
               '  <script src="./schedule-auto-completion-ui.js?v=1.0"></script>\n'
@@ -96,10 +98,9 @@ jobs:
               '  <script src="./sheets-api.js?v=1.2"></script>\n'
               '  <script src="./results-import-ui.js?v=1.0"></script>\n'
               '  <script src="./pvc-schedules-ui.js?v=1.0"></script>\n'
-              '  <script src="./pvc-workspace-v2.js?v=2.0"></script>\n'
               '  <script src="./gitpages-parity-ui.js?v=1.0"></script>\n'
           )
-          if 'pvc-workspace-v2.js?v=2.0' not in text:
+          if 'results-import-ui.js?v=1.0' not in text:
               text = text.replace('</body>', final_ui + '</body>')
 
           index.write_text(text, encoding='utf-8')
@@ -121,9 +122,9 @@ jobs:
           grep -q './sheets-api.js?v=1.2' _site/index.html
           grep -q './results-import-ui.js?v=1.0' _site/index.html
           grep -q './pvc-schedules-ui.js?v=1.0' _site/index.html
-          grep -q './pvc-workspace-v2.js?v=2.0' _site/index.html
           grep -q './gitpages-parity-ui.js?v=1.0' _site/index.html
           grep -q './app.js?v=4.6' _site/index.html
+          ! grep -q './pvc-workspace-v2.js?v=2.0' _site/index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
