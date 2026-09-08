@@ -53,7 +53,6 @@
     let lastError;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        // text/plain evita una petición OPTIONS/CORS previa en Apps Script.
         const response = await fetch(BASE_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
@@ -108,6 +107,8 @@
     periodos: () => get('periodos'),
     estudiantes: () => get('estudiantes'),
     matriculas: periodoId => get('matriculas', { periodoId }),
+    requisitos: periodoId => get('requisitos', { periodoId }),
+    nucleos: periodoId => get('nucleos', { periodoId }),
     complexivo: periodoId => get('complexivo', { periodoId }),
     trabajoTitulacion: periodoId => get('trabajo_titulacion', { periodoId }),
   };
