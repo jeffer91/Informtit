@@ -83,6 +83,8 @@
     complexivo: periodoId => get('complexivo', { periodoId }),
     trabajoTitulacion: periodoId => get('trabajo_titulacion', { periodoId }),
     informes: periodoId => get('informes', { periodoId }),
+    guardarPeriodo: data => post('guardar_periodo', data),
+    guardarInforme: data => post('guardar_informe', data),
     guardarRequisito: data => post('guardar_requisito', data),
     guardarNucleo: data => post('guardar_nucleo', data),
     guardarComplexivo: data => post('guardar_complexivo', data),
