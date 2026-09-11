@@ -40,6 +40,15 @@ const report = {
       show_period: false,
       exclude_cover: true,
     },
+    sections: [
+      {key:'resultados',title:'RESULTADOS QA',visible:true,order:1},
+      {key:'introduccion',title:'INTRODUCCION QA',visible:true,order:2},
+      {key:'base_legal',title:'BASE LEGAL QA',visible:false,order:3},
+      {key:'metodologia',title:'METODOLOGIA QA',visible:false,order:4},
+      {key:'conclusiones',title:'CONCLUSIONES QA',visible:false,order:5},
+      {key:'recomendaciones',title:'RECOMENDACIONES QA',visible:false,order:6},
+      {key:'anexos',title:'ANEXOS QA',visible:false,order:7},
+    ],
   },
   images: [],
   careers: [
@@ -153,6 +162,7 @@ assert.equal(list[0].output_requirements_complete, 1);
 if (documentPdfRuntimePath) {
   assert.equal(list[0].cover_enabled, true);
   assert.equal(list[0].header_enabled, true);
+  assert.deepEqual(list[0].sections_applied.map(section => section.key), ['resultados', 'introduccion']);
 }
 
 response = await window.fetch(`/api/reports/1/generated-pdfs/${list[0].artifact_id}/download`);
@@ -166,6 +176,9 @@ assert.doesNotMatch(pdfText, /Requisitos pendientes: 1/);
 if (documentPdfRuntimePath) {
   assert.match(pdfText, /PORTADA QA/);
   assert.match(pdfText, /CABECERA QA/);
+  assert.match(pdfText, /1\. RESULTADOS QA/);
+  assert.match(pdfText, /2\. INTRODUCCION QA/);
+  assert.doesNotMatch(pdfText, /CONCLUSIONES QA/);
 }
 
 InformtitSheets.complexivo = async () => { throw new Error('Complexivo temporalmente no disponible'); };
