@@ -51,6 +51,8 @@ jobs:
 
           text = re.sub(r'(?P<attr>href|src)="/(?!/)(?P<path>[^"]+)"', r'\g<attr>="./\g<path>"', text)
 
+          # Scripts de escritorio, compatibilidad o capas heredadas que no deben
+          # ejecutarse en la versión oficial de GitHub Pages.
           remove_scripts = {
               'startup-guard.js',
               'forms-hotfix.js',
@@ -64,22 +66,39 @@ jobs:
               'coordinator-admin-ui.js',
               'firebase-ui.js',
               'desktop-ui-rescue.js',
+              'completion-ui.js',
+              'independent-modules-ui.js',
+              'process-independent-ui.js',
+              'process-ui-fixes.js',
+              'thesis-followup-ui.js',
+              'thesis-full-ui.js',
+              'pvc-report-ui.js',
+              'workflow-ui-fixes.js',
           }
           for script in remove_scripts:
               text = re.sub(rf'\s*<script[^>]+src="[^\"]*{re.escape(script)}[^\"]*"[^>]*></script>', '', text, flags=re.I)
 
+          # El artefacto publicado contiene solo los runtimes de producción.
+          # Los archivos históricos pueden seguir temporalmente en main mientras
+          # se completa la migración, pero no se distribuyen a los usuarios.
           legacy_files = {
               'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
               'import-preview-client-guard.js', 'robust-import-ui.js', 'period-unified-ui.js',
               'students-period-ui.js', 'students-final-audit-ui.js', 'smart-reconciliation-ui.js',
               'coordinator-admin-ui.js', 'firebase-ui.js', 'desktop-ui-rescue.js',
               'firebase-pages-runtime.js', 'firebase-global-period-runtime.js',
-              'firebase-period-selector-ui.js', 'firebase-schedule-runtime.js',
-              'firebase-schedule-completion-runtime.js', 'firebase-active-report-runtime.js',
-              'firebase-nuclei-definitive-runtime.js', 'firebase-nuclei-paste-runtime.js',
-              'firebase-nuclei-shared-runtime.js', 'firebase-unified-data-runtime.js',
-              'firebase-dashboard-parity.js', 'github-pages-guard.js',
-              'github-pages-runtime-fixes.js', 'gitpages-parity-ui.js', 'completion-ui-v2.js',
+              'firebase-global-period-final-ui.js', 'firebase-period-selector-ui.js',
+              'firebase-schedule-runtime.js', 'firebase-schedule-completion-runtime.js',
+              'firebase-active-report-runtime.js', 'firebase-nuclei-definitive-runtime.js',
+              'firebase-nuclei-paste-runtime.js', 'firebase-nuclei-shared-runtime.js',
+              'firebase-unified-data-runtime.js', 'firebase-dashboard-parity.js',
+              'github-pages-guard.js', 'github-pages-runtime-fixes.js',
+              'gitpages-parity-ui.js', 'completion-ui-v2.js', 'completion-ui.js',
+              'independent-modules-ui.js', 'process-independent-ui.js', 'process-ui.js',
+              'process-ui-fixes.js', 'thesis-followup-ui.js', 'thesis-full-ui.js',
+              'pvc-report-ui.js', 'pvc-workspace-v2.js', 'workflow-ui-fixes.js',
+              'workflow-ui.js', 'web-runtime.js', 'web-config.js', 'unified-period-ui.js',
+              'nuclei-controls-hotfix.js', 'nuclei-paste-course-detection-fix.js',
           }
           for filename in legacy_files:
               Path('_site', filename).unlink(missing_ok=True)
@@ -112,6 +131,7 @@ jobs:
           <script src="./report-health-sheets-ui.js?v=3.0"></script>
           <script src="./pvc-workspace-v3.js?v=3.0"></script>
           <script src="./pages-system-ui.js?v=3.0"></script>
+          <script src="./pages-processes-ui.js?v=1.0"></script>
           <script src="./pages-stability-runtime.js?v=1.0"></script>
           '''
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
@@ -127,6 +147,7 @@ jobs:
           grep -q 'pages-shared-state-runtime.js' _site/index.html
           grep -q 'pages-data-runtime.js' _site/index.html
           grep -q 'pages-browser-services.js' _site/index.html
+          grep -q 'pages-processes-ui.js' _site/index.html
           grep -q 'pages-stability-runtime.js' _site/index.html
           grep -q 'report-modal-compact-ui.js' _site/index.html
           grep -q 'requirements-import-sheets-ui.js' _site/index.html
@@ -134,26 +155,36 @@ jobs:
           grep -q '/api/health' _site/pages-browser-services.js
           grep -q 'guardarInforme' _site/pages-shared-state-runtime.js
           grep -q 'guardarPeriodo' _site/pages-shared-state-runtime.js
+          grep -q 'schedules/' _site/pages-processes-ui.js
+          grep -q '/projects' _site/pages-processes-ui.js
           grep -q 'pdf-jobs' _site/pages-stability-runtime.js
           grep -q 'ERROR DE FUENTE' _site/pages-stability-runtime.js
           grep -q 'output_requirements_complete' _site/pages-stability-runtime.js
-          ! grep -q 'coordinator-admin-ui.js' _site/index.html
-          ! grep -q 'import-preview-client-guard.js' _site/index.html
-          ! grep -q 'robust-import-ui.js' _site/index.html
-          ! grep -q 'firebase-global-period-runtime.js' _site/index.html
-          ! grep -q 'firebase-pages-runtime.js' _site/index.html
-          ! grep -q 'firebase-schedule-runtime.js' _site/index.html
-          ! grep -q 'firebase-period-selector-ui.js' _site/index.html
-          ! grep -q 'web-runtime.js' _site/index.html
-          ! grep -q 'desktop-ui-rescue.js' _site/index.html
-          test ! -e _site/firebase-pages-runtime.js
-          test ! -e _site/firebase-global-period-runtime.js
-          test ! -e _site/github-pages-runtime-fixes.js
+
+          for legacy in \
+            coordinator-admin-ui.js import-preview-client-guard.js robust-import-ui.js \
+            firebase-global-period-runtime.js firebase-pages-runtime.js firebase-schedule-runtime.js \
+            firebase-period-selector-ui.js desktop-ui-rescue.js completion-ui.js \
+            independent-modules-ui.js process-independent-ui.js process-ui-fixes.js \
+            thesis-followup-ui.js thesis-full-ui.js pvc-report-ui.js workflow-ui-fixes.js; do
+            ! grep -q "$legacy" _site/index.html
+          done
+
+          for legacy in \
+            firebase-pages-runtime.js firebase-global-period-runtime.js github-pages-runtime-fixes.js \
+            completion-ui.js completion-ui-v2.js independent-modules-ui.js process-independent-ui.js \
+            process-ui.js process-ui-fixes.js thesis-followup-ui.js thesis-full-ui.js pvc-report-ui.js \
+            pvc-workspace-v2.js workflow-ui-fixes.js workflow-ui.js web-runtime.js \
+            nuclei-controls-hotfix.js nuclei-paste-course-detection-fix.js; do
+            test ! -e "_site/$legacy"
+          done
+
           node --check _site/firebase-report-pages-runtime.js
           node --check _site/pages-shared-state-runtime.js
           node --check _site/firebase-report-code-runtime.js
           node --check _site/pages-data-runtime.js
           node --check _site/pages-browser-services.js
+          node --check _site/pages-processes-ui.js
           node --check _site/pages-stability-runtime.js
           node --check _site/pages-period-selector-ui.js
           node --check _site/report-modal-compact-ui.js
