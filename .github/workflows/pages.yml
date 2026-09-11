@@ -54,7 +54,7 @@ jobs:
           remove_scripts = {
               'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
               'import-preview-client-guard.js', 'robust-import-ui.js', 'period-unified-ui.js',
-              'students-period-ui.js', 'students-final-audit-ui.js', 'smart-reconciliation-ui.js',
+              'students-ui.js', 'students-period-ui.js', 'students-final-audit-ui.js', 'smart-reconciliation-ui.js',
               'coordinator-admin-ui.js', 'firebase-ui.js', 'desktop-ui-rescue.js',
               'completion-ui.js', 'independent-modules-ui.js', 'process-independent-ui.js',
               'process-ui-fixes.js', 'thesis-followup-ui.js', 'thesis-full-ui.js',
@@ -119,11 +119,13 @@ jobs:
           <script src="./report-health-sheets-ui.js?v=3.0"></script>
           <script src="./pvc-workspace-v3.js?v=3.0"></script>
           <script src="./pages-system-ui.js?v=3.0"></script>
-          <script src="./pages-document-ui.js?v=1.0"></script>
+          <script src="./students-ui.js?v=2.0"></script>
+          <script src="./pages-document-ui.js?v=2.0"></script>
           <script src="./pages-svd-layout.js?v=1.0"></script>
           <script src="./pages-processes-ui.js?v=1.0"></script>
           <script src="./pages-stability-runtime.js?v=1.0"></script>
-          <script src="./pages-document-pdf-runtime.js?v=2.0"></script>
+          <script src="./pages-source-status-ui.js?v=1.0"></script>
+          <script src="./pages-document-pdf-runtime.js?v=3.0"></script>
           '''
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
           text = text[:app_tag.end()] + after_app + text[app_tag.end():]
@@ -139,11 +141,13 @@ jobs:
           grep -q 'pages-document-state-runtime.js' _site/index.html
           grep -q 'pages-data-runtime.js' _site/index.html
           grep -q 'pages-browser-services.js' _site/index.html
-          grep -q 'pages-document-ui.js' _site/index.html
+          grep -q 'students-ui.js?v=2.0' _site/index.html
+          grep -q 'pages-document-ui.js?v=2.0' _site/index.html
           grep -q 'pages-svd-layout.js' _site/index.html
           grep -q 'pages-processes-ui.js' _site/index.html
           grep -q 'pages-stability-runtime.js' _site/index.html
-          grep -q 'pages-document-pdf-runtime.js' _site/index.html
+          grep -q 'pages-source-status-ui.js' _site/index.html
+          grep -q 'pages-document-pdf-runtime.js?v=3.0' _site/index.html
           grep -q 'report-modal-compact-ui.js' _site/index.html
           grep -q 'requirements-import-sheets-ui.js' _site/index.html
           grep -q 'pvc-workspace-v3.js' _site/index.html
@@ -154,14 +158,19 @@ jobs:
           grep -q 'renderCoverTab' _site/pages-document-ui.js
           grep -q 'renderHeaderTab' _site/pages-document-ui.js
           grep -q 'renderSectionsTab' _site/pages-document-ui.js
+          grep -q 'Guardado y sincronizado' _site/pages-document-ui.js
           grep -q 'svd-document-strip' _site/pages-svd-layout.js
           grep -q "name === 'dashboard' ? 'report'" _site/pages-svd-layout.js
+          grep -q '9/9 habilitantes' _site/students-ui.js
+          grep -q 'SIN_DEFINIR' _site/students-ui.js
           grep -q 'schedules/' _site/pages-processes-ui.js
           grep -q '/projects' _site/pages-processes-ui.js
           grep -q 'pdf-jobs' _site/pages-stability-runtime.js
           grep -q 'ERROR DE FUENTE' _site/pages-stability-runtime.js
-          grep -q 'BROWSER_PDF_DOCUMENT_V2' _site/pages-document-pdf-runtime.js
-          grep -q 'Portada y cabecera aplicadas' _site/pages-document-pdf-runtime.js
+          grep -q 'institutional-source-status' _site/pages-source-status-ui.js
+          grep -q 'BROWSER_PDF_DOCUMENT_V3' _site/pages-document-pdf-runtime.js
+          grep -q 'Estructura del documento aplicada' _site/pages-document-pdf-runtime.js
+          grep -q 'sections_applied' _site/pages-document-pdf-runtime.js
 
           for legacy in \
             coordinator-admin-ui.js import-preview-client-guard.js robust-import-ui.js \
@@ -191,10 +200,12 @@ jobs:
           node --check _site/firebase-report-code-runtime.js
           node --check _site/pages-data-runtime.js
           node --check _site/pages-browser-services.js
+          node --check _site/students-ui.js
           node --check _site/pages-document-ui.js
           node --check _site/pages-svd-layout.js
           node --check _site/pages-processes-ui.js
           node --check _site/pages-stability-runtime.js
+          node --check _site/pages-source-status-ui.js
           node --check _site/pages-document-pdf-runtime.js
           node --check _site/pages-period-selector-ui.js
           node --check _site/report-modal-compact-ui.js
