@@ -36,7 +36,7 @@ jobs:
       - name: Smoke test Pages services
         run: |
           set -e
-          node scripts/pages-smoke.mjs static/pages-browser-services.js
+          node scripts/pages-smoke.mjs static/pages-browser-services.js static/pages-stability-runtime.js
 
       - name: Prepare GitHub Pages site
         run: |
@@ -64,6 +64,7 @@ jobs:
               'students-period-ui.js',
               'students-final-audit-ui.js',
               'smart-reconciliation-ui.js',
+              'coordinator-admin-ui.js',
               'firebase-ui.js',
               'desktop-ui-rescue.js',
           }
@@ -97,6 +98,7 @@ jobs:
           <script src="./report-health-sheets-ui.js?v=3.0"></script>
           <script src="./pvc-workspace-v3.js?v=3.0"></script>
           <script src="./pages-system-ui.js?v=3.0"></script>
+          <script src="./pages-stability-runtime.js?v=1.0"></script>
           '''
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
           text = text[:app_tag.end()] + after_app + text[app_tag.end():]
@@ -110,13 +112,15 @@ jobs:
           grep -q 'sheets-api.js' _site/index.html
           grep -q 'pages-data-runtime.js' _site/index.html
           grep -q 'pages-browser-services.js' _site/index.html
+          grep -q 'pages-stability-runtime.js' _site/index.html
           grep -q 'report-modal-compact-ui.js' _site/index.html
           grep -q 'requirements-import-sheets-ui.js' _site/index.html
           grep -q 'pvc-workspace-v3.js' _site/index.html
           grep -q '/api/health' _site/pages-browser-services.js
-          grep -q 'pdf-jobs' _site/pages-browser-services.js
-          grep -q 'generated-pdfs' _site/pages-browser-services.js
-          grep -q '/images' _site/pages-browser-services.js
+          grep -q 'pdf-jobs' _site/pages-stability-runtime.js
+          grep -q 'ERROR DE FUENTE' _site/pages-stability-runtime.js
+          grep -q 'output_requirements_complete' _site/pages-stability-runtime.js
+          ! grep -q 'coordinator-admin-ui.js' _site/index.html
           ! grep -q 'import-preview-client-guard.js' _site/index.html
           ! grep -q 'robust-import-ui.js' _site/index.html
           ! grep -q 'firebase-global-period-runtime.js' _site/index.html
@@ -129,6 +133,7 @@ jobs:
           node --check _site/firebase-report-code-runtime.js
           node --check _site/pages-data-runtime.js
           node --check _site/pages-browser-services.js
+          node --check _site/pages-stability-runtime.js
           node --check _site/pages-period-selector-ui.js
           node --check _site/report-modal-compact-ui.js
           node --check _site/requirements-import-sheets-ui.js
