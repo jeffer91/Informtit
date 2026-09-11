@@ -7,6 +7,15 @@
   const previousFetch = window.fetch.bind(window);
   const PDFS_KEY = 'informtit.pages.generatedPdfs.v2';
   const jobs = new Map();
+  const DEFAULT_SECTIONS = [
+    ['introduccion', 'Introducción'],
+    ['base_legal', 'Base legal'],
+    ['metodologia', 'Metodología'],
+    ['resultados', 'Resultados'],
+    ['conclusiones', 'Conclusiones'],
+    ['recomendaciones', 'Recomendaciones'],
+    ['anexos', 'Anexos'],
+  ];
   const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').trim().replace(/\s+/g, ' ');
   const fold = value => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   const nowIso = () => new Date().toISOString();
@@ -49,6 +58,8 @@
   }
   function documentConfig(report) {
     const raw = parseConfig(report?.document_config || report?.documentConfig || report?.document_config_json);
+    const savedSections = Array.isArray(raw.sections) ? raw.sections : [];
+    const sectionMap = new Map(savedSections.map(section => [clean(section.key || section.section_key), section]));
     return {
       cover: {
         enabled: raw.cover?.enabled !== false,
@@ -69,7 +80,15 @@
         show_period: raw.header?.show_period === true,
         exclude_cover: raw.header?.exclude_cover !== false,
       },
-      sections: Array.isArray(raw.sections) ? raw.sections : [],
+      sections: DEFAULT_SECTIONS.map(([key, title], index) => {
+        const prior = sectionMap.get(key) || {};
+        return {
+          key,
+          title: clean(prior.title || title),
+          visible: prior.visible !== false,
+          order: Number.isFinite(Number(prior.order)) ? Number(prior.order) : index + 1,
+        };
+      }).sort((a, b) => a.order - b.order),
     };
   }
   function periodIdOf(report) { return clean(report?.periodoId || report?.firebase_period_id || report?.period_id); }
@@ -176,6 +195,12 @@
   }
 
   function grade(value) { const n = Number(value); return Number.isFinite(n) ? n.toFixed(2).replace('.', ',') : '—'; }
+  function legacySectionText(report, key) {
+    const candidates = Array.isArray(report?.sections) ? report.sections : [];
+    const item = candidates.find(section => fold(section?.key || section?.section_key || section?.title) === fold(key));
+    if (!item) return '';
+    return clean(item.content || item.text || item.body || [item.text_before, item.text_after].filter(Boolean).join(' '));
+  }
 
   function buildLines(bundle, audit, outputLabel) {
     const report = bundle.report || {}, config = documentConfig(report), cover = config.cover;
@@ -187,12 +212,11 @@
     const projects = Array.isArray(bundle.projects?.projects) ? bundle.projects.projects : [];
     const schedules = bundle.schedules?.schedules || {};
     const lines = [];
-    const heading = text => lines.push(line(text, { bold: true, size: 13, gapBefore: 10, gapAfter: 4 }));
     const row = (label, value) => lines.push(line(`${label}: ${value ?? '—'}`, { size: 9 }));
+    const subheading = text => lines.push(line(text, { bold: true, size: 10, gapBefore: 6, gapAfter: 2 }));
 
     if (cover.enabled) {
-      if (cover.institution) lines.push(line(cover.institution, { bold: true, size: 12, gapAfter: 72 }));
-      else lines.push(line('INSTITUCIÓN', { bold: true, size: 12, gapAfter: 72 }));
+      lines.push(line(cover.institution || 'INSTITUCIÓN', { bold: true, size: 12, gapAfter: 72 }));
       lines.push(line(cover.title, { bold: true, size: 18, gapAfter: 12 }));
       if (cover.subtitle) lines.push(line(cover.subtitle, { size: 12, gapAfter: 24 }));
       if (cover.show_period) row('Período', report.period || '—');
@@ -211,39 +235,85 @@
 
     lines.push(line(outputLabel ? `Salida: ${outputLabel}` : 'Informe consolidado', { bold: true, size: 11, gapAfter: 10 }));
     row('Período', report.period || '—');
-    row('periodId', periodIdOf(report) || '—');
     row('Código', outputCode(report, outputLabel));
     row('Versión', report.version || '1.0');
     row('Estado de auditoría', audit.state);
 
-    heading('1. Resumen ejecutivo');
-    row('Estudiantes', students.length); row('Carreras', careers.length); row('Requisitos completos', summary.requirements_complete || 0); row('Requisitos pendientes', summary.requirements_pending || 0);
-    heading('2. Requisitos para titulación');
-    requirements.forEach(item => lines.push(line(`${item.label}: ${Number(item.complies || 0)} cumplen · ${Number(item.does_not_comply || 0)} no cumplen`, { size: 9 })));
-    heading('3. Distribución por carrera');
-    careers.forEach(item => lines.push(line(`${item.name}: ${Number(item.students || 0)} estudiantes`, { size: 9 })));
-    heading('4. Cronogramas');
-    ['complexive', 'thesis'].forEach(type => {
-      lines.push(line(type === 'complexive' ? 'Examen Complexivo' : 'Trabajo de Titulación', { bold: true, size: 10, gapBefore: 3 }));
-      const entries = Array.isArray(schedules?.[type]) ? schedules[type] : [];
-      if (!entries.length) lines.push(line('Sin cronograma registrado.', { size: 9 }));
-      entries.forEach(entry => lines.push(line(`${entry.activity || entry.actividad || entry.name || entry.nombre || 'Actividad'} · ${entry.start_date || entry.fecha_inicio || entry.start || entry.inicio || '—'} - ${entry.end_date || entry.fecha_fin || entry.end || entry.fin || '—'}`, { size: 9 })));
+    const resultLines = () => {
+      const out = [];
+      const add = item => out.push(item);
+      const addRow = (label, value) => add(line(`${label}: ${value ?? '—'}`, { size: 9 }));
+      const addSub = text => add(line(text, { bold: true, size: 10, gapBefore: 6, gapAfter: 2 }));
+      addSub('Requisitos para titulación');
+      requirements.forEach(item => add(line(`${item.label}: ${Number(item.complies || 0)} cumplen · ${Number(item.does_not_comply || 0)} no cumplen`, { size: 9 })));
+      addSub('Distribución por carrera');
+      careers.forEach(item => add(line(`${item.name}: ${Number(item.students || 0)} estudiantes`, { size: 9 })));
+      addSub('Cronogramas');
+      ['complexive', 'thesis'].forEach(type => {
+        add(line(type === 'complexive' ? 'Examen Complexivo' : 'Trabajo de Titulación', { bold: true, size: 9, gapBefore: 3 }));
+        const entries = Array.isArray(schedules?.[type]) ? schedules[type] : [];
+        if (!entries.length) add(line('Sin cronograma registrado.', { size: 9 }));
+        entries.forEach(entry => add(line(`${entry.activity || entry.actividad || entry.name || entry.nombre || 'Actividad'} · ${entry.start_date || entry.fecha_inicio || entry.start || entry.inicio || '—'} - ${entry.end_date || entry.fecha_fin || entry.end || entry.fin || '—'}`, { size: 9 })));
+      });
+      addSub('Núcleos');
+      if (!courses.length) add(line('No existen registros de Núcleos para esta salida.', { size: 9 }));
+      courses.forEach(course => add(line(`${course.career_name} · Núcleo ${course.nucleus_number} · ${course.students?.length || 0} estudiantes · promedio ${grade(course.course_average)}`, { size: 9 })));
+      addSub('Examen Complexivo');
+      const complexiveCareers = Array.isArray(report.careers) ? report.careers : [];
+      if (!complexiveCareers.length) add(line('No existen resultados de Examen Complexivo para esta salida.', { size: 9 }));
+      complexiveCareers.forEach(career => {
+        add(line(`${career.name}: ${career.students?.length || 0} estudiantes`, { bold: true, size: 9, gapBefore: 3 }));
+        (career.students || []).forEach(student => add(line(`${student.full_name || student.identification} · ${student.final_status || 'Pendiente'} · ${grade(student.final_grade)}`, { size: 8 })));
+      });
+      addSub('Trabajo de Titulación');
+      if (!projects.length) add(line('No existen registros de Trabajo de Titulación para esta salida.', { size: 9 }));
+      projects.forEach(project => add(line(`${project.full_name || project.identification} · ${project.career_name || 'Sin carrera'} · ${project.final_status || 'Pendiente'} · ${grade(project.final_grade)}`, { size: 8 })));
+      addSub('Resumen de resultados');
+      addRow('Estudiantes', students.length);
+      addRow('Carreras', careers.length);
+      addRow('Requisitos completos', summary.requirements_complete || 0);
+      addRow('Requisitos pendientes', summary.requirements_pending || 0);
+      return out;
+    };
+
+    const generators = {
+      introduccion: () => [
+        line(`El presente documento consolida la información del proceso de titulación correspondiente al período ${report.period || periodIdOf(report) || 'seleccionado'}${outputLabel ? ` para la salida ${outputLabel}` : ''}.`, { size: 9 }),
+        line(`La población considerada está compuesta por ${students.length} estudiantes distribuidos en ${careers.length} carreras.`, { size: 9 }),
+      ],
+      base_legal: () => {
+        const text = legacySectionText(report, 'base_legal') || legacySectionText(report, 'Base legal');
+        return [line(text || 'No se ha registrado contenido de Base legal en Informtit para este documento.', { size: 9 })];
+      },
+      metodologia: () => [
+        line('La información se consolida desde las fuentes institucionales configuradas en Google Sheets y se valida antes de emitir el PDF. Los indicadores de Presencial y Online se recalculan para cada salida.', { size: 9 }),
+        line(`Fuente principal: GOOGLE_SHEETS · sincronización: ${audit.traceability?.synced_at || 'sin fecha registrada'}.`, { size: 9 }),
+      ],
+      resultados: resultLines,
+      conclusiones: () => [
+        line(`Se consolidaron ${students.length} estudiantes y ${careers.length} carreras para la salida seleccionada. El estado de validación fue «${audit.state}».`, { size: 9 }),
+      ],
+      recomendaciones: () => [
+        line(audit.final_ready
+          ? 'Mantener la trazabilidad de las fuentes institucionales y conservar la versión emitida del documento.'
+          : 'Resolver las observaciones señaladas en la auditoría antes de considerar el documento como versión final.', { size: 9 }),
+      ],
+      anexos: () => {
+        const out = [];
+        (audit.controls || []).forEach(control => out.push(line(`${control.status === 'ok' ? 'OK' : control.status === 'error' ? 'ERROR' : 'REVISAR'} · ${control.name}: ${control.detail}`, { size: 9 })));
+        out.push(line(`periodId: ${periodIdOf(report) || '—'}`, { size: 9 }));
+        out.push(line(`Fuente de datos: GOOGLE_SHEETS`, { size: 9 }));
+        return out;
+      },
+    };
+
+    let sectionNumber = 0;
+    config.sections.filter(section => section.visible !== false).sort((a, b) => a.order - b.order).forEach(section => {
+      sectionNumber += 1;
+      lines.push(line(`${sectionNumber}. ${section.title || section.key}`, { bold: true, size: 13, gapBefore: 12, gapAfter: 4 }));
+      const generated = generators[section.key] ? generators[section.key]() : [];
+      generated.forEach(item => lines.push(item));
     });
-    heading('5. Núcleos');
-    if (!courses.length) lines.push(line('No existen registros de Núcleos para esta salida.', { size: 9 }));
-    courses.forEach(course => lines.push(line(`${course.career_name} · Núcleo ${course.nucleus_number} · ${course.students?.length || 0} estudiantes · promedio ${grade(course.course_average)}`, { size: 9 })));
-    heading('6. Examen Complexivo');
-    const complexiveCareers = Array.isArray(report.careers) ? report.careers : [];
-    if (!complexiveCareers.length) lines.push(line('No existen resultados de Examen Complexivo para esta salida.', { size: 9 }));
-    complexiveCareers.forEach(career => { lines.push(line(`${career.name}: ${career.students?.length || 0} estudiantes`, { bold: true, size: 9, gapBefore: 3 })); (career.students || []).forEach(student => lines.push(line(`${student.full_name || student.identification} · ${student.final_status || 'Pendiente'} · ${grade(student.final_grade)}`, { size: 8 }))); });
-    heading('7. Trabajo de Titulación');
-    if (!projects.length) lines.push(line('No existen registros de Trabajo de Titulación para esta salida.', { size: 9 }));
-    projects.forEach(project => lines.push(line(`${project.full_name || project.identification} · ${project.career_name || 'Sin carrera'} · ${project.final_status || 'Pendiente'} · ${grade(project.final_grade)}`, { size: 8 })));
-    heading('8. Diagnóstico y trazabilidad');
-    (audit.controls || []).forEach(control => lines.push(line(`${control.status === 'ok' ? 'OK' : control.status === 'error' ? 'ERROR' : 'REVISAR'} · ${control.name}: ${control.detail}`, { size: 9 })));
-    row('Fuente de datos', 'GOOGLE_SHEETS'); row('Sincronizado', audit.traceability?.synced_at || '—');
-    heading('9. Conclusiones');
-    lines.push(line(`Se consolidaron ${students.length} estudiantes y ${careers.length} carreras para la salida seleccionada. El estado de validación fue «${audit.state}».`));
     return lines;
   }
 
@@ -275,6 +345,7 @@
     const audit = window.InformtitPagesStability.buildAudit(bundle, health, outputLabel);
     if (!audit.can_generate_pdf) throw new Error('La auditoría detectó errores bloqueantes.');
     const config = documentConfig(bundle.report);
+    const visibleSections = config.sections.filter(section => section.visible !== false).sort((a, b) => a.order - b.order);
     const bytes = createPdf(buildLines(bundle, audit, outputLabel), {
       headerText: headerText(bundle.report, outputLabel),
       coverPage: config.cover.enabled,
@@ -288,9 +359,11 @@
     const artifact = {
       artifact_id: artifactId, report_id: Number(reportId), modality_label: cleanLabel, generated_at: generatedAt,
       status: 'vigente', version: clean(bundle.report.version) || '1.0', filename: `Informtit_${periodSafe}_${labelSafe}_${generatedAt.slice(0, 10)}.pdf`,
-      size: bytes.length, source: 'BROWSER_PDF_DOCUMENT_V2', period_id: periodIdOf(bundle.report), audit_state: audit.state,
+      size: bytes.length, source: 'BROWSER_PDF_DOCUMENT_V3', period_id: periodIdOf(bundle.report), audit_state: audit.state,
       output_students: bundle.roster?.students?.length || 0, output_requirements_complete: bundle.roster?.summary?.requirements_complete || 0,
-      cover_enabled: config.cover.enabled, header_enabled: config.header.enabled, pdf_base64: bytesToBase64(bytes),
+      cover_enabled: config.cover.enabled, header_enabled: config.header.enabled,
+      sections_applied: visibleSections.map(section => ({ key: section.key, title: section.title, order: section.order })),
+      pdf_base64: bytesToBase64(bytes),
     };
     rows.unshift(artifact); writeArtifacts(rows); return { artifact, audit };
   }
@@ -304,12 +377,13 @@
         const { artifact } = await generateArtifact(Number(match[1]), body.output_label || 'PDF');
         const job = {
           id: `doc-job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, report_id: Number(match[1]), status: 'completed', progress: 100,
-          stage: 'Documento validado y generado', detail: 'Portada, cabecera, cifras por modalidad y fuentes institucionales aplicadas.', duration_seconds: 0,
+          stage: 'Documento validado y generado', detail: 'Portada, cabecera, estructura, cifras por modalidad y fuentes institucionales aplicadas.', duration_seconds: 0,
           artifact_id: artifact.artifact_id,
           steps: [
             { stage: 'Fuentes institucionales verificadas', progress: 20 },
-            { stage: 'Portada y cabecera aplicadas', progress: 45 },
-            { stage: 'Indicadores recalculados por modalidad', progress: 70 },
+            { stage: 'Portada y cabecera aplicadas', progress: 40 },
+            { stage: 'Estructura del documento aplicada', progress: 60 },
+            { stage: 'Indicadores recalculados por modalidad', progress: 80 },
             { stage: 'PDF generado', progress: 100 },
           ],
         };
@@ -321,5 +395,5 @@
     return previousFetch(input, init);
   };
 
-  window.InformtitDocumentPdf = Object.freeze({ documentConfig, version: '2.0.0' });
+  window.InformtitDocumentPdf = Object.freeze({ documentConfig, buildLines, version: '3.0.0' });
 })();
