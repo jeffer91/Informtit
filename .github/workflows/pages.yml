@@ -120,6 +120,7 @@ jobs:
           <script src="./pvc-workspace-v3.js?v=3.0"></script>
           <script src="./pages-system-ui.js?v=3.0"></script>
           <script src="./pages-document-ui.js?v=1.0"></script>
+          <script src="./pages-svd-layout.js?v=1.0"></script>
           <script src="./pages-processes-ui.js?v=1.0"></script>
           <script src="./pages-stability-runtime.js?v=1.0"></script>
           <script src="./pages-document-pdf-runtime.js?v=2.0"></script>
@@ -139,6 +140,7 @@ jobs:
           grep -q 'pages-data-runtime.js' _site/index.html
           grep -q 'pages-browser-services.js' _site/index.html
           grep -q 'pages-document-ui.js' _site/index.html
+          grep -q 'pages-svd-layout.js' _site/index.html
           grep -q 'pages-processes-ui.js' _site/index.html
           grep -q 'pages-stability-runtime.js' _site/index.html
           grep -q 'pages-document-pdf-runtime.js' _site/index.html
@@ -152,6 +154,8 @@ jobs:
           grep -q 'renderCoverTab' _site/pages-document-ui.js
           grep -q 'renderHeaderTab' _site/pages-document-ui.js
           grep -q 'renderSectionsTab' _site/pages-document-ui.js
+          grep -q 'svd-document-strip' _site/pages-svd-layout.js
+          grep -q "name === 'dashboard' ? 'report'" _site/pages-svd-layout.js
           grep -q 'schedules/' _site/pages-processes-ui.js
           grep -q '/projects' _site/pages-processes-ui.js
           grep -q 'pdf-jobs' _site/pages-stability-runtime.js
@@ -188,6 +192,7 @@ jobs:
           node --check _site/pages-data-runtime.js
           node --check _site/pages-browser-services.js
           node --check _site/pages-document-ui.js
+          node --check _site/pages-svd-layout.js
           node --check _site/pages-processes-ui.js
           node --check _site/pages-stability-runtime.js
           node --check _site/pages-document-pdf-runtime.js
