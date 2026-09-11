@@ -79,7 +79,7 @@ jobs:
           text = text[:app_tag.start()] + before_app + text[app_tag.start():]
 
           after_app = '''
-          <script src="./pages-period-selector-ui.js?v=3.1"></script>
+          <script src="./pages-period-selector-ui.js?v=4.0"></script>
           <script src="./report-modal-compact-ui.js?v=1.0"></script>
           <script src="./requirements-import-sheets-ui.js?v=3.0"></script>
           <script src="./results-import-ui.js?v=3.0"></script>
