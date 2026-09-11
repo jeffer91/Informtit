@@ -36,7 +36,7 @@ jobs:
       - name: Smoke test Pages services
         run: |
           set -e
-          node scripts/pages-smoke.mjs static/pages-browser-services.js static/pages-stability-runtime.js
+          node scripts/pages-smoke.mjs static/pages-browser-services.js static/pages-shared-state-runtime.js static/pages-stability-runtime.js
 
       - name: Prepare GitHub Pages site
         run: |
@@ -71,6 +71,23 @@ jobs:
           for script in remove_scripts:
               text = re.sub(rf'\s*<script[^>]+src="[^\"]*{re.escape(script)}[^\"]*"[^>]*></script>', '', text, flags=re.I)
 
+          # No publicar runtimes obsoletos que no participan en la aplicación oficial.
+          legacy_files = {
+              'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
+              'import-preview-client-guard.js', 'robust-import-ui.js', 'period-unified-ui.js',
+              'students-period-ui.js', 'students-final-audit-ui.js', 'smart-reconciliation-ui.js',
+              'coordinator-admin-ui.js', 'firebase-ui.js', 'desktop-ui-rescue.js',
+              'firebase-pages-runtime.js', 'firebase-global-period-runtime.js',
+              'firebase-period-selector-ui.js', 'firebase-schedule-runtime.js',
+              'firebase-schedule-completion-runtime.js', 'firebase-active-report-runtime.js',
+              'firebase-nuclei-definitive-runtime.js', 'firebase-nuclei-paste-runtime.js',
+              'firebase-nuclei-shared-runtime.js', 'firebase-unified-data-runtime.js',
+              'firebase-dashboard-parity.js', 'github-pages-guard.js',
+              'github-pages-runtime-fixes.js', 'gitpages-parity-ui.js', 'completion-ui-v2.js',
+          }
+          for filename in legacy_files:
+              Path('_site', filename).unlink(missing_ok=True)
+
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
           if not app_tag:
               raise SystemExit('No se encontró app.js en index.html')
@@ -78,6 +95,7 @@ jobs:
           before_app = '''
           <script src="./sheets-api.js?v=4.0"></script>
           <script src="./firebase-report-pages-runtime.js?v=4.0"></script>
+          <script src="./pages-shared-state-runtime.js?v=1.0"></script>
           <script src="./firebase-report-code-runtime.js?v=4.0"></script>
           <script src="./pages-data-runtime.js?v=3.0"></script>
           <script src="./nuclei-career-runtime.js?v=3.0"></script>
@@ -110,6 +128,7 @@ jobs:
         run: |
           set -e
           grep -q 'sheets-api.js' _site/index.html
+          grep -q 'pages-shared-state-runtime.js' _site/index.html
           grep -q 'pages-data-runtime.js' _site/index.html
           grep -q 'pages-browser-services.js' _site/index.html
           grep -q 'pages-stability-runtime.js' _site/index.html
@@ -117,6 +136,8 @@ jobs:
           grep -q 'requirements-import-sheets-ui.js' _site/index.html
           grep -q 'pvc-workspace-v3.js' _site/index.html
           grep -q '/api/health' _site/pages-browser-services.js
+          grep -q 'guardarInforme' _site/pages-shared-state-runtime.js
+          grep -q 'guardarPeriodo' _site/pages-shared-state-runtime.js
           grep -q 'pdf-jobs' _site/pages-stability-runtime.js
           grep -q 'ERROR DE FUENTE' _site/pages-stability-runtime.js
           grep -q 'output_requirements_complete' _site/pages-stability-runtime.js
@@ -129,7 +150,11 @@ jobs:
           ! grep -q 'firebase-period-selector-ui.js' _site/index.html
           ! grep -q 'web-runtime.js' _site/index.html
           ! grep -q 'desktop-ui-rescue.js' _site/index.html
+          test ! -e _site/firebase-pages-runtime.js
+          test ! -e _site/firebase-global-period-runtime.js
+          test ! -e _site/github-pages-runtime-fixes.js
           node --check _site/firebase-report-pages-runtime.js
+          node --check _site/pages-shared-state-runtime.js
           node --check _site/firebase-report-code-runtime.js
           node --check _site/pages-data-runtime.js
           node --check _site/pages-browser-services.js
