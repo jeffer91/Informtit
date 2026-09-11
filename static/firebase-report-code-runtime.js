@@ -34,7 +34,7 @@
   }
 
   function parsePeriodId(value) {
-    const match = /^(\d{4})-(\d{2})__(\d{4})-(\d{2})$/.exec(clean(value));
+    const match = /^(\d{4})-(\d{2})_+(\d{4})-(\d{2})$/.exec(clean(value));
     if (!match) return null;
     return { year: Number(match[1]), month: Number(match[2]) };
   }
