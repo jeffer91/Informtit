@@ -17,13 +17,19 @@
     },
   ];
 
-  // Se conservan como reservadas para que archivos antiguos no reaparezcan como evidencias.
   const LEGACY_IGNORED = new Set([
     'firma_elaborado',
     'firma_revisado',
     'firma_aprobado',
     'diagrama_nucleos',
   ]);
+
+  function imageSrc(image) {
+    if (!image) return '';
+    if (String(image.data_url || '').startsWith('data:image/')) return image.data_url;
+    const filename = String(image.filename || '').replace(/^\/+/, '');
+    return filename ? `./uploads/${encodeURIComponent(filename)}` : '';
+  }
 
   function findImage(section) {
     const images = state.activeReport?.images || [];
@@ -39,7 +45,7 @@
       <article class="asset-slot ${stateClass}">
         <div class="asset-preview">
           ${image
-            ? `<img src="/uploads/${image.filename}" alt="${escapeHtml(slot.title)}">`
+            ? `<img src="${escapeHtml(imageSrc(image))}" alt="${escapeHtml(slot.title)}">`
             : '<div class="asset-placeholder">Sin imagen</div>'}
         </div>
         <div class="asset-slot-body">
@@ -100,7 +106,7 @@
           <div class="image-grid">
             ${extras.length ? extras.map(image => `
               <article class="image-card">
-                <img src="/uploads/${image.filename}" alt="${escapeHtml(image.title || image.original_name)}">
+                <img src="${escapeHtml(imageSrc(image))}" alt="${escapeHtml(image.title || image.original_name)}">
                 <div class="image-card-body">
                   <h4>${escapeHtml(image.title || image.original_name)}</h4>
                   <p>${escapeHtml(image.description || 'Sin descripción')}</p>
@@ -183,11 +189,3 @@
     }
   }, true);
 })();
-
-// Carga desacoplada de la barra de progreso del PDF.
-if (!document.querySelector('script[data-pdf-progress]')) {
-  const pdfProgressScript = document.createElement('script');
-  pdfProgressScript.src = '/pdf-progress.js?v=1.0';
-  pdfProgressScript.dataset.pdfProgress = '1';
-  document.body.appendChild(pdfProgressScript);
-}
