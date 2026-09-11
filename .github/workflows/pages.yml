@@ -33,6 +33,11 @@ jobs:
             node --check "$file"
           done
 
+      - name: Smoke test Pages services
+        run: |
+          set -e
+          node scripts/pages-smoke.mjs static/pages-browser-services.js
+
       - name: Prepare GitHub Pages site
         run: |
           rm -rf _site
@@ -47,8 +52,8 @@ jobs:
           # GitHub Pages sirve desde una subruta: convertir recursos raíz a relativos.
           text = re.sub(r'(?P<attr>href|src)="/(?!/)(?P<path>[^"]+)"', r'\g<attr>="./\g<path>"', text)
 
-          # Estos módulos pertenecen al escritorio/backend local o al runtime Firebase
-          # anterior. No deben ejecutarse en la versión GitHub Pages + Google Sheets.
+          # Estos módulos pertenecen al escritorio/backend local o a runtimes anteriores.
+          # La versión oficial de Pages utiliza Google Sheets + servicios de navegador.
           remove_scripts = {
               'startup-guard.js',
               'forms-hotfix.js',
@@ -70,11 +75,12 @@ jobs:
               raise SystemExit('No se encontró app.js en index.html')
 
           before_app = '''
-          <script src="./sheets-api.js?v=3.0"></script>
-          <script src="./firebase-report-pages-runtime.js?v=3.0"></script>
-          <script src="./firebase-report-code-runtime.js?v=3.0"></script>
+          <script src="./sheets-api.js?v=4.0"></script>
+          <script src="./firebase-report-pages-runtime.js?v=4.0"></script>
+          <script src="./firebase-report-code-runtime.js?v=4.0"></script>
           <script src="./pages-data-runtime.js?v=3.0"></script>
           <script src="./nuclei-career-runtime.js?v=3.0"></script>
+          <script src="./pages-browser-services.js?v=1.0"></script>
           '''
           text = text[:app_tag.start()] + before_app + text[app_tag.start():]
 
@@ -103,9 +109,14 @@ jobs:
           set -e
           grep -q 'sheets-api.js' _site/index.html
           grep -q 'pages-data-runtime.js' _site/index.html
+          grep -q 'pages-browser-services.js' _site/index.html
           grep -q 'report-modal-compact-ui.js' _site/index.html
           grep -q 'requirements-import-sheets-ui.js' _site/index.html
           grep -q 'pvc-workspace-v3.js' _site/index.html
+          grep -q '/api/health' _site/pages-browser-services.js
+          grep -q 'pdf-jobs' _site/pages-browser-services.js
+          grep -q 'generated-pdfs' _site/pages-browser-services.js
+          grep -q '/images' _site/pages-browser-services.js
           ! grep -q 'import-preview-client-guard.js' _site/index.html
           ! grep -q 'robust-import-ui.js' _site/index.html
           ! grep -q 'firebase-global-period-runtime.js' _site/index.html
@@ -114,7 +125,10 @@ jobs:
           ! grep -q 'firebase-period-selector-ui.js' _site/index.html
           ! grep -q 'web-runtime.js' _site/index.html
           ! grep -q 'desktop-ui-rescue.js' _site/index.html
+          node --check _site/firebase-report-pages-runtime.js
+          node --check _site/firebase-report-code-runtime.js
           node --check _site/pages-data-runtime.js
+          node --check _site/pages-browser-services.js
           node --check _site/pages-period-selector-ui.js
           node --check _site/report-modal-compact-ui.js
           node --check _site/requirements-import-sheets-ui.js
