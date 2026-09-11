@@ -20,6 +20,27 @@ const report = {
   code_online: 'UTET-INF-02-PRO-95-2026-09',
   version: '1.0',
   report_type: 'normal',
+  document_config: {
+    cover: {
+      enabled: true,
+      institution: 'INSTITUTO QA',
+      title: 'PORTADA QA',
+      subtitle: 'Prueba documental',
+      show_period: true,
+      show_code: true,
+      show_date: false,
+      show_responsibles: false,
+    },
+    header: {
+      enabled: true,
+      left_text: 'CABECERA QA',
+      center_text: 'Informe Final',
+      show_code: true,
+      show_version: true,
+      show_period: false,
+      exclude_cover: true,
+    },
+  },
   images: [],
   careers: [
     {name:'ENFERMERÍA',students:[
@@ -94,8 +115,10 @@ globalThis.MutationObserver = undefined;
 
 const browserRuntimePath = process.argv[2] || new URL('../static/pages-browser-services.js', import.meta.url).pathname;
 const stabilityRuntimePath = process.argv[3] || new URL('../static/pages-stability-runtime.js', import.meta.url).pathname;
+const documentPdfRuntimePath = process.argv[4] || '';
 vm.runInThisContext(fs.readFileSync(browserRuntimePath, 'utf8'), {filename: browserRuntimePath});
 vm.runInThisContext(fs.readFileSync(stabilityRuntimePath, 'utf8'), {filename: stabilityRuntimePath});
+if (documentPdfRuntimePath) vm.runInThisContext(fs.readFileSync(documentPdfRuntimePath, 'utf8'), {filename: documentPdfRuntimePath});
 
 let response = await window.fetch('/api/health');
 assert.equal(response.ok, true);
@@ -127,6 +150,10 @@ assert.equal(list.length, 1);
 assert.equal(list[0].modality_label, 'Presencial');
 assert.equal(list[0].output_students, 1);
 assert.equal(list[0].output_requirements_complete, 1);
+if (documentPdfRuntimePath) {
+  assert.equal(list[0].cover_enabled, true);
+  assert.equal(list[0].header_enabled, true);
+}
 
 response = await window.fetch(`/api/reports/1/generated-pdfs/${list[0].artifact_id}/download`);
 assert.equal(response.headers.get('content-type'), 'application/pdf');
@@ -136,6 +163,10 @@ assert.equal(pdfText.slice(0, 8), '%PDF-1.4');
 assert.match(pdfText, /Estudiantes: 1/);
 assert.match(pdfText, /Requisitos completos: 1/);
 assert.doesNotMatch(pdfText, /Requisitos pendientes: 1/);
+if (documentPdfRuntimePath) {
+  assert.match(pdfText, /PORTADA QA/);
+  assert.match(pdfText, /CABECERA QA/);
+}
 
 InformtitSheets.complexivo = async () => { throw new Error('Complexivo temporalmente no disponible'); };
 response = await window.fetch('/api/reports/1/audit');
@@ -149,4 +180,4 @@ assert.equal(response.status, 409);
 const blocked = await response.json();
 assert.match(blocked.error, /fallaron fuentes institucionales/i);
 
-console.log('Pages browser + stability smoke test: OK');
+console.log(documentPdfRuntimePath ? 'Pages browser + document PDF smoke test: OK' : 'Pages browser + stability smoke test: OK');
