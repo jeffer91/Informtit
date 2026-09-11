@@ -36,7 +36,7 @@ jobs:
       - name: Smoke test Pages services
         run: |
           set -e
-          node scripts/pages-smoke.mjs static/pages-browser-services.js static/pages-shared-state-runtime.js static/pages-stability-runtime.js
+          node scripts/pages-smoke.mjs static/pages-browser-services.js static/pages-stability-runtime.js
 
       - name: Prepare GitHub Pages site
         run: |
@@ -49,11 +49,8 @@ jobs:
           index = Path('_site/index.html')
           text = index.read_text(encoding='utf-8')
 
-          # GitHub Pages sirve desde una subruta: convertir recursos raíz a relativos.
           text = re.sub(r'(?P<attr>href|src)="/(?!/)(?P<path>[^"]+)"', r'\g<attr>="./\g<path>"', text)
 
-          # Estos módulos pertenecen al escritorio/backend local o a runtimes anteriores.
-          # La versión oficial de Pages utiliza Google Sheets + servicios de navegador.
           remove_scripts = {
               'startup-guard.js',
               'forms-hotfix.js',
@@ -71,7 +68,6 @@ jobs:
           for script in remove_scripts:
               text = re.sub(rf'\s*<script[^>]+src="[^\"]*{re.escape(script)}[^\"]*"[^>]*></script>', '', text, flags=re.I)
 
-          # No publicar runtimes obsoletos que no participan en la aplicación oficial.
           legacy_files = {
               'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
               'import-preview-client-guard.js', 'robust-import-ui.js', 'period-unified-ui.js',
