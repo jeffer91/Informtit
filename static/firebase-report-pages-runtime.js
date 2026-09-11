@@ -74,8 +74,14 @@
     return clean(report?.report_type).toLowerCase() === 'pvc' ? 'pvc' : 'normal';
   }
 
+  function canonicalPeriodId(value) {
+    const raw = clean(value);
+    const match = /^(\d{4})-(\d{2})_+(\d{4})-(\d{2})$/.exec(raw);
+    return match ? `${match[1]}-${match[2]}_${match[3]}-${match[4]}` : raw;
+  }
+
   function periodKey(report) {
-    return clean(report?.firebase_period_id) || fold(report?.period);
+    return canonicalPeriodId(report?.firebase_period_id || report?.periodoId || report?.period_id) || fold(report?.period);
   }
 
   function studentIdentity(student = {}) {
@@ -142,8 +148,11 @@
     const studentCount = careers.reduce((sum, career) => (
       sum + (Array.isArray(career.students) ? career.students.length : 0)
     ), 0);
+    const canonicalPeriod = canonicalPeriodId(report.firebase_period_id || report.periodoId || report.period_id);
     return {
       ...report,
+      firebase_period_id: canonicalPeriod || clean(report.firebase_period_id),
+      periodoId: canonicalPeriod || clean(report.periodoId),
       careers,
       images,
       sections,
@@ -240,7 +249,8 @@
       modality: pvc ? 'presencial' : 'unified',
       unified_period: !pvc,
       report_type: reportTypeValue,
-      firebase_period_id: clean(payload.firebase_period_id),
+      firebase_period_id: canonicalPeriodId(payload.firebase_period_id || payload.periodoId || payload.period_context_id),
+      periodoId: canonicalPeriodId(payload.periodoId || payload.firebase_period_id || payload.period_context_id),
       code: clean(payload.code_presencial || payload.code),
       code_presencial: clean(payload.code_presencial || payload.code),
       code_online: pvc ? '' : clean(payload.code_online),
@@ -300,21 +310,21 @@
 
     if (path === '/api/reports' && method === 'GET') {
       const reports = loadReports().map(publicReport);
-      return jsonResponse({ ok: true, reports, storage: 'GitHub Pages + Firebase UTET · período unificado' });
+      return jsonResponse({ ok: true, reports, storage: 'GitHub Pages + Google Sheets · período unificado' });
     }
 
     if (path === '/api/reports' && method === 'POST') {
       const payload = await requestBody(input, init);
       const reportTypeValue = clean(payload.report_type).toLowerCase() === 'pvc' ? 'pvc' : 'normal';
       const reports = loadReports();
-      const probe = { firebase_period_id: payload.firebase_period_id, period: payload.period };
-      const duplicate = reportTypeValue === 'normal'
-        ? reports.find(item => reportType(item) === 'normal' && periodKey(item) === periodKey(probe))
-        : null;
+      const probe = { firebase_period_id: payload.firebase_period_id, periodoId: payload.periodoId, period: payload.period };
+      const duplicate = reports.find(item => reportType(item) === reportTypeValue && periodKey(item) === periodKey(probe));
       if (duplicate) {
         return jsonResponse({
           ok: false,
-          error: 'Ya existe un informe global para este período académico. Abra el informe existente.',
+          error: reportTypeValue === 'pvc'
+            ? 'Ya existe un informe PVC para este período académico. Abra el documento existente.'
+            : 'Ya existe un informe global para este período académico. Abra el informe existente.',
           report_id: duplicate.id,
         }, 409);
       }
