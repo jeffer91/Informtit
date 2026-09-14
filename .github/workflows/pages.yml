@@ -37,6 +37,7 @@ jobs:
         run: |
           set -e
           node scripts/pages-smoke.mjs static/pages-browser-services.js static/pages-stability-runtime.js static/pages-document-pdf-runtime.js
+          node scripts/report-create-controller-smoke.mjs static/report-create-controller.js
 
       - name: Prepare GitHub Pages site
         run: |
@@ -118,6 +119,7 @@ jobs:
           text = text[:app_tag.start()] + before_app + text[app_tag.start():]
 
           after_app = '''
+          <script src="./report-create-controller.js?v=1.0"></script>
           <script src="./pages-period-selector-ui.js?v=4.0"></script>
           <script src="./report-modal-compact-ui.js?v=1.0"></script>
           <script src="./requirements-import-sheets-ui.js?v=4.0"></script>
@@ -150,6 +152,10 @@ jobs:
           grep -q 'InformtitPublicAccess' _site/neon-data-runtime.js
           grep -q "role:'PUBLIC'" _site/neon-data-runtime.js
           ! grep -q 'initializeAuth();' _site/neon-data-runtime.js
+          grep -q 'report-create-controller.js?v=1.0' _site/index.html
+          grep -q 'createInNeon' _site/report-create-controller.js
+          grep -q 'Neon tardó demasiado' _site/report-create-controller.js
+          grep -q 'data-report-close' _site/report-create-controller.js
           grep -q 'pages-neon-schedules-runtime.js' _site/index.html
           grep -q 'pages-shared-state-runtime.js?v=2.0' _site/index.html
           grep -q 'pages-document-state-runtime.js' _site/index.html
@@ -218,6 +224,7 @@ jobs:
           done
 
           node --check _site/neon-data-runtime.js
+          node --check _site/report-create-controller.js
           node --check _site/pages-neon-schedules-runtime.js
           node --check _site/firebase-report-pages-runtime.js
           node --check _site/pages-shared-state-runtime.js
