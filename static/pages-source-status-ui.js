@@ -50,14 +50,14 @@
     if (!force && cached && Date.now() - cached.at < TTL) { render(cached.health); return; }
     banner.hidden = false;
     banner.className = 'institutional-source-status is-checking';
-    banner.innerHTML = '<strong>Fuentes institucionales</strong><span>Verificando…</span>';
+    banner.innerHTML = '<strong>Fuentes institucionales</strong><span>Verificando Neon…</span>';
     try {
       const health = await window.InformtitPagesStability.sourceHealth(report);
       cache.set(key, { at: Date.now(), health });
       if (activeReport()?.id !== report.id) return;
       render(health);
     } catch (error) {
-      render({ errors: [{ source: 'Google Sheets', error: clean(error?.message || error) }] });
+      render({ errors: [{ source: 'Neon PostgreSQL', error: clean(error?.message || error) }] });
     }
   }
 
