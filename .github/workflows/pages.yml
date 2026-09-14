@@ -130,7 +130,7 @@ jobs:
           <script src="./report-create-controller.js?v=1.0"></script>
           <script src="./pages-period-selector-ui.js?v=4.0"></script>
           <script src="./report-modal-compact-ui.js?v=1.0"></script>
-          <script src="./requirements-import-sheets-ui.js?v=4.0"></script>
+          <script src="./requirements-import-sheets-ui.js?v=4.1"></script>
           <script src="./results-import-ui.js?v=3.0"></script>
           <script src="./schedule-auto-completion-ui.js?v=3.0"></script>
           <script src="./nuclei-paste-definitive-ui.js?v=3.0"></script>
@@ -178,7 +178,10 @@ jobs:
           grep -q 'pages-source-status-ui.js' _site/index.html
           grep -q 'pages-document-pdf-runtime.js?v=3.0' _site/index.html
           grep -q 'report-modal-compact-ui.js' _site/index.html
-          grep -q 'requirements-import-sheets-ui.js?v=4.0' _site/index.html
+          grep -q 'requirements-import-sheets-ui.js?v=4.1' _site/index.html
+          grep -q 'InformtitRequirementsImport' _site/requirements-import-sheets-ui.js
+          grep -q 'windows-1252' _site/requirements-import-sheets-ui.js
+          grep -q 'No se reconocieron estas columnas obligatorias' _site/requirements-import-sheets-ui.js
           grep -q 'pvc-workspace-v3.js' _site/index.html
           grep -q 'bulkUpsertStudentsRequirements' _site/neon-data-runtime.js
           grep -q "provider:'NEON'" _site/neon-data-runtime.js
