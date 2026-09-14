@@ -201,7 +201,7 @@ jobs:
           grep -q '9/9 habilitantes' _site/students-ui.js
           grep -q 'SIN_DEFINIR' _site/students-ui.js
           grep -q 'conciliación exclusivamente por cédula' _site/pages-processes-ui.js
-          grep -q "saveSchedule(periodId, 'thesis'" _site/pages-processes-ui.js
+          grep -q "bindScheduleCard(card, 'thesis', periodId" _site/pages-processes-ui.js
           grep -q 'SISACAD_TRABAJO_TITULACION' _site/pages-processes-ui.js
           grep -q 'windows-1252' _site/pages-processes-ui.js
           grep -q 'pdf-jobs' _site/pages-stability-runtime.js
