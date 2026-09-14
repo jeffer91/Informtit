@@ -2,6 +2,7 @@
   'use strict';
 
   if (!/(^|\.)github\.io$/i.test(location.hostname) || !window.InformtitSheets) return;
+
   const XLSX_SRC = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
   const PASS = new Set(['CUMPLE','SI','SÍ','APROBADO','OK','TRUE','1']);
   const REQS = [
@@ -102,44 +103,43 @@
   }
 
   function ensureStyles() {
-    if ($('#req-sheets-style')) return;
-    const style=document.createElement('style'); style.id='req-sheets-style';
+    if ($('#req-neon-style')) return;
+    const style=document.createElement('style'); style.id='req-neon-style';
     style.textContent=`
-      .reqs-shell{display:grid;gap:14px}.reqs-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.reqs-head h2{margin:0 0 4px}.reqs-muted{font-size:12px;color:#64748b}.reqs-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid #dce5ed;border-radius:12px;overflow:hidden;background:#fff}.reqs-kpi{padding:12px;border-right:1px solid #e7edf3}.reqs-kpi:last-child{border-right:0}.reqs-kpi span{display:block;color:#64748b;font-size:10px}.reqs-kpi strong{font-size:19px}.reqs-toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.reqs-toolbar input{min-width:260px;padding:8px 10px;border:1px solid #cbd8e4;border-radius:8px}.reqs-table-wrap{max-height:580px;overflow:auto;border:1px solid #dce5ed;border-radius:12px}.reqs-table{width:100%;border-collapse:collapse;font-size:11px}.reqs-table th{position:sticky;top:0;background:#f7f9fc;padding:8px;text-align:left;border-bottom:1px solid #dce5ed}.reqs-table td{padding:8px;border-bottom:1px solid #edf2f6}.req-pill{display:inline-flex;padding:3px 7px;border-radius:999px;background:#eef3f7;font-size:10px;font-weight:700}.req-pill.ok{background:#e9f8ef;color:#08783e}.req-pill.bad{background:#fdecec;color:#9d2727}.req-dialog-grid{display:grid;gap:12px}.req-drop{border:1px dashed #9db8d1;border-radius:12px;background:#f9fcff;padding:18px}.req-preview{display:grid;gap:10px}.req-actions{display:flex;justify-content:flex-end;gap:8px}.req-warning{padding:9px 11px;border-radius:9px;background:#fff7ed;color:#8a4a00;font-size:11px}@media(max-width:800px){.reqs-kpis{grid-template-columns:repeat(2,1fr)}}`;
+      .reqs-shell{display:grid;gap:14px}.reqs-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.reqs-head h2{margin:0 0 4px}.reqs-muted{font-size:12px;color:#64748b}.reqs-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid #dce5ed;border-radius:12px;overflow:hidden;background:#fff}.reqs-kpi{padding:12px;border-right:1px solid #e7edf3}.reqs-kpi:last-child{border-right:0}.reqs-kpi span{display:block;color:#64748b;font-size:10px}.reqs-kpi strong{font-size:19px}.reqs-toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.reqs-toolbar input{min-width:260px;padding:8px 10px;border:1px solid #cbd8e4;border-radius:8px}.reqs-table-wrap{max-height:580px;overflow:auto;border:1px solid #dce5ed;border-radius:12px}.reqs-table{width:100%;border-collapse:collapse;font-size:11px}.reqs-table th{position:sticky;top:0;background:#f7f9fc;padding:8px;text-align:left;border-bottom:1px solid #dce5ed}.reqs-table td{padding:8px;border-bottom:1px solid #edf2f6}.req-pill{display:inline-flex;padding:3px 7px;border-radius:999px;background:#eef3f7;font-size:10px;font-weight:700}.req-pill.ok{background:#e9f8ef;color:#08783e}.req-pill.bad{background:#fdecec;color:#9d2727}.req-dialog-grid{display:grid;gap:12px}.req-drop{border:1px dashed #9db8d1;border-radius:12px;background:#f9fcff;padding:18px}.req-preview{display:grid;gap:10px}.req-actions{display:flex;justify-content:flex-end;gap:8px}.req-warning{padding:9px 11px;border-radius:9px;background:#fff7ed;color:#8a4a00;font-size:11px}.req-progress{display:grid;gap:5px}.req-progress progress{width:100%;height:10px}@media(max-width:800px){.reqs-kpis{grid-template-columns:repeat(2,1fr)}}`;
     document.head.appendChild(style);
   }
 
   function dialog() {
-    let node=$('#sheets-requirements-dialog'); if (node) return node;
-    node=document.createElement('dialog'); node.id='sheets-requirements-dialog'; node.className='wide-dialog';
+    let node=$('#neon-requirements-dialog'); if (node) return node;
+    node=document.createElement('dialog'); node.id='neon-requirements-dialog'; node.className='wide-dialog';
     node.innerHTML=`<div class="dialog-form req-dialog-grid">
-      <div class="dialog-head"><div><h2>Importar estudiantes y requisitos</h2><p>El archivo se analiza en este navegador. No se usa Firebase ni un servidor local.</p></div><button type="button" class="icon-button" data-req-close>×</button></div>
-      <label class="req-drop">Archivo de requisitos
-        <input id="sheets-req-file" type="file" accept=".xls,.xlsx,.csv,.tsv,.html,.htm,.xml">
-      </label>
-      <div id="sheets-req-preview" class="req-preview reqs-muted">Seleccione un archivo para analizarlo.</div>
-      <div class="req-actions"><button type="button" class="button secondary" data-req-close>Cancelar</button><button type="button" class="button primary" id="sheets-req-save" disabled>Guardar requisitos en Google Sheets</button></div>
+      <div class="dialog-head"><div><h2>Importar estudiantes y requisitos</h2><p>El archivo se analiza en este navegador y se guarda en Neon.</p></div><button type="button" class="icon-button" data-req-close>×</button></div>
+      <label class="req-drop">Archivo de requisitos<input id="neon-req-file" type="file" accept=".xls,.xlsx,.csv,.tsv,.html,.htm,.xml"></label>
+      <div id="neon-req-preview" class="req-preview reqs-muted">Seleccione un archivo para analizarlo.</div>
+      <div id="neon-req-progress" class="req-progress" hidden><progress max="100" value="0"></progress><span>Preparando…</span></div>
+      <div class="req-actions"><button type="button" class="button secondary" data-req-close>Cancelar</button><button type="button" class="button primary" id="neon-req-save" disabled>Guardar en Neon</button></div>
     </div>`;
     document.body.appendChild(node);
-    $$('[data-req-close]',node).forEach(button=>button.onclick=()=>node.close());
-    $('#sheets-req-file',node).addEventListener('change', async event => {
+    $$('[data-req-close]',node).forEach(button=>button.onclick=()=>{ if(!local.saving) node.close(); });
+    $('#neon-req-file',node).addEventListener('change', async event => {
       const file=event.currentTarget.files?.[0]; if(!file) return;
-      const preview=$('#sheets-req-preview',node); preview.textContent='Analizando localmente…';
+      const preview=$('#neon-req-preview',node); preview.textContent='Analizando localmente…';
       try {
         const rows=parseRows(await readFile(file));
         if(!rows.length) throw new Error('No se detectaron estudiantes con cédula en el archivo.');
         local.rows=rows; local.file=file;
-        const [studentData] = await Promise.all([window.InformtitSheets.estudiantes().catch(()=>({estudiantes:[]}))]);
+        const studentData=await window.InformtitSheets.estudiantes().catch(()=>({estudiantes:[]}));
         local.existingIds=new Set((studentData.estudiantes||[]).map(row=>id(row.cedula)).filter(Boolean));
         renderPreview();
-      } catch(error) { local.rows=[]; local.file=null; preview.innerHTML=`<div class="req-warning">${esc(error.message||error)}</div>`; $('#sheets-req-save',node).disabled=true; }
+      } catch(error) { local.rows=[]; local.file=null; preview.innerHTML=`<div class="req-warning">${esc(error.message||error)}</div>`; $('#neon-req-save',node).disabled=true; }
     });
-    $('#sheets-req-save',node).onclick=save;
+    $('#neon-req-save',node).onclick=save;
     return node;
   }
 
   function renderPreview() {
-    const node=$('#sheets-req-preview'); if(!node) return;
+    const node=$('#neon-req-preview'); if(!node) return;
     const rows=local.rows, eligible=rows.filter(row=>row.habilitado).length;
     const careers=new Set(rows.map(row=>fold(row.carrera)).filter(Boolean));
     const newIds=rows.filter(row=>!local.existingIds.has(row.cedula));
@@ -148,9 +148,9 @@
       <div class="reqs-kpi"><span>Habilitados</span><strong>${eligible}</strong></div>
       <div class="reqs-kpi"><span>Con pendientes</span><strong>${rows.length-eligible}</strong></div>
       <div class="reqs-kpi"><span>Carreras</span><strong>${careers.size}</strong></div></div>
-      ${newIds.length ? `<div class="req-warning"><strong>${newIds.length} cédula(s) no existen todavía en la hoja ESTUDIANTES.</strong> Los requisitos sí pueden guardarse; la identidad maestra deberá incorporarse a Google Sheets cuando Apps Script tenga habilitada esa escritura.</div>`:''}
-      <div class="reqs-muted">${esc(local.file?.name||'')} · ${rows.length} cédulas únicas · análisis realizado únicamente en el navegador.</div>`;
-    $('#sheets-req-save').disabled=false;
+      ${newIds.length ? `<div class="req-warning"><strong>${newIds.length} estudiante(s) son nuevos.</strong> Se crearán automáticamente en Neon junto con su matrícula y requisitos.</div>`:''}
+      <div class="reqs-muted">${esc(local.file?.name||'')} · ${rows.length} cédulas únicas · una importación masiva, sin cientos de solicitudes individuales.</div>`;
+    $('#neon-req-save').disabled=false;
   }
 
   async function currentPeriodId() {
@@ -161,35 +161,42 @@
 
   async function save() {
     if(local.saving || !local.rows.length) return;
-    local.saving=true; const button=$('#sheets-req-save'); button.disabled=true; button.textContent='Guardando…';
+    local.saving=true;
+    const button=$('#neon-req-save'); const progress=$('#neon-req-progress'); const bar=progress.querySelector('progress'); const label=progress.querySelector('span');
+    button.disabled=true; button.textContent='Guardando…'; progress.hidden=false; bar.value=2; label.textContent='Preparando importación…';
     try {
       const periodoId=await currentPeriodId(); if(!periodoId) throw new Error('No se pudo identificar el período académico.');
-      const jobs=local.rows.map(row=>({action:'guardar_requisito',data:{
-        periodoId,cedula:row.cedula,academico:row.academico,documentacion:row.documentacion,financiero:row.financiero,
-        titulacion:row.titulacion,practicas:row.practicas,vinculacion:row.vinculacion,seguimientoGraduados:row.seguimientoGraduados,
-        ingles:row.ingles,actualizacionDatos:row.actualizacionDatos,aprobacionTitulacion:row.aprobacionTitulacion,
-        aprobacionComplexivo:row.aprobacionComplexivo,updatedAt:new Date().toISOString()
-      }}));
-      const responses=await window.InformtitSheets.postMany(jobs,{concurrency:3});
-      const failed=responses.filter(row=>!row.ok); if(failed.length) throw new Error(`${failed.length} de ${jobs.length} requisitos no pudieron guardarse.`);
+      if(!window.InformtitNeon?.bulkUpsertStudentsRequirements) throw new Error('El proveedor Neon no está disponible.');
+      const total=local.rows.length;
+      await window.InformtitNeon.bulkUpsertStudentsRequirements(local.rows,periodoId,local.file?.name||'',(completed,_total,stage)=>{
+        const pct=Math.max(2,Math.min(100,Math.round((Number(completed||0)/Math.max(1,total))*100)));
+        bar.value=pct; label.textContent=`${stage || 'Guardando'} · ${pct}%`;
+      });
+      bar.value=100; label.textContent=`Completado · ${total} estudiantes`;
       window.InformtitPagesData?.invalidate?.(periodoId);
-      nodeClose();
-      if(typeof toast==='function') toast(`${jobs.length} estudiantes actualizados en Requisitos de Google Sheets.`);
+      if(typeof toast==='function') toast(`${total} estudiantes, matrículas y requisitos guardados en Neon.`);
+      setTimeout(()=>nodeClose(),350);
       if(typeof openReport==='function' && window.state?.activeReport?.id) await openReport(window.state.activeReport.id);
-    } catch(error) { if(typeof toast==='function') toast(error.message||String(error),true); }
-    finally { local.saving=false; if(button?.isConnected){button.disabled=false;button.textContent='Guardar requisitos en Google Sheets';} }
+    } catch(error) {
+      label.textContent='La importación no se completó.';
+      if(typeof toast==='function') toast(error.message||String(error),true);
+      else alert(error.message||String(error));
+    } finally {
+      local.saving=false;
+      if(button?.isConnected){button.disabled=false;button.textContent='Guardar en Neon';}
+    }
   }
-  function nodeClose(){ $('#sheets-requirements-dialog')?.close(); }
+  function nodeClose(){ $('#neon-requirements-dialog')?.close(); }
 
   function renderRoster() {
     if(isPvc()) return;
     const host=$('#tab-roster'); const report=window.state?.activeReport; if(!host||!report?.id) return;
-    host.innerHTML='<div class="panel"><div class="empty-mini">Cargando estudiantes y requisitos desde Google Sheets…</div></div>';
+    host.innerHTML='<div class="panel"><div class="empty-mini">Cargando estudiantes y requisitos desde Neon…</div></div>';
     api(`/api/reports/${report.id}/roster`).then(data=>{
       if(Number(window.state?.activeReport?.id)!==Number(report.id)||isPvc()) return;
       const s=data.summary||{}, rows=data.students||[];
       host.innerHTML=`<div class="panel reqs-shell">
-        <div class="reqs-head"><div><h2>Estudiantes y Requisitos</h2><div class="reqs-muted">Google Sheets es la fuente principal del período.</div></div><button type="button" class="button primary" id="sheets-req-open">Importar estudiantes y requisitos</button></div>
+        <div class="reqs-head"><div><h2>Estudiantes y Requisitos</h2><div class="reqs-muted">Neon PostgreSQL es la fuente principal del período.</div></div><button type="button" class="button primary" id="neon-req-open">Importar estudiantes y requisitos</button></div>
         <div class="reqs-kpis"><div class="reqs-kpi"><span>Estudiantes</span><strong>${s.students||0}</strong></div><div class="reqs-kpi"><span>Carreras</span><strong>${s.careers||0}</strong></div><div class="reqs-kpi"><span>Habilitados</span><strong>${s.requirements_complete||0}</strong></div><div class="reqs-kpi"><span>Con pendientes</span><strong>${s.requirements_pending||0}</strong></div></div>
         <div class="reqs-toolbar"><label>Buscar<br><input id="reqs-search" placeholder="Nombre, cédula o carrera"></label><span class="reqs-muted">Una fila por cédula.</span></div>
         <div class="reqs-table-wrap"><table class="reqs-table"><thead><tr><th>Estudiante</th><th>Cédula</th><th>Carrera</th><th>Modalidad</th><th>Estado requisitos</th><th>Pendientes</th></tr></thead><tbody id="reqs-body"></tbody></table></div>
@@ -199,11 +206,19 @@
         const visible=rows.filter(row=>!q||fold(`${row.full_name} ${row.identification} ${row.career_name}`).includes(q));
         $('#reqs-body').innerHTML=visible.length?visible.map(row=>`<tr><td><strong>${esc(row.full_name)}</strong></td><td>${esc(row.identification)}</td><td>${esc(row.career_name)}</td><td>${row.modality==='en_linea'?'Online':'Presencial'}</td><td><span class="req-pill ${row.requirements_complete?'ok':'bad'}">${row.requirements_complete?'Habilitado':'Pendiente'}</span></td><td>${esc((row.missing_requirement_labels||[]).join(' · ')||'—')}</td></tr>`).join(''):'<tr><td colspan="6">Sin coincidencias.</td></tr>';
       };
-      $('#sheets-req-open').onclick=()=>openDialog(); $('#reqs-search').addEventListener('input',draw); draw();
+      $('#neon-req-open').onclick=()=>openDialog(); $('#reqs-search').addEventListener('input',draw); draw();
     }).catch(error=>{host.innerHTML=`<div class="panel"><div class="empty-mini">${esc(error.message||error)}</div></div>`;});
   }
 
-  function openDialog(){ local.rows=[];local.file=null; const node=dialog(); $('#sheets-req-file',node).value=''; $('#sheets-req-preview',node).textContent='Seleccione un archivo para analizarlo.'; $('#sheets-req-save',node).disabled=true; node.showModal(); }
+  function openDialog(){
+    local.rows=[];local.file=null;
+    const node=dialog();
+    $('#neon-req-file',node).value='';
+    $('#neon-req-preview',node).textContent='Seleccione un archivo para analizarlo.';
+    $('#neon-req-progress',node).hidden=true;
+    $('#neon-req-save',node).disabled=true;
+    node.showModal();
+  }
 
   ensureStyles();
   const previousRender=window.renderReport;
