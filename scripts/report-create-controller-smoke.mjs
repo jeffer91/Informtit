@@ -4,9 +4,10 @@ import vm from 'node:vm';
 const file = process.argv[2] || 'static/report-create-controller.js';
 const source = fs.readFileSync(file, 'utf8');
 
+let dialog;
 function button({ id = '', value = '', classes = [], text = '' } = {}) {
   const set = new Set(classes);
-  return {
+  const node = {
     id,
     value,
     type: 'submit',
@@ -15,9 +16,14 @@ function button({ id = '', value = '', classes = [], text = '' } = {}) {
     dataset: {},
     attributes: {},
     classList: { contains: name => set.has(name) },
-    closest: selector => selector === '#report-dialog' ? dialog : null,
     setAttribute(name, value2) { this.attributes[name] = String(value2); },
   };
+  node.closest = selector => {
+    if (selector === 'button') return node;
+    if (selector === '#report-dialog') return dialog;
+    return null;
+  };
+  return node;
 }
 
 const listeners = new Map();
@@ -46,7 +52,7 @@ const form = {
   reset() { this.resetCalled = true; },
 };
 
-const dialog = {
+dialog = {
   open: true,
   lastClose: '',
   querySelectorAll(selector) { return selector === 'button' ? [closeButton, cancelButton, submitButton] : []; },
