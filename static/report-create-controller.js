@@ -153,6 +153,7 @@
     if (isCloseButton(button)) {
       button.type = 'button';
       button.dataset.reportClose = '1';
+      button.setAttribute('data-report-close', '1');
     }
   });
 
