@@ -96,11 +96,13 @@ jobs:
 
           before_app = '''
           <script src="./sheets-api.js?v=4.0"></script>
+          <script src="./neon-data-runtime.js?v=1.0"></script>
           <script src="./firebase-report-pages-runtime.js?v=4.0"></script>
           <script src="./pages-shared-state-runtime.js?v=1.0"></script>
           <script src="./pages-document-state-runtime.js?v=1.0"></script>
           <script src="./firebase-report-code-runtime.js?v=4.0"></script>
           <script src="./pages-data-runtime.js?v=3.0"></script>
+          <script src="./pages-neon-schedules-runtime.js?v=1.0"></script>
           <script src="./nuclei-career-runtime.js?v=3.0"></script>
           <script src="./pages-browser-services.js?v=1.0"></script>
           '''
@@ -109,7 +111,7 @@ jobs:
           after_app = '''
           <script src="./pages-period-selector-ui.js?v=4.0"></script>
           <script src="./report-modal-compact-ui.js?v=1.0"></script>
-          <script src="./requirements-import-sheets-ui.js?v=3.0"></script>
+          <script src="./requirements-import-sheets-ui.js?v=4.0"></script>
           <script src="./results-import-ui.js?v=3.0"></script>
           <script src="./schedule-auto-completion-ui.js?v=3.0"></script>
           <script src="./nuclei-paste-definitive-ui.js?v=3.0"></script>
@@ -137,6 +139,8 @@ jobs:
         run: |
           set -e
           grep -q 'sheets-api.js' _site/index.html
+          grep -q 'neon-data-runtime.js' _site/index.html
+          grep -q 'pages-neon-schedules-runtime.js' _site/index.html
           grep -q 'pages-shared-state-runtime.js' _site/index.html
           grep -q 'pages-document-state-runtime.js' _site/index.html
           grep -q 'pages-data-runtime.js' _site/index.html
@@ -149,8 +153,13 @@ jobs:
           grep -q 'pages-source-status-ui.js' _site/index.html
           grep -q 'pages-document-pdf-runtime.js?v=3.0' _site/index.html
           grep -q 'report-modal-compact-ui.js' _site/index.html
-          grep -q 'requirements-import-sheets-ui.js' _site/index.html
+          grep -q 'requirements-import-sheets-ui.js?v=4.0' _site/index.html
           grep -q 'pvc-workspace-v3.js' _site/index.html
+          grep -q 'bulkUpsertStudentsRequirements' _site/neon-data-runtime.js
+          grep -q "provider:'NEON'" _site/neon-data-runtime.js
+          grep -q 'saveSchedule' _site/pages-neon-schedules-runtime.js
+          grep -q 'Guardar en Neon' _site/requirements-import-sheets-ui.js
+          ! grep -q 'Guardar requisitos en Google Sheets' _site/requirements-import-sheets-ui.js
           grep -q '/api/health' _site/pages-browser-services.js
           grep -q 'guardarInforme' _site/pages-shared-state-runtime.js
           grep -q 'guardarPeriodo' _site/pages-shared-state-runtime.js
@@ -194,6 +203,8 @@ jobs:
             test ! -e "_site/$legacy"
           done
 
+          node --check _site/neon-data-runtime.js
+          node --check _site/pages-neon-schedules-runtime.js
           node --check _site/firebase-report-pages-runtime.js
           node --check _site/pages-shared-state-runtime.js
           node --check _site/pages-document-state-runtime.js
