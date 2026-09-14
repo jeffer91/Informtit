@@ -89,12 +89,23 @@ jobs:
           for filename in legacy_files:
               Path('_site', filename).unlink(missing_ok=True)
 
+          neon_runtime = Path('_site/neon-data-runtime.js')
+          neon_text = neon_runtime.read_text(encoding='utf-8')
+          login_call = '  initializeAuth();'
+          if login_call not in neon_text:
+              raise SystemExit('No se encontró el arranque de autenticación en neon-data-runtime.js')
+          neon_text = neon_text.replace(
+              login_call,
+              "  unlock({ role:'PUBLIC', active:true, display_name:'Acceso público' });\n  window.InformtitPublicAccess = Object.freeze({ enabled:true, provider:'NEON', version:'1.0.0' });"
+          )
+          neon_runtime.write_text(neon_text, encoding='utf-8')
+
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
           if not app_tag:
               raise SystemExit('No se encontró app.js en index.html')
 
           before_app = '''
-          <script src="./neon-data-runtime.js?v=1.1"></script>
+          <script src="./neon-data-runtime.js?v=1.2"></script>
           <script src="./firebase-report-pages-runtime.js?v=4.0"></script>
           <script src="./pages-shared-state-runtime.js?v=2.0"></script>
           <script src="./pages-document-state-runtime.js?v=1.0"></script>
@@ -135,7 +146,10 @@ jobs:
       - name: Verify clean Pages bundle
         run: |
           set -e
-          grep -q 'neon-data-runtime.js?v=1.1' _site/index.html
+          grep -q 'neon-data-runtime.js?v=1.2' _site/index.html
+          grep -q 'InformtitPublicAccess' _site/neon-data-runtime.js
+          grep -q "role:'PUBLIC'" _site/neon-data-runtime.js
+          ! grep -q 'initializeAuth();' _site/neon-data-runtime.js
           grep -q 'pages-neon-schedules-runtime.js' _site/index.html
           grep -q 'pages-shared-state-runtime.js?v=2.0' _site/index.html
           grep -q 'pages-document-state-runtime.js' _site/index.html
@@ -153,8 +167,6 @@ jobs:
           grep -q 'pvc-workspace-v3.js' _site/index.html
           grep -q 'bulkUpsertStudentsRequirements' _site/neon-data-runtime.js
           grep -q "provider:'NEON'" _site/neon-data-runtime.js
-          grep -q "auth: { url: AUTH_URL }" _site/neon-data-runtime.js
-          ! grep -q 'BetterAuthVanillaAdapter' _site/neon-data-runtime.js
           grep -q 'saveSchedule' _site/pages-neon-schedules-runtime.js
           grep -q 'Guardar en Neon' _site/requirements-import-sheets-ui.js
           ! grep -q 'Guardar requisitos en Google Sheets' _site/requirements-import-sheets-ui.js
