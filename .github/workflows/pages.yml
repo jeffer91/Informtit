@@ -48,11 +48,10 @@ jobs:
 
           index = Path('_site/index.html')
           text = index.read_text(encoding='utf-8')
-
           text = re.sub(r'(?P<attr>href|src)="/(?!/)(?P<path>[^"]+)"', r'\g<attr>="./\g<path>"', text)
 
           remove_scripts = {
-              'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
+              'sheets-api.js', 'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
               'import-preview-client-guard.js', 'robust-import-ui.js', 'period-unified-ui.js',
               'students-ui.js', 'students-period-ui.js', 'students-final-audit-ui.js', 'smart-reconciliation-ui.js',
               'coordinator-admin-ui.js', 'firebase-ui.js', 'desktop-ui-rescue.js',
@@ -64,7 +63,7 @@ jobs:
               text = re.sub(rf'\s*<script[^>]+src="[^\"]*{re.escape(script)}[^\"]*"[^>]*></script>', '', text, flags=re.I)
 
           legacy_files = {
-              'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
+              'sheets-api.js', 'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
               'import-preview-client-guard.js', 'robust-import-ui.js', 'period-unified-ui.js',
               'students-period-ui.js', 'students-final-audit-ui.js', 'smart-reconciliation-ui.js',
               'coordinator-admin-ui.js', 'firebase-ui.js', 'desktop-ui-rescue.js',
@@ -95,10 +94,9 @@ jobs:
               raise SystemExit('No se encontró app.js en index.html')
 
           before_app = '''
-          <script src="./sheets-api.js?v=4.0"></script>
-          <script src="./neon-data-runtime.js?v=1.0"></script>
+          <script src="./neon-data-runtime.js?v=1.1"></script>
           <script src="./firebase-report-pages-runtime.js?v=4.0"></script>
-          <script src="./pages-shared-state-runtime.js?v=1.0"></script>
+          <script src="./pages-shared-state-runtime.js?v=2.0"></script>
           <script src="./pages-document-state-runtime.js?v=1.0"></script>
           <script src="./firebase-report-code-runtime.js?v=4.0"></script>
           <script src="./pages-data-runtime.js?v=3.0"></script>
@@ -131,17 +129,15 @@ jobs:
           '''
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
           text = text[:app_tag.end()] + after_app + text[app_tag.end():]
-
           index.write_text(text, encoding='utf-8')
           PY
 
       - name: Verify clean Pages bundle
         run: |
           set -e
-          grep -q 'sheets-api.js' _site/index.html
-          grep -q 'neon-data-runtime.js' _site/index.html
+          grep -q 'neon-data-runtime.js?v=1.1' _site/index.html
           grep -q 'pages-neon-schedules-runtime.js' _site/index.html
-          grep -q 'pages-shared-state-runtime.js' _site/index.html
+          grep -q 'pages-shared-state-runtime.js?v=2.0' _site/index.html
           grep -q 'pages-document-state-runtime.js' _site/index.html
           grep -q 'pages-data-runtime.js' _site/index.html
           grep -q 'pages-browser-services.js' _site/index.html
@@ -157,12 +153,14 @@ jobs:
           grep -q 'pvc-workspace-v3.js' _site/index.html
           grep -q 'bulkUpsertStudentsRequirements' _site/neon-data-runtime.js
           grep -q "provider:'NEON'" _site/neon-data-runtime.js
+          grep -q "auth: { url: AUTH_URL }" _site/neon-data-runtime.js
+          ! grep -q 'BetterAuthVanillaAdapter' _site/neon-data-runtime.js
           grep -q 'saveSchedule' _site/pages-neon-schedules-runtime.js
           grep -q 'Guardar en Neon' _site/requirements-import-sheets-ui.js
           ! grep -q 'Guardar requisitos en Google Sheets' _site/requirements-import-sheets-ui.js
           grep -q '/api/health' _site/pages-browser-services.js
           grep -q 'guardarInforme' _site/pages-shared-state-runtime.js
-          grep -q 'guardarPeriodo' _site/pages-shared-state-runtime.js
+          grep -q 'storage_mode.*neon_shared' _site/pages-shared-state-runtime.js
           grep -q 'document_config_json' _site/pages-document-state-runtime.js
           grep -q 'renderCoverTab' _site/pages-document-ui.js
           grep -q 'renderHeaderTab' _site/pages-document-ui.js
@@ -177,9 +175,13 @@ jobs:
           grep -q 'pdf-jobs' _site/pages-stability-runtime.js
           grep -q 'ERROR DE FUENTE' _site/pages-stability-runtime.js
           grep -q 'institutional-source-status' _site/pages-source-status-ui.js
+          grep -q 'Neon PostgreSQL' _site/pages-system-ui.js
           grep -q 'BROWSER_PDF_DOCUMENT_V3' _site/pages-document-pdf-runtime.js
           grep -q 'Estructura del documento aplicada' _site/pages-document-pdf-runtime.js
           grep -q 'sections_applied' _site/pages-document-pdf-runtime.js
+
+          ! grep -q 'sheets-api.js' _site/index.html
+          test ! -e _site/sheets-api.js
 
           for legacy in \
             coordinator-admin-ui.js import-preview-client-guard.js robust-import-ui.js \
@@ -192,7 +194,7 @@ jobs:
           done
 
           for legacy in \
-            firebase-pages-runtime.js firebase-global-period-runtime.js github-pages-runtime-fixes.js \
+            sheets-api.js firebase-pages-runtime.js firebase-global-period-runtime.js github-pages-runtime-fixes.js \
             completion-ui.js completion-ui-v2.js independent-modules-ui.js process-independent-ui.js \
             process-ui.js process-ui-fixes.js thesis-followup-ui.js thesis-full-ui.js pvc-report-ui.js \
             pvc-workspace-v2.js workflow-ui-fixes.js workflow-ui.js web-runtime.js no-sections.js \
