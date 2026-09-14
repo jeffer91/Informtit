@@ -87,14 +87,14 @@
       code_presencial: clean(raw.code_presencial || raw.code || raw.codigo),
       code_online: clean(raw.code_online || raw.codigo_online),
       version: clean(raw.version || raw.versionDocumento) || '1.0',
-      status: clean(raw.status || raw.estado) || 'borrador',
+      status: clean(raw.status || raw.estado) || 'DRAFT',
       created_at: clean(raw.created_at || raw.createdAt || raw.fechaCreacion),
       updated_at: clean(raw.updated_at || raw.updatedAt || raw.fechaActualizacion),
       careers: Array.isArray(raw.careers) ? raw.careers : [],
       images: Array.isArray(raw.images) ? raw.images : [],
       sections: Array.isArray(raw.sections) ? raw.sections : [],
       legacy_report_ids: Array.isArray(raw.legacy_report_ids) ? raw.legacy_report_ids : [id],
-      storage_mode: 'google_sheets_shared',
+      storage_mode: 'neon_shared',
     };
   }
 
@@ -121,7 +121,7 @@
   async function loadSharedReports() {
     const periodsPayload = await window.InformtitSheets.periodos();
     const periods = Array.isArray(periodsPayload?.periodos) ? periodsPayload.periodos : [];
-    const ids = [...new Set(periods.map(row => canonicalPeriodId(row.periodoId || row.id)).filter(Boolean))].slice(0, 12);
+    const ids = [...new Set(periods.map(row => canonicalPeriodId(row.periodoId || row.id)).filter(Boolean))].slice(0, 24);
     const groups = await Promise.all(ids.map(async periodId => {
       try {
         const payload = await window.InformtitSheets.informes(periodId);
@@ -157,7 +157,7 @@
       reviewed_role: clean(report.reviewed_role),
       approved_by: clean(report.approved_by),
       approved_role: clean(report.approved_role),
-      status: clean(report.status) || 'borrador',
+      status: clean(report.status) || 'DRAFT',
       updatedAt: nowIso(),
       ...extra,
     };
@@ -174,25 +174,39 @@
     const payload = {
       periodoId: periodId,
       id: periodId,
-      nombre: clean(period.name || period.nombre),
-      label: clean(period.name || period.nombre),
+      nombre: clean(period.name || period.nombre || period.label || periodId),
+      label: clean(period.name || period.nombre || period.label || periodId),
       anioInicio: match ? Number(match[1]) : undefined,
       mesInicio: match ? Number(match[2]) : undefined,
       anioFin: match ? Number(match[3]) : undefined,
       mesFin: match ? Number(match[4]) : undefined,
       estado: 'ACTIVO',
+      activo: true,
       updatedAt: nowIso(),
     };
     try {
       await window.InformtitSheets.guardarPeriodo(payload);
       const active = (() => { try { return JSON.parse(localStorage.getItem(ACTIVE_PERIOD_KEY) || 'null'); } catch (_) { return null; } })();
       if (active && canonicalPeriodId(active.id || active.periodoId || active.sourceId) === periodId) {
-        localStorage.setItem(ACTIVE_PERIOD_KEY, JSON.stringify({ ...active, source: 'sheets', sourceId: periodId, id: periodId }));
+        localStorage.setItem(ACTIVE_PERIOD_KEY, JSON.stringify({ ...active, source: 'neon', sourceId: periodId, id: periodId }));
       }
     } catch (error) {
       syncedPeriods.delete(periodId);
-      if (typeof window.toast === 'function') window.toast(`No se pudo guardar el período en Google Sheets: ${clean(error?.message || error)}`, true);
+      if (typeof window.toast === 'function') window.toast(`No se pudo guardar el período en Neon: ${clean(error?.message || error)}`, true);
     }
+  }
+
+  async function deleteSharedReport(report) {
+    if (!report) return;
+    if (window.InformtitNeon?.getClient) {
+      const client = await window.InformtitNeon.getClient();
+      const periodId = periodIdOf(report);
+      const type = reportType(report);
+      const result = await client.from('reports').delete().eq('period_id', periodId).eq('report_type', type);
+      if (result?.error) throw result.error;
+      return;
+    }
+    await window.InformtitSheets.guardarInforme(reportPayload(report, { status: 'ELIMINADO', deleted: true }));
   }
 
   if (document?.addEventListener) {
@@ -211,7 +225,7 @@
         const shared = await loadSharedReports();
         const merged = mergeReports(payload.reports || readLocalReports(), shared);
         writeLocalReports(merged);
-        return jsonResponse({ ...payload, reports: merged, storage: 'Google Sheets + caché local' }, response.status);
+        return jsonResponse({ ...payload, reports: merged, storage: 'Neon PostgreSQL + caché local' }, response.status);
       } catch (_) {
         return response;
       }
@@ -225,11 +239,12 @@
       const created = payload?.reports?.[0] || readLocalReports().find(row => Number(row.id) === Number(payload.report_id));
       try {
         if (!created) throw new Error('No se pudo identificar el informe creado.');
+        await persistPeriod({ id: periodIdOf(created), name: created.period || created.periodo });
         await window.InformtitSheets.guardarInforme(reportPayload(created));
-        return jsonResponse({ ...payload, storage: 'google_sheets_shared' }, response.status);
+        return jsonResponse({ ...payload, storage: 'neon_shared' }, response.status);
       } catch (error) {
         writeLocalReports(before);
-        return jsonResponse({ ok: false, error: `No se guardó el informe en Google Sheets: ${clean(error?.message || error)}` }, 502);
+        return jsonResponse({ ok: false, error: `No se guardó el informe en Neon: ${clean(error?.message || error)}` }, 502);
       }
     }
 
@@ -241,11 +256,12 @@
       if (!response.ok || payload?.ok === false) return response;
       try {
         if (!payload.report) throw new Error('No se pudo identificar el informe actualizado.');
+        await persistPeriod({ id: periodIdOf(payload.report), name: payload.report.period || payload.report.periodo });
         await window.InformtitSheets.guardarInforme(reportPayload(payload.report));
-        return jsonResponse({ ...payload, storage: 'google_sheets_shared' }, response.status);
+        return jsonResponse({ ...payload, storage: 'neon_shared' }, response.status);
       } catch (error) {
         writeLocalReports(before);
-        return jsonResponse({ ok: false, error: `No se guardaron los cambios en Google Sheets: ${clean(error?.message || error)}` }, 502);
+        return jsonResponse({ ok: false, error: `No se guardaron los cambios en Neon: ${clean(error?.message || error)}` }, 502);
       }
     }
 
@@ -256,16 +272,16 @@
       const payload = await response.clone().json().catch(() => ({}));
       if (!response.ok || payload?.ok === false) return response;
       try {
-        if (target) await window.InformtitSheets.guardarInforme(reportPayload(target, { status: 'ELIMINADO', deleted: true }));
+        if (target) await deleteSharedReport(target);
         return response;
       } catch (error) {
         writeLocalReports(before);
-        return jsonResponse({ ok: false, error: `No se pudo eliminar el informe compartido: ${clean(error?.message || error)}` }, 502);
+        return jsonResponse({ ok: false, error: `No se pudo eliminar el informe de Neon: ${clean(error?.message || error)}` }, 502);
       }
     }
 
     return previousFetch(input, init);
   };
 
-  window.InformtitSharedState = Object.freeze({ loadSharedReports, mergeReports, persistPeriod, version: '1.0.0' });
+  window.InformtitSharedState = Object.freeze({ loadSharedReports, mergeReports, persistPeriod, version: '2.0.0', provider: 'NEON' });
 })();
