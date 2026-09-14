@@ -95,11 +95,7 @@ jobs:
           client_auth = 'auth: { url: AUTH_URL },'
           if client_auth not in neon_text:
               raise SystemExit('No se encontró la configuración Auth de Neon')
-          neon_text = neon_text.replace(
-              client_auth,
-              'auth: { url: AUTH_URL, allowAnonymous: true },',
-              1,
-          )
+          neon_text = neon_text.replace(client_auth, 'auth: { url: AUTH_URL, allowAnonymous: true },', 1)
           login_call = '  initializeAuth();'
           if login_call not in neon_text:
               raise SystemExit('No se encontró el arranque de autenticación en neon-data-runtime.js')
@@ -109,6 +105,24 @@ jobs:
           )
           neon_runtime.write_text(neon_text, encoding='utf-8')
 
+          # SVD 2.1: no convertir un fallo de Neon en una lista vacía durante la importación.
+          req_runtime = Path('_site/requirements-import-sheets-ui.js')
+          req_text = req_runtime.read_text(encoding='utf-8')
+          silent_students = "const studentData=await window.InformtitSheets.estudiantes().catch(()=>({estudiantes:[]}));"
+          if silent_students not in req_text:
+              raise SystemExit('No se encontró la lectura de estudiantes a endurecer')
+          req_text = req_text.replace(silent_students, "const studentData=await window.InformtitSheets.estudiantes();", 1)
+          req_runtime.write_text(req_text, encoding='utf-8')
+
+          # Neon es la fuente real: eliminar textos heredados de Google Sheets en el bundle activo.
+          for filename in ['pages-document-ui.js','pages-document-pdf-runtime.js','pages-stability-runtime.js','report-health-sheets-ui.js','pages-source-status-ui.js']:
+              path = Path('_site', filename)
+              if not path.exists():
+                  continue
+              source = path.read_text(encoding='utf-8')
+              source = source.replace('Google Sheets', 'Neon PostgreSQL').replace('GOOGLE_SHEETS', 'NEON_POSTGRESQL')
+              path.write_text(source, encoding='utf-8')
+
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
           if not app_tag:
               raise SystemExit('No se encontró app.js en index.html')
@@ -116,7 +130,7 @@ jobs:
           before_app = '''
           <script src="./neon-data-runtime.js?v=1.3"></script>
           <script src="./firebase-report-pages-runtime.js?v=4.0"></script>
-          <script src="./pages-shared-state-runtime.js?v=2.0"></script>
+          <script src="./pages-shared-state-runtime.js?v=3.0"></script>
           <script src="./pages-document-state-runtime.js?v=1.0"></script>
           <script src="./firebase-report-code-runtime.js?v=4.0"></script>
           <script src="./pages-data-runtime.js?v=3.0"></script>
@@ -128,25 +142,25 @@ jobs:
 
           after_app = '''
           <script src="./report-create-controller.js?v=1.0"></script>
-          <script src="./pages-period-selector-ui.js?v=4.0"></script>
+          <script src="./pages-period-selector-ui.js?v=5.0"></script>
           <script src="./report-modal-compact-ui.js?v=1.0"></script>
-          <script src="./requirements-import-sheets-ui.js?v=4.1"></script>
+          <script src="./requirements-import-sheets-ui.js?v=4.2"></script>
           <script src="./results-import-ui.js?v=3.0"></script>
           <script src="./schedule-auto-completion-ui.js?v=3.0"></script>
           <script src="./nuclei-paste-definitive-ui.js?v=3.0"></script>
           <script src="./nuclei-population-ui.js?v=3.0"></script>
           <script src="./nuclei-organization.js?v=3.0"></script>
           <script src="./pvc-schedules-ui.js?v=3.0"></script>
-          <script src="./report-health-sheets-ui.js?v=3.0"></script>
+          <script src="./report-health-sheets-ui.js?v=3.1"></script>
           <script src="./pvc-workspace-v3.js?v=3.0"></script>
           <script src="./pages-system-ui.js?v=3.0"></script>
           <script src="./students-ui.js?v=2.0"></script>
-          <script src="./pages-document-ui.js?v=2.0"></script>
+          <script src="./pages-document-ui.js?v=2.1"></script>
           <script src="./pages-svd-layout.js?v=1.0"></script>
           <script src="./pages-processes-ui.js?v=2.0"></script>
-          <script src="./pages-stability-runtime.js?v=1.0"></script>
-          <script src="./pages-source-status-ui.js?v=1.0"></script>
-          <script src="./pages-document-pdf-runtime.js?v=3.0"></script>
+          <script src="./pages-stability-runtime.js?v=1.1"></script>
+          <script src="./pages-source-status-ui.js?v=1.1"></script>
+          <script src="./pages-document-pdf-runtime.js?v=3.1"></script>
           '''
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
           text = text[:app_tag.end()] + after_app + text[app_tag.end():]
@@ -166,22 +180,30 @@ jobs:
           grep -q 'Neon tardó demasiado' _site/report-create-controller.js
           grep -q 'data-report-close' _site/report-create-controller.js
           grep -q 'pages-neon-schedules-runtime.js' _site/index.html
-          grep -q 'pages-shared-state-runtime.js?v=2.0' _site/index.html
+          grep -q 'pages-shared-state-runtime.js?v=3.0' _site/index.html
+          grep -q "standard:'SVD_2_1'" _site/pages-shared-state-runtime.js
+          grep -q 'seleccione un período' _site/pages-shared-state-runtime.js
+          grep -q 'pages-period-selector-ui.js?v=5.0' _site/index.html
+          grep -q 'SVD21_EMPTY_START' _site/pages-period-selector-ui.js
+          grep -q 'Selecciona un período para continuar' _site/pages-period-selector-ui.js
+          grep -q 'guardarPeriodo' _site/pages-period-selector-ui.js
+          grep -q 'Guardando…' _site/pages-period-selector-ui.js
           grep -q 'pages-document-state-runtime.js' _site/index.html
           grep -q 'pages-data-runtime.js' _site/index.html
           grep -q 'pages-browser-services.js' _site/index.html
           grep -q 'students-ui.js?v=2.0' _site/index.html
-          grep -q 'pages-document-ui.js?v=2.0' _site/index.html
+          grep -q 'pages-document-ui.js?v=2.1' _site/index.html
           grep -q 'pages-svd-layout.js' _site/index.html
           grep -q 'pages-processes-ui.js?v=2.0' _site/index.html
-          grep -q 'pages-stability-runtime.js' _site/index.html
-          grep -q 'pages-source-status-ui.js' _site/index.html
-          grep -q 'pages-document-pdf-runtime.js?v=3.0' _site/index.html
+          grep -q 'pages-stability-runtime.js?v=1.1' _site/index.html
+          grep -q 'pages-source-status-ui.js?v=1.1' _site/index.html
+          grep -q 'pages-document-pdf-runtime.js?v=3.1' _site/index.html
           grep -q 'report-modal-compact-ui.js' _site/index.html
-          grep -q 'requirements-import-sheets-ui.js?v=4.1' _site/index.html
+          grep -q 'requirements-import-sheets-ui.js?v=4.2' _site/index.html
           grep -q 'InformtitRequirementsImport' _site/requirements-import-sheets-ui.js
           grep -q 'windows-1252' _site/requirements-import-sheets-ui.js
           grep -q 'No se reconocieron estas columnas obligatorias' _site/requirements-import-sheets-ui.js
+          ! grep -q "estudiantes().catch" _site/requirements-import-sheets-ui.js
           grep -q 'pvc-workspace-v3.js' _site/index.html
           grep -q 'bulkUpsertStudentsRequirements' _site/neon-data-runtime.js
           grep -q "provider:'NEON'" _site/neon-data-runtime.js
@@ -196,6 +218,7 @@ jobs:
           grep -q 'renderHeaderTab' _site/pages-document-ui.js
           grep -q 'renderSectionsTab' _site/pages-document-ui.js
           grep -q 'Guardado y sincronizado' _site/pages-document-ui.js
+          ! grep -q 'Google Sheets' _site/pages-document-ui.js
           grep -q 'svd-document-strip' _site/pages-svd-layout.js
           grep -q "name === 'dashboard' ? 'report'" _site/pages-svd-layout.js
           grep -q '9/9 habilitantes' _site/students-ui.js
@@ -206,11 +229,14 @@ jobs:
           grep -q 'windows-1252' _site/pages-processes-ui.js
           grep -q 'pdf-jobs' _site/pages-stability-runtime.js
           grep -q 'ERROR DE FUENTE' _site/pages-stability-runtime.js
+          grep -q 'NEON_POSTGRESQL' _site/pages-stability-runtime.js
           grep -q 'institutional-source-status' _site/pages-source-status-ui.js
           grep -q 'Neon PostgreSQL' _site/pages-system-ui.js
           grep -q 'BROWSER_PDF_DOCUMENT_V3' _site/pages-document-pdf-runtime.js
           grep -q 'Estructura del documento aplicada' _site/pages-document-pdf-runtime.js
           grep -q 'sections_applied' _site/pages-document-pdf-runtime.js
+          grep -q 'NEON_POSTGRESQL' _site/pages-document-pdf-runtime.js
+          ! grep -q 'GOOGLE_SHEETS' _site/pages-document-pdf-runtime.js
 
           ! grep -q 'sheets-api.js' _site/index.html
           test ! -e _site/sheets-api.js
