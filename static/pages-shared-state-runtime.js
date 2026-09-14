@@ -21,11 +21,6 @@
   };
   const methodOf = (input, init) => String(init?.method || input?.method || 'GET').toUpperCase();
 
-  async function bodyOf(input, init) {
-    if (typeof init?.body === 'string') { try { return JSON.parse(init.body); } catch (_) { return {}; } }
-    if (typeof Request !== 'undefined' && input instanceof Request) { try { return await input.clone().json(); } catch (_) {} }
-    return {};
-  }
   function jsonResponse(payload, status = 200) {
     return Promise.resolve(new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json; charset=utf-8' } }));
   }
@@ -95,9 +90,9 @@
   window.fetch=async function pagesSharedStateFetch(input,init={}){
     const path=pathOf(input),method=methodOf(input,init);
     if(path==='/api/reports'&&method==='GET'){
+      if(!selectedPeriodId)return jsonResponse({ok:true,reports:[],storage:'Neon PostgreSQL · seleccione un período'},200);
       const response=await previousFetch(input,init);const payload=await response.clone().json().catch(()=>({}));
       if(!response.ok||payload?.ok===false)return response;
-      if(!selectedPeriodId)return jsonResponse({...payload,reports:[],storage:'Neon PostgreSQL · seleccione un período'},response.status);
       try{
         const shared=await loadSharedReports(selectedPeriodId);
         const local=(payload.reports||readLocalReports()).filter(row=>periodIdOf(row)===selectedPeriodId);
@@ -128,5 +123,5 @@
     return previousFetch(input,init);
   };
 
-  window.InformtitSharedState=Object.freeze({loadSharedReports,mergeReports,persistPeriod,get selectedPeriodId(){return selectedPeriodId;},version:'3.0.0',provider:'NEON',standard:'SVD_2_1'});
+  window.InformtitSharedState=Object.freeze({loadSharedReports,mergeReports,persistPeriod,get selectedPeriodId(){return selectedPeriodId;},version:'3.1.0',provider:'NEON',standard:'SVD_2_1'});
 })();
