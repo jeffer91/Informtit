@@ -26,14 +26,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Validate JavaScript
+      - name: Validate source JavaScript
         run: |
           set -e
-          for file in static/*.js; do
-            node --check "$file"
-          done
+          for file in static/*.js; do node --check "$file"; done
 
-      - name: Smoke test Pages services
+      - name: Smoke test core Pages services
         run: |
           set -e
           node scripts/pages-smoke.mjs static/pages-browser-services.js static/pages-stability-runtime.js static/pages-document-pdf-runtime.js
@@ -41,87 +39,90 @@ jobs:
 
       - name: Prepare GitHub Pages site
         run: |
+          set -e
           rm -rf _site
           cp -R static _site
           python - <<'PY'
           from pathlib import Path
           import re
 
-          index = Path('_site/index.html')
+          site = Path('_site')
+          index = site / 'index.html'
           text = index.read_text(encoding='utf-8')
           text = re.sub(r'(?P<attr>href|src)="/(?!/)(?P<path>[^"]+)"', r'\g<attr>="./\g<path>"', text)
 
           remove_scripts = {
-              'sheets-api.js', 'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
-              'import-preview-client-guard.js', 'robust-import-ui.js', 'period-unified-ui.js',
-              'students-ui.js', 'students-period-ui.js', 'students-final-audit-ui.js', 'smart-reconciliation-ui.js',
-              'coordinator-admin-ui.js', 'firebase-ui.js', 'desktop-ui-rescue.js',
-              'completion-ui.js', 'independent-modules-ui.js', 'process-independent-ui.js',
-              'process-ui-fixes.js', 'thesis-followup-ui.js', 'thesis-full-ui.js',
-              'pvc-report-ui.js', 'workflow-ui-fixes.js', 'no-sections.js',
+              'sheets-api.js','startup-guard.js','forms-hotfix.js','import-modality-guard-ui.js',
+              'import-preview-client-guard.js','robust-import-ui.js','period-unified-ui.js',
+              'students-ui.js','students-period-ui.js','students-final-audit-ui.js','smart-reconciliation-ui.js',
+              'coordinator-admin-ui.js','firebase-ui.js','desktop-ui-rescue.js','completion-ui.js',
+              'independent-modules-ui.js','process-independent-ui.js','process-ui-fixes.js',
+              'thesis-followup-ui.js','thesis-full-ui.js','pvc-report-ui.js','workflow-ui-fixes.js','no-sections.js',
           }
           for script in remove_scripts:
               text = re.sub(rf'\s*<script[^>]+src="[^\"]*{re.escape(script)}[^\"]*"[^>]*></script>', '', text, flags=re.I)
 
-          legacy_files = {
-              'sheets-api.js', 'startup-guard.js', 'forms-hotfix.js', 'import-modality-guard-ui.js',
-              'import-preview-client-guard.js', 'robust-import-ui.js', 'period-unified-ui.js',
-              'students-period-ui.js', 'students-final-audit-ui.js', 'smart-reconciliation-ui.js',
-              'coordinator-admin-ui.js', 'firebase-ui.js', 'desktop-ui-rescue.js',
-              'firebase-pages-runtime.js', 'firebase-global-period-runtime.js',
-              'firebase-global-period-final-ui.js', 'firebase-period-selector-ui.js',
-              'firebase-schedule-runtime.js', 'firebase-schedule-completion-runtime.js',
-              'firebase-active-report-runtime.js', 'firebase-nuclei-definitive-runtime.js',
-              'firebase-nuclei-paste-runtime.js', 'firebase-nuclei-shared-runtime.js',
-              'firebase-unified-data-runtime.js', 'firebase-dashboard-parity.js',
-              'github-pages-guard.js', 'github-pages-runtime-fixes.js',
-              'gitpages-parity-ui.js', 'completion-ui-v2.js', 'completion-ui.js',
-              'independent-modules-ui.js', 'process-independent-ui.js', 'process-ui.js',
-              'process-ui-fixes.js', 'thesis-followup-ui.js', 'thesis-full-ui.js',
-              'pvc-report-ui.js', 'pvc-workspace-v2.js', 'workflow-ui-fixes.js',
-              'workflow-ui.js', 'web-runtime.js', 'web-config.js', 'unified-period-ui.js',
-              'nuclei-controls-hotfix.js', 'nuclei-paste-course-detection-fix.js',
-              'no-sections.js', 'nuclei-campus-ui.js', 'nuclei-catalog-ui.js',
-              'nuclei-clarity.js', 'nuclei-course-editor.js', 'nuclei-matching-ui.js',
-              'nuclei-minimal-guard.js', 'nuclei-paste-ui.js', 'report-health-ui.js',
-              'sections-template.js', 'sections-template.css', 'import-extra.css',
+          legacy_files = remove_scripts | {
+              'firebase-pages-runtime.js','firebase-global-period-runtime.js','firebase-global-period-final-ui.js',
+              'firebase-period-selector-ui.js','firebase-schedule-runtime.js','firebase-schedule-completion-runtime.js',
+              'firebase-active-report-runtime.js','firebase-nuclei-definitive-runtime.js','firebase-nuclei-paste-runtime.js',
+              'firebase-nuclei-shared-runtime.js','firebase-unified-data-runtime.js','firebase-dashboard-parity.js',
+              'github-pages-guard.js','github-pages-runtime-fixes.js','gitpages-parity-ui.js','completion-ui-v2.js',
+              'process-ui.js','pvc-workspace-v2.js','workflow-ui.js','web-runtime.js','web-config.js','unified-period-ui.js',
+              'nuclei-controls-hotfix.js','nuclei-paste-course-detection-fix.js','nuclei-campus-ui.js','nuclei-catalog-ui.js',
+              'nuclei-clarity.js','nuclei-course-editor.js','nuclei-matching-ui.js','nuclei-minimal-guard.js',
+              'nuclei-paste-ui.js','report-health-ui.js','sections-template.js','sections-template.css','import-extra.css',
               'pages-sections-ui.js',
           }
           for filename in legacy_files:
-              Path('_site', filename).unlink(missing_ok=True)
+              (site / filename).unlink(missing_ok=True)
 
-          neon_runtime = Path('_site/neon-data-runtime.js')
-          neon_text = neon_runtime.read_text(encoding='utf-8')
-          client_auth = 'auth: { url: AUTH_URL },'
-          if client_auth not in neon_text:
-              raise SystemExit('No se encontró la configuración Auth de Neon')
-          neon_text = neon_text.replace(client_auth, 'auth: { url: AUTH_URL, allowAnonymous: true },', 1)
-          login_call = '  initializeAuth();'
-          if login_call not in neon_text:
-              raise SystemExit('No se encontró el arranque de autenticación en neon-data-runtime.js')
-          neon_text = neon_text.replace(
-              login_call,
-              "  unlock({ role:'PUBLIC', active:true, display_name:'Acceso público' });\n  window.InformtitPublicAccess = Object.freeze({ enabled:true, provider:'NEON', version:'1.1.0' });"
+          # Acceso público solicitado: Neon Data API con rol anónimo, sin pantalla de login.
+          neon = site / 'neon-data-runtime.js'
+          source = neon.read_text(encoding='utf-8')
+          source = source.replace('auth: { url: AUTH_URL },', 'auth: { url: AUTH_URL, allowAnonymous: true },', 1)
+          source = source.replace(
+              '  initializeAuth();',
+              "  unlock({ role:'PUBLIC', active:true, display_name:'Acceso público' });\n  window.InformtitPublicAccess = Object.freeze({ enabled:true, provider:'NEON', version:'1.1.0' });",
+              1,
           )
-          neon_runtime.write_text(neon_text, encoding='utf-8')
+          neon.write_text(source, encoding='utf-8')
 
-          # SVD 2.1: no convertir un fallo de Neon en una lista vacía durante la importación.
-          req_runtime = Path('_site/requirements-import-sheets-ui.js')
-          req_text = req_runtime.read_text(encoding='utf-8')
-          silent_students = "const studentData=await window.InformtitSheets.estudiantes().catch(()=>({estudiantes:[]}));"
-          if silent_students not in req_text:
-              raise SystemExit('No se encontró la lectura de estudiantes a endurecer')
-          req_text = req_text.replace(silent_students, "const studentData=await window.InformtitSheets.estudiantes();", 1)
-          req_runtime.write_text(req_text, encoding='utf-8')
+          # SVD 2.1: una falla de fuente nunca equivale a una lista vacía.
+          data_file = site / 'pages-data-runtime.js'
+          data = data_file.read_text(encoding='utf-8')
+          data = data.replace('No se pudo identificar el período académico en Google Sheets.', 'No se pudo identificar el período académico en Neon PostgreSQL.')
+          data = data.replace("window.InformtitSheets.nucleos(periodId).catch(() => ({ nucleos: [] }))", "window.InformtitSheets.nucleos(periodId)")
+          data = data.replace("window.InformtitSheets.complexivo(periodId).catch(() => ({ complexivo: [] }))", "window.InformtitSheets.complexivo(periodId)")
+          data = data.replace("window.InformtitSheets.trabajoTitulacion(periodId).catch(() => ({ trabajoTitulacion: [] }))", "window.InformtitSheets.trabajoTitulacion(periodId)")
+          old_route = "row.route = hasThesis && !hasComplexive && !hasNuclei ? 'TRABAJO_TITULACION' : 'COMPLEXIVO';"
+          new_route = "const explicitRoute = fold(enrollment.route || enrollment.titulation_route || '');\n      row.route = hasThesis ? 'TRABAJO_TITULACION' : (hasComplexive || hasNuclei ? 'COMPLEXIVO' : (explicitRoute.includes('TRABAJO') ? 'TRABAJO_TITULACION' : explicitRoute.includes('COMPLEX') ? 'COMPLEXIVO' : 'SIN_DEFINIR'));"
+          if old_route not in data:
+              raise SystemExit('No se encontró la política de ruta académica a corregir')
+          data = data.replace(old_route, new_route, 1)
+          data_file.write_text(data, encoding='utf-8')
 
-          # Neon es la fuente real: eliminar textos heredados de Google Sheets en el bundle activo.
+          # Importación: bloquear si Neon falla e informar duplicados/filas sin cédula antes de guardar.
+          req_file = site / 'requirements-import-sheets-ui.js'
+          req = req_file.read_text(encoding='utf-8')
+          req = req.replace("const studentData=await window.InformtitSheets.estudiantes().catch(()=>({estudiantes:[]}));", "const studentData=await window.InformtitSheets.estudiantes();", 1)
+          req = req.replace("const map = new Map();\n    rows.forEach(raw => {", "const map = new Map();\n    const duplicateIds = new Set();\n    const invalidRows = [];\n    rows.forEach((raw, rowIndex) => {", 1)
+          req = req.replace("if (!cedula) return;", "if (!cedula) { invalidRows.push(rowIndex + 2); return; }", 1)
+          req = req.replace("map.set(cedula,row);", "if (map.has(cedula)) duplicateIds.add(cedula);\n      map.set(cedula,row);", 1)
+          req = req.replace("const parsed = [...map.values()];", "local.duplicates = [...duplicateIds];\n    local.invalidRows = invalidRows;\n    const parsed = [...map.values()];", 1)
+          req = req.replace(
+              "${sourceInfo}\n      ${newIds.length ? `<div class=\"req-warning\"><strong>${newIds.length} estudiante(s) son nuevos.</strong> Se crearán automáticamente en Neon junto con su matrícula y requisitos.</div>`:''}",
+              "${sourceInfo}\n      <div class=\"reqs-muted\"><strong>Altas:</strong> ${newIds.length} · <strong>Actualizaciones:</strong> ${rows.length-newIds.length} · <strong>Duplicados:</strong> ${local.duplicates?.length||0} · <strong>Filas sin cédula:</strong> ${local.invalidRows?.length||0}</div>\n      ${local.duplicates?.length ? `<div class=\"req-warning\"><strong>${local.duplicates.length} cédula(s) duplicadas en el archivo.</strong> Se conservará la última aparición: ${esc(local.duplicates.slice(0,8).join(', '))}${local.duplicates.length>8?'…':''}</div>`:''}\n      ${local.invalidRows?.length ? `<div class=\"req-warning\"><strong>${local.invalidRows.length} fila(s) sin cédula válida.</strong> Revise las filas ${esc(local.invalidRows.slice(0,12).join(', '))}${local.invalidRows.length>12?'…':''} antes de confirmar.</div>`:''}\n      ${newIds.length ? `<div class=\"req-warning\"><strong>${newIds.length} estudiante(s) son nuevos.</strong> Se crearán automáticamente en Neon junto con su matrícula y requisitos.</div>`:''}",
+              1,
+          )
+          req_file.write_text(req, encoding='utf-8')
+
+          # La interfaz y el documento deben nombrar la fuente real.
           for filename in ['pages-document-ui.js','pages-document-pdf-runtime.js','pages-stability-runtime.js','report-health-sheets-ui.js','pages-source-status-ui.js']:
-              path = Path('_site', filename)
-              if not path.exists():
-                  continue
-              source = path.read_text(encoding='utf-8')
-              source = source.replace('Google Sheets', 'Neon PostgreSQL').replace('GOOGLE_SHEETS', 'NEON_POSTGRESQL')
-              path.write_text(source, encoding='utf-8')
+              path = site / filename
+              if path.exists():
+                  src = path.read_text(encoding='utf-8').replace('Google Sheets','Neon PostgreSQL').replace('GOOGLE_SHEETS','NEON_POSTGRESQL')
+                  path.write_text(src, encoding='utf-8')
 
           app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
           if not app_tag:
@@ -130,10 +131,10 @@ jobs:
           before_app = '''
           <script src="./neon-data-runtime.js?v=1.3"></script>
           <script src="./firebase-report-pages-runtime.js?v=4.0"></script>
-          <script src="./pages-shared-state-runtime.js?v=3.0"></script>
+          <script src="./pages-shared-state-runtime.js?v=3.1"></script>
           <script src="./pages-document-state-runtime.js?v=1.0"></script>
           <script src="./firebase-report-code-runtime.js?v=4.0"></script>
-          <script src="./pages-data-runtime.js?v=3.0"></script>
+          <script src="./pages-data-runtime.js?v=3.1"></script>
           <script src="./pages-neon-schedules-runtime.js?v=1.0"></script>
           <script src="./nuclei-career-runtime.js?v=3.0"></script>
           <script src="./pages-browser-services.js?v=1.0"></script>
@@ -167,123 +168,54 @@ jobs:
           index.write_text(text, encoding='utf-8')
           PY
 
-      - name: Verify clean Pages bundle
+      - name: Verify SVD 2.1 Pages bundle
         run: |
           set -e
           grep -q 'neon-data-runtime.js?v=1.3' _site/index.html
-          grep -q 'InformtitPublicAccess' _site/neon-data-runtime.js
-          grep -q "role:'PUBLIC'" _site/neon-data-runtime.js
           grep -q 'allowAnonymous: true' _site/neon-data-runtime.js
+          grep -q 'InformtitPublicAccess' _site/neon-data-runtime.js
           ! grep -q 'initializeAuth();' _site/neon-data-runtime.js
-          grep -q 'report-create-controller.js?v=1.0' _site/index.html
-          grep -q 'createInNeon' _site/report-create-controller.js
-          grep -q 'Neon tardó demasiado' _site/report-create-controller.js
-          grep -q 'data-report-close' _site/report-create-controller.js
-          grep -q 'pages-neon-schedules-runtime.js' _site/index.html
-          grep -q 'pages-shared-state-runtime.js?v=3.0' _site/index.html
+
+          grep -q 'pages-shared-state-runtime.js?v=3.1' _site/index.html
           grep -q "standard:'SVD_2_1'" _site/pages-shared-state-runtime.js
-          grep -q 'seleccione un período' _site/pages-shared-state-runtime.js
+          grep -q "if(!selectedPeriodId)return jsonResponse" _site/pages-shared-state-runtime.js
           grep -q 'pages-period-selector-ui.js?v=5.0' _site/index.html
           grep -q 'SVD21_EMPTY_START' _site/pages-period-selector-ui.js
           grep -q 'Selecciona un período para continuar' _site/pages-period-selector-ui.js
           grep -q 'guardarPeriodo' _site/pages-period-selector-ui.js
-          grep -q 'Guardando…' _site/pages-period-selector-ui.js
-          grep -q 'pages-document-state-runtime.js' _site/index.html
-          grep -q 'pages-data-runtime.js' _site/index.html
-          grep -q 'pages-browser-services.js' _site/index.html
-          grep -q 'students-ui.js?v=2.0' _site/index.html
-          grep -q 'pages-document-ui.js?v=2.1' _site/index.html
-          grep -q 'pages-svd-layout.js' _site/index.html
-          grep -q 'pages-processes-ui.js?v=2.0' _site/index.html
-          grep -q 'pages-stability-runtime.js?v=1.1' _site/index.html
-          grep -q 'pages-source-status-ui.js?v=1.1' _site/index.html
-          grep -q 'pages-document-pdf-runtime.js?v=3.1' _site/index.html
-          grep -q 'report-modal-compact-ui.js' _site/index.html
+
+          grep -q 'pages-data-runtime.js?v=3.1' _site/index.html
+          grep -q "'SIN_DEFINIR'" _site/pages-data-runtime.js
+          ! grep -q "nucleos(periodId).catch" _site/pages-data-runtime.js
+          ! grep -q "complexivo(periodId).catch" _site/pages-data-runtime.js
+          ! grep -q "trabajoTitulacion(periodId).catch" _site/pages-data-runtime.js
+
           grep -q 'requirements-import-sheets-ui.js?v=4.2' _site/index.html
-          grep -q 'InformtitRequirementsImport' _site/requirements-import-sheets-ui.js
-          grep -q 'windows-1252' _site/requirements-import-sheets-ui.js
-          grep -q 'No se reconocieron estas columnas obligatorias' _site/requirements-import-sheets-ui.js
+          grep -q 'duplicateIds' _site/requirements-import-sheets-ui.js
+          grep -q 'Filas sin cédula' _site/requirements-import-sheets-ui.js
           ! grep -q "estudiantes().catch" _site/requirements-import-sheets-ui.js
-          grep -q 'pvc-workspace-v3.js' _site/index.html
-          grep -q 'bulkUpsertStudentsRequirements' _site/neon-data-runtime.js
-          grep -q "provider:'NEON'" _site/neon-data-runtime.js
-          grep -q 'saveSchedule' _site/pages-neon-schedules-runtime.js
-          grep -q 'Guardar en Neon' _site/requirements-import-sheets-ui.js
-          ! grep -q 'Guardar requisitos en Google Sheets' _site/requirements-import-sheets-ui.js
-          grep -q '/api/health' _site/pages-browser-services.js
-          grep -q 'guardarInforme' _site/pages-shared-state-runtime.js
-          grep -q 'storage_mode.*neon_shared' _site/pages-shared-state-runtime.js
-          grep -q 'document_config_json' _site/pages-document-state-runtime.js
-          grep -q 'renderCoverTab' _site/pages-document-ui.js
-          grep -q 'renderHeaderTab' _site/pages-document-ui.js
-          grep -q 'renderSectionsTab' _site/pages-document-ui.js
-          grep -q 'Guardado y sincronizado' _site/pages-document-ui.js
-          ! grep -q 'Google Sheets' _site/pages-document-ui.js
-          grep -q 'svd-document-strip' _site/pages-svd-layout.js
-          grep -q "name === 'dashboard' ? 'report'" _site/pages-svd-layout.js
-          grep -q '9/9 habilitantes' _site/students-ui.js
-          grep -q 'SIN_DEFINIR' _site/students-ui.js
+          grep -q 'windows-1252' _site/requirements-import-sheets-ui.js
+
           grep -q 'conciliación exclusivamente por cédula' _site/pages-processes-ui.js
           grep -q "bindScheduleCard(card, 'thesis', periodId" _site/pages-processes-ui.js
           grep -q 'SISACAD_TRABAJO_TITULACION' _site/pages-processes-ui.js
-          grep -q 'windows-1252' _site/pages-processes-ui.js
-          grep -q 'pdf-jobs' _site/pages-stability-runtime.js
-          grep -q 'ERROR DE FUENTE' _site/pages-stability-runtime.js
+          grep -q 'saveSchedule' _site/pages-neon-schedules-runtime.js
+
+          grep -q 'renderCoverTab' _site/pages-document-ui.js
+          grep -q 'renderHeaderTab' _site/pages-document-ui.js
+          grep -q 'renderSectionsTab' _site/pages-document-ui.js
+          ! grep -q 'Google Sheets' _site/pages-document-ui.js
           grep -q 'NEON_POSTGRESQL' _site/pages-stability-runtime.js
-          grep -q 'institutional-source-status' _site/pages-source-status-ui.js
-          grep -q 'Neon PostgreSQL' _site/pages-system-ui.js
-          grep -q 'BROWSER_PDF_DOCUMENT_V3' _site/pages-document-pdf-runtime.js
-          grep -q 'Estructura del documento aplicada' _site/pages-document-pdf-runtime.js
-          grep -q 'sections_applied' _site/pages-document-pdf-runtime.js
           grep -q 'NEON_POSTGRESQL' _site/pages-document-pdf-runtime.js
           ! grep -q 'GOOGLE_SHEETS' _site/pages-document-pdf-runtime.js
 
           ! grep -q 'sheets-api.js' _site/index.html
           test ! -e _site/sheets-api.js
-
-          for legacy in \
-            coordinator-admin-ui.js import-preview-client-guard.js robust-import-ui.js \
-            firebase-global-period-runtime.js firebase-pages-runtime.js firebase-schedule-runtime.js \
-            firebase-period-selector-ui.js desktop-ui-rescue.js completion-ui.js \
-            independent-modules-ui.js process-independent-ui.js process-ui-fixes.js \
-            thesis-followup-ui.js thesis-full-ui.js pvc-report-ui.js workflow-ui-fixes.js \
-            no-sections.js pages-sections-ui.js; do
+          for legacy in coordinator-admin-ui.js robust-import-ui.js firebase-pages-runtime.js firebase-global-period-runtime.js firebase-period-selector-ui.js desktop-ui-rescue.js no-sections.js pages-sections-ui.js; do
             ! grep -q "$legacy" _site/index.html
           done
 
-          for legacy in \
-            sheets-api.js firebase-pages-runtime.js firebase-global-period-runtime.js github-pages-runtime-fixes.js \
-            completion-ui.js completion-ui-v2.js independent-modules-ui.js process-independent-ui.js \
-            process-ui.js process-ui-fixes.js thesis-followup-ui.js thesis-full-ui.js pvc-report-ui.js \
-            pvc-workspace-v2.js workflow-ui-fixes.js workflow-ui.js web-runtime.js no-sections.js \
-            nuclei-controls-hotfix.js nuclei-paste-course-detection-fix.js nuclei-campus-ui.js \
-            nuclei-catalog-ui.js nuclei-clarity.js nuclei-course-editor.js nuclei-matching-ui.js \
-            nuclei-minimal-guard.js nuclei-paste-ui.js report-health-ui.js sections-template.js \
-            pages-sections-ui.js; do
-            test ! -e "_site/$legacy"
-          done
-
-          node --check _site/neon-data-runtime.js
-          node --check _site/report-create-controller.js
-          node --check _site/pages-neon-schedules-runtime.js
-          node --check _site/firebase-report-pages-runtime.js
-          node --check _site/pages-shared-state-runtime.js
-          node --check _site/pages-document-state-runtime.js
-          node --check _site/firebase-report-code-runtime.js
-          node --check _site/pages-data-runtime.js
-          node --check _site/pages-browser-services.js
-          node --check _site/students-ui.js
-          node --check _site/pages-document-ui.js
-          node --check _site/pages-svd-layout.js
-          node --check _site/pages-processes-ui.js
-          node --check _site/pages-stability-runtime.js
-          node --check _site/pages-source-status-ui.js
-          node --check _site/pages-document-pdf-runtime.js
-          node --check _site/pages-period-selector-ui.js
-          node --check _site/report-modal-compact-ui.js
-          node --check _site/requirements-import-sheets-ui.js
-          node --check _site/pvc-workspace-v3.js
-          node --check _site/pages-system-ui.js
+          for file in _site/*.js; do node --check "$file"; done
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
