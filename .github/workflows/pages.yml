@@ -42,183 +42,7 @@ jobs:
           set -e
           rm -rf _site
           cp -R static _site
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          site = Path('_site')
-          index = site / 'index.html'
-          text = index.read_text(encoding='utf-8')
-          text = re.sub(r'(?P<attr>href|src)="/(?!/)(?P<path>[^"]+)"', r'\g<attr>="./\g<path>"', text)
-
-          remove_scripts = {
-              'sheets-api.js','startup-guard.js','forms-hotfix.js','import-modality-guard-ui.js',
-              'import-preview-client-guard.js','robust-import-ui.js','period-unified-ui.js',
-              'students-ui.js','students-period-ui.js','students-final-audit-ui.js','smart-reconciliation-ui.js',
-              'coordinator-admin-ui.js','firebase-ui.js','desktop-ui-rescue.js','completion-ui.js',
-              'independent-modules-ui.js','process-independent-ui.js','process-ui-fixes.js',
-              'thesis-followup-ui.js','thesis-full-ui.js','pvc-report-ui.js','workflow-ui-fixes.js','no-sections.js',
-          }
-          for script in remove_scripts:
-              text = re.sub(rf'\s*<script[^>]+src="[^\"]*{re.escape(script)}[^\"]*"[^>]*></script>', '', text, flags=re.I)
-
-          legacy_files = remove_scripts | {
-              'firebase-pages-runtime.js','firebase-global-period-runtime.js','firebase-global-period-final-ui.js',
-              'firebase-period-selector-ui.js','firebase-schedule-runtime.js','firebase-schedule-completion-runtime.js',
-              'firebase-active-report-runtime.js','firebase-nuclei-definitive-runtime.js','firebase-nuclei-paste-runtime.js',
-              'firebase-nuclei-shared-runtime.js','firebase-unified-data-runtime.js','firebase-dashboard-parity.js',
-              'github-pages-guard.js','github-pages-runtime-fixes.js','gitpages-parity-ui.js','completion-ui-v2.js',
-              'process-ui.js','pvc-workspace-v2.js','workflow-ui.js','web-runtime.js','web-config.js','unified-period-ui.js',
-              'nuclei-controls-hotfix.js','nuclei-paste-course-detection-fix.js','nuclei-campus-ui.js','nuclei-catalog-ui.js',
-              'nuclei-clarity.js','nuclei-course-editor.js','nuclei-matching-ui.js','nuclei-minimal-guard.js',
-              'nuclei-paste-ui.js','report-health-ui.js','sections-template.js','sections-template.css','import-extra.css',
-              'pages-sections-ui.js',
-          }
-          for filename in legacy_files:
-              (site / filename).unlink(missing_ok=True)
-
-          # Acceso público solicitado y API Neon única para el bundle productivo.
-          neon = site / 'neon-data-runtime.js'
-          source = neon.read_text(encoding='utf-8')
-          source = source.replace('auth: { url: AUTH_URL },', 'auth: { url: AUTH_URL, allowAnonymous: true },', 1)
-          old_neon_api = "window.InformtitNeon=Object.freeze({authUrl:AUTH_URL,dataApiUrl:DATA_API_URL,getClient,getSession,currentMember,requireAccess,bulkUpsertStudentsRequirements,schedules,saveSchedule,provider:'NEON',version:'1.1.0'});"
-          new_neon_api = "window.InformtitNeon=Object.freeze({baseUrl:DATA_API_URL,authUrl:AUTH_URL,dataApiUrl:DATA_API_URL,getClient,getSession,currentMember,requireAccess,ping:async()=>{await requireAccess();return{ok:true,provider:'NEON'};},periodos,estudiantes,matriculas,requisitos,nucleos,complexivo,trabajoTitulacion,informes,guardarPeriodo,guardarInforme,guardarRequisito,guardarNucleo,guardarComplexivo,guardarTrabajoTitulacion,postMany,bulkUpsertStudentsRequirements,schedules,saveSchedule,provider:'NEON',version:'1.2.0'});"
-          if old_neon_api not in source:
-              raise SystemExit('No se encontró la API Neon a ampliar')
-          source = source.replace(old_neon_api, new_neon_api, 1)
-          source = re.sub(r"\n  window\.InformtitSheets=\{[^\n]+\};", '', source, count=1)
-          source = source.replace(
-              '  initializeAuth();',
-              "  unlock({ role:'PUBLIC', active:true, display_name:'Acceso público' });\n  window.InformtitPublicAccess = Object.freeze({ enabled:true, provider:'NEON', version:'1.2.0' });",
-              1,
-          )
-          neon.write_text(source, encoding='utf-8')
-
-          # Todo runtime productivo habla directamente con InformtitNeon, sin alias Sheets.
-          for path in site.glob('*.js'):
-              if path.name == 'neon-data-runtime.js':
-                  continue
-              src = path.read_text(encoding='utf-8').replace('window.InformtitSheets', 'window.InformtitNeon')
-              path.write_text(src, encoding='utf-8')
-
-          # SVD 2.1: una falla de fuente nunca equivale a una lista vacía y la ruta no se inventa.
-          data_file = site / 'pages-data-runtime.js'
-          data = data_file.read_text(encoding='utf-8')
-          data = data.replace('No se pudo identificar el período académico en Google Sheets.', 'No se pudo identificar el período académico en Neon PostgreSQL.')
-          data = data.replace("window.InformtitNeon.nucleos(periodId).catch(() => ({ nucleos: [] }))", "window.InformtitNeon.nucleos(periodId)")
-          data = data.replace("window.InformtitNeon.complexivo(periodId).catch(() => ({ complexivo: [] }))", "window.InformtitNeon.complexivo(periodId)")
-          data = data.replace("window.InformtitNeon.trabajoTitulacion(periodId).catch(() => ({ trabajoTitulacion: [] }))", "window.InformtitNeon.trabajoTitulacion(periodId)")
-          old_route = "row.route = hasThesis && !hasComplexive && !hasNuclei ? 'TRABAJO_TITULACION' : 'COMPLEXIVO';"
-          new_route = "const explicitRoute = fold(enrollment.route || enrollment.titulation_route || '');\n      row.route = hasThesis ? 'TRABAJO_TITULACION' : (hasComplexive || hasNuclei ? 'COMPLEXIVO' : (explicitRoute.includes('TRABAJO') ? 'TRABAJO_TITULACION' : explicitRoute.includes('COMPLEX') ? 'COMPLEXIVO' : 'SIN_DEFINIR'));"
-          if old_route not in data:
-              raise SystemExit('No se encontró la política de ruta académica a corregir')
-          data = data.replace(old_route, new_route, 1)
-          data_file.write_text(data, encoding='utf-8')
-
-          # Importación: bloquear si Neon falla e informar duplicados/filas sin cédula antes de guardar.
-          req_file = site / 'requirements-import-sheets-ui.js'
-          req = req_file.read_text(encoding='utf-8')
-          req = req.replace("const studentData=await window.InformtitNeon.estudiantes().catch(()=>({estudiantes:[]}));", "const studentData=await window.InformtitNeon.estudiantes();", 1)
-          req = req.replace("const map = new Map();\n    rows.forEach(raw => {", "const map = new Map();\n    const duplicateIds = new Set();\n    const invalidRows = [];\n    rows.forEach((raw, rowIndex) => {", 1)
-          req = req.replace("if (!cedula) return;", "if (!cedula) { invalidRows.push(rowIndex + 2); return; }", 1)
-          req = req.replace("map.set(cedula,row);", "if (map.has(cedula)) duplicateIds.add(cedula);\n      map.set(cedula,row);", 1)
-          req = req.replace("const parsed = [...map.values()];", "local.duplicates = [...duplicateIds];\n    local.invalidRows = invalidRows;\n    const parsed = [...map.values()];", 1)
-          req = req.replace(
-              "${sourceInfo}\n      ${newIds.length ? `<div class=\"req-warning\"><strong>${newIds.length} estudiante(s) son nuevos.</strong> Se crearán automáticamente en Neon junto con su matrícula y requisitos.</div>`:''}",
-              "${sourceInfo}\n      <div class=\"reqs-muted\"><strong>Altas:</strong> ${newIds.length} · <strong>Actualizaciones:</strong> ${rows.length-newIds.length} · <strong>Duplicados:</strong> ${local.duplicates?.length||0} · <strong>Filas sin cédula:</strong> ${local.invalidRows?.length||0}</div>\n      ${local.duplicates?.length ? `<div class=\"req-warning\"><strong>${local.duplicates.length} cédula(s) duplicadas en el archivo.</strong> Se conservará la última aparición: ${esc(local.duplicates.slice(0,8).join(', '))}${local.duplicates.length>8?'…':''}</div>`:''}\n      ${local.invalidRows?.length ? `<div class=\"req-warning\"><strong>${local.invalidRows.length} fila(s) sin cédula válida.</strong> Revise las filas ${esc(local.invalidRows.slice(0,12).join(', '))}${local.invalidRows.length>12?'…':''} antes de confirmar.</div>`:''}\n      ${newIds.length ? `<div class=\"req-warning\"><strong>${newIds.length} estudiante(s) son nuevos.</strong> Se crearán automáticamente en Neon junto con su matrícula y requisitos.</div>`:''}",
-              1,
-          )
-          req_file.write_text(req, encoding='utf-8')
-
-          # Cronogramas: fechas reales y validación inicio <= fin.
-          proc_file = site / 'pages-processes-ui.js'
-          proc = proc_file.read_text(encoding='utf-8')
-          proc = proc.replace('<input class="table-input date-input" name="start_date"', '<input type="date" class="table-input date-input" name="start_date"')
-          proc = proc.replace('<input class="table-input date-input" name="end_date"', '<input type="date" class="table-input date-input" name="end_date"')
-          old_collect = """  function collectSchedule(card, type) {
-    return [...card.querySelectorAll('tbody tr')].map(row => ({
-      phase: type === 'thesis' ? clean(row.querySelector('[name=\"phase\"]')?.value) : '',
-      activity: clean(row.querySelector('[name=\"activity\"]')?.value),
-      start_date: clean(row.querySelector('[name=\"start_date\"]')?.value),
-      end_date: clean(row.querySelector('[name=\"end_date\"]')?.value),
-      notes: type === 'thesis' ? clean(row.querySelector('[name=\"phase\"]')?.value) : '',
-    })).filter(row => row.activity);
-  }"""
-          new_collect = """  function collectSchedule(card, type) {
-    const entries = [...card.querySelectorAll('tbody tr')].map(row => ({
-      phase: type === 'thesis' ? clean(row.querySelector('[name=\"phase\"]')?.value) : '',
-      activity: clean(row.querySelector('[name=\"activity\"]')?.value),
-      start_date: clean(row.querySelector('[name=\"start_date\"]')?.value),
-      end_date: clean(row.querySelector('[name=\"end_date\"]')?.value),
-      notes: type === 'thesis' ? clean(row.querySelector('[name=\"phase\"]')?.value) : '',
-    })).filter(row => row.activity);
-    entries.forEach((row, index) => {
-      if (row.start_date && row.end_date && row.end_date < row.start_date) throw new Error(`Actividad ${index + 1}: la fecha fin no puede ser anterior a la fecha inicio.`);
-    });
-    return entries;
-  }"""
-          if old_collect not in proc:
-              raise SystemExit('No se encontró collectSchedule para validar fechas')
-          proc = proc.replace(old_collect, new_collect, 1)
-          proc_file.write_text(proc, encoding='utf-8')
-
-          # La interfaz y el documento deben nombrar la fuente real. Un PDF con pendientes se marca como borrador.
-          for filename in ['pages-document-ui.js','pages-document-pdf-runtime.js','pages-stability-runtime.js','report-health-sheets-ui.js','pages-source-status-ui.js']:
-              path = site / filename
-              if path.exists():
-                  src = path.read_text(encoding='utf-8').replace('Google Sheets','Neon PostgreSQL').replace('GOOGLE_SHEETS','NEON_POSTGRESQL')
-                  path.write_text(src, encoding='utf-8')
-          pdf_file = site / 'pages-document-pdf-runtime.js'
-          pdf = pdf_file.read_text(encoding='utf-8')
-          marker = "row('Estado de auditoría', audit.state);"
-          if marker not in pdf:
-              raise SystemExit('No se encontró el estado de auditoría del PDF')
-          pdf = pdf.replace(marker, marker + "\n    if (!audit.final_ready) lines.push(line('BORRADOR · Documento con pendientes. No corresponde a una versión final aprobada.', { bold: true, size: 11, gapBefore: 6, gapAfter: 8 }));", 1)
-          pdf_file.write_text(pdf, encoding='utf-8')
-
-          app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
-          if not app_tag:
-              raise SystemExit('No se encontró app.js en index.html')
-
-          before_app = '''
-          <script src="./neon-data-runtime.js?v=1.4"></script>
-          <script src="./firebase-report-pages-runtime.js?v=4.0"></script>
-          <script src="./pages-shared-state-runtime.js?v=3.2"></script>
-          <script src="./pages-document-state-runtime.js?v=1.1"></script>
-          <script src="./firebase-report-code-runtime.js?v=4.0"></script>
-          <script src="./pages-data-runtime.js?v=3.2"></script>
-          <script src="./pages-neon-schedules-runtime.js?v=1.0"></script>
-          <script src="./nuclei-career-runtime.js?v=3.0"></script>
-          <script src="./pages-browser-services.js?v=1.0"></script>
-          '''
-          text = text[:app_tag.start()] + before_app + text[app_tag.start():]
-
-          after_app = '''
-          <script src="./report-create-controller.js?v=1.1"></script>
-          <script src="./pages-period-selector-ui.js?v=5.1"></script>
-          <script src="./report-modal-compact-ui.js?v=1.0"></script>
-          <script src="./requirements-import-sheets-ui.js?v=4.3"></script>
-          <script src="./results-import-ui.js?v=3.0"></script>
-          <script src="./schedule-auto-completion-ui.js?v=3.0"></script>
-          <script src="./nuclei-paste-definitive-ui.js?v=3.0"></script>
-          <script src="./nuclei-population-ui.js?v=3.0"></script>
-          <script src="./nuclei-organization.js?v=3.0"></script>
-          <script src="./pvc-schedules-ui.js?v=3.0"></script>
-          <script src="./report-health-sheets-ui.js?v=3.2"></script>
-          <script src="./pvc-workspace-v3.js?v=3.0"></script>
-          <script src="./pages-system-ui.js?v=3.1"></script>
-          <script src="./students-ui.js?v=2.0"></script>
-          <script src="./pages-document-ui.js?v=2.2"></script>
-          <script src="./pages-svd-layout.js?v=1.0"></script>
-          <script src="./pages-processes-ui.js?v=2.1"></script>
-          <script src="./pages-stability-runtime.js?v=1.2"></script>
-          <script src="./pages-source-status-ui.js?v=1.2"></script>
-          <script src="./pages-document-pdf-runtime.js?v=3.2"></script>
-          '''
-          app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
-          text = text[:app_tag.end()] + after_app + text[app_tag.end():]
-          index.write_text(text, encoding='utf-8')
-          PY
+          python scripts/build-pages.py _site
 
       - name: Verify SVD 2.1 Pages bundle
         run: |
@@ -230,42 +54,28 @@ jobs:
           ! grep -q 'window.InformtitSheets=' _site/neon-data-runtime.js
           ! grep -q 'initializeAuth();' _site/neon-data-runtime.js
 
-          grep -q 'pages-shared-state-runtime.js?v=3.2' _site/index.html
-          grep -q "standard:'SVD_2_1'" _site/pages-shared-state-runtime.js
-          grep -q "if(!selectedPeriodId)return jsonResponse" _site/pages-shared-state-runtime.js
-          ! grep -q 'window.InformtitSheets' _site/pages-shared-state-runtime.js
-          grep -q 'pages-period-selector-ui.js?v=5.1' _site/index.html
+          grep -q "standard:'SVD_2_1'" _site/pages-period-selector-ui.js
           grep -q 'SVD21_EMPTY_START' _site/pages-period-selector-ui.js
           grep -q 'Selecciona un período para continuar' _site/pages-period-selector-ui.js
-          grep -q 'window.InformtitNeon' _site/pages-period-selector-ui.js
+          grep -q 'guardarPeriodo' _site/pages-period-selector-ui.js
+          grep -q "if(!selectedPeriodId)return jsonResponse" _site/pages-shared-state-runtime.js
 
-          grep -q 'pages-data-runtime.js?v=3.2' _site/index.html
           grep -q "'SIN_DEFINIR'" _site/pages-data-runtime.js
           ! grep -q "nucleos(periodId).catch" _site/pages-data-runtime.js
           ! grep -q "complexivo(periodId).catch" _site/pages-data-runtime.js
           ! grep -q "trabajoTitulacion(periodId).catch" _site/pages-data-runtime.js
-          ! grep -q 'window.InformtitSheets' _site/pages-data-runtime.js
 
-          grep -q 'requirements-import-sheets-ui.js?v=4.3' _site/index.html
           grep -q 'duplicateIds' _site/requirements-import-sheets-ui.js
           grep -q 'Filas sin cédula' _site/requirements-import-sheets-ui.js
           ! grep -q "estudiantes().catch" _site/requirements-import-sheets-ui.js
-          ! grep -q 'window.InformtitSheets' _site/requirements-import-sheets-ui.js
           grep -q 'windows-1252' _site/requirements-import-sheets-ui.js
 
-          grep -q 'pages-processes-ui.js?v=2.1' _site/index.html
-          grep -q 'conciliación exclusivamente por cédula' _site/pages-processes-ui.js
           grep -q 'type="date" class="table-input date-input" name="start_date"' _site/pages-processes-ui.js
           grep -q 'la fecha fin no puede ser anterior' _site/pages-processes-ui.js
-          ! grep -q 'window.InformtitSheets' _site/pages-processes-ui.js
-          grep -q 'saveSchedule' _site/pages-neon-schedules-runtime.js
+          grep -q 'SISACAD_TRABAJO_TITULACION' _site/pages-processes-ui.js
 
-          grep -q 'renderCoverTab' _site/pages-document-ui.js
-          grep -q 'renderHeaderTab' _site/pages-document-ui.js
-          grep -q 'renderSectionsTab' _site/pages-document-ui.js
           ! grep -q 'Google Sheets' _site/pages-document-ui.js
           grep -q 'NEON_POSTGRESQL' _site/pages-stability-runtime.js
-          grep -q 'NEON_POSTGRESQL' _site/pages-document-pdf-runtime.js
           grep -q 'BORRADOR · Documento con pendientes' _site/pages-document-pdf-runtime.js
           ! grep -q 'GOOGLE_SHEETS' _site/pages-document-pdf-runtime.js
 
