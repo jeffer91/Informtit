@@ -1,11 +1,11 @@
 ((root) => {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const MARKER = 'SCHEDULE_TEXT_IMPORT_V1';
   const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').trim().replace(/\s+/g, ' ');
   const fold = value => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-  const esc = value => clean(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const esc = value => clean(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[char]));
 
   function normalizeDate(value) {
     const text = clean(value);
@@ -205,4 +205,4 @@
   if (typeof MutationObserver !== 'undefined' && document.body) {
     new MutationObserver(enhanceAll).observe(document.body, { childList: true, subtree: true });
   }
-})();
+})(typeof window !== 'undefined' ? window : globalThis);
