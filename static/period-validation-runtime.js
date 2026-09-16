@@ -3,7 +3,7 @@
 
   if (typeof window === 'undefined' || !/(^|\.)github\.io$/i.test(window.location.hostname)) return;
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const MARKER = 'INDEPENDENT_COMPONENT_VALIDATION_V1';
   const previousFetch = window.fetch.bind(window);
   const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').trim().replace(/\s+/g, ' ');
@@ -101,6 +101,9 @@
     else if (blankStudents) push('Requisitos', 'warning', `${blankStudents} estudiantes tienen datos de requisitos faltantes. ${noCumpleStudents} tienen uno o más NO CUMPLE.`, 'requirements');
     else push('Requisitos', 'ok', `${students.length} estudiantes · ${students.length - noCumpleStudents} sin NO CUMPLE · ${noCumpleStudents} con uno o más NO CUMPLE. Los NO CUMPLE son un resultado válido, no un error de fuente.`, 'requirements');
 
+    const undefinedRoutes = students.filter(row => row.route === 'SIN_DEFINIR' || row.route === 'UNDEFINED' || !clean(row.route)).length;
+    push('Rutas de titulación', undefinedRoutes ? 'warning' : 'ok', undefinedRoutes ? `${undefinedRoutes} estudiantes todavía no tienen ruta confirmada. Las cargas de Núcleos, Complexivo o Trabajo de Titulación irán resolviendo la ruta por cédula.` : 'Las rutas de titulación de la población están definidas.', 'routes');
+
     const scheduleHealth = statusFor(health, 'Cronogramas');
     if (!scheduleHealth.ok) {
       push('Cronograma Núcleos / Complexivo', 'error', scheduleHealth.error, 'schedule_complexive');
@@ -154,6 +157,7 @@
       independent_components: true,
       component_summary: {
         requirements: controls.find(item => item.component === 'requirements')?.status || 'empty',
+        routes: controls.find(item => item.component === 'routes')?.status || 'warning',
         nuclei: controls.find(item => item.component === 'nuclei')?.status || 'empty',
         complexive_ordinary: controls.find(item => item.component === 'complexive_ordinary')?.status || 'empty',
         complexive_supplementary: controls.find(item => item.component === 'complexive_supplementary')?.status || 'empty',
@@ -174,6 +178,7 @@
         source:'NEON_POSTGRESQL',
         period_id:periodId,
         students:students.length,
+        routes_undefined:undefinedRoutes,
         requirements_missing:blankStudents,
         requirements_no_cumple:noCumpleStudents,
         ordinary_results:ordinary.length,
