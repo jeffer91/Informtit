@@ -17,7 +17,7 @@ def insert_after(marker: str, addition: str) -> None:
 
 insert_after(
     '<script src="./results-import-ui.js?v=4.1"></script>',
-    '<script src="./three-files-upload-ui.js?v=1.0"></script>'
+    '<script src="./three-files-upload-ui.js?v=1.1"></script>'
 )
 insert_after(
     '<script src="./report-health-sheets-ui.js?v=4.0"></script>',
@@ -25,7 +25,7 @@ insert_after(
 )
 
 for filename, marker in [
-    ('three-files-upload-ui.js', 'THREE_SISACAD_FILES_UPLOAD_V1'),
+    ('three-files-upload-ui.js', 'THREE_SISACAD_FILES_AUTODETECT_V1_1'),
     ('period-status-colors-ui.js', 'PERIOD_STATUS_COLORS_V1'),
 ]:
     path = site / filename
