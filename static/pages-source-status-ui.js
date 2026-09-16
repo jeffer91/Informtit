@@ -7,6 +7,7 @@
   const TTL = 20000;
   const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').trim().replace(/\s+/g, ' ');
   let validationReady = null;
+  let scheduleImportReady = null;
 
   function loadIndependentValidation() {
     if (window.InformtitIndependentValidation && window.InformtitPagesStability) return Promise.resolve(true);
@@ -26,6 +27,26 @@
       document.head.appendChild(script);
     });
     return validationReady;
+  }
+
+  function loadScheduleTextImport() {
+    if (window.InformtitScheduleTextImport) return Promise.resolve(true);
+    if (scheduleImportReady) return scheduleImportReady;
+    scheduleImportReady = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-schedule-text-import]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(true), { once:true });
+        existing.addEventListener('error', () => reject(new Error('No se pudo cargar el importador de cronogramas.')), { once:true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = './schedule-text-import-ui.js?v=1.0';
+      script.dataset.scheduleTextImport = '1';
+      script.onload = () => resolve(true);
+      script.onerror = () => reject(new Error('No se pudo cargar el importador de cronogramas.'));
+      document.head.appendChild(script);
+    });
+    return scheduleImportReady;
   }
 
   function activeReport() { return window.state?.activeReport || null; }
@@ -93,7 +114,7 @@
   }
 
   injectStyles();
-  void loadIndependentValidation().finally(() => setTimeout(() => void checkSources(false), 100));
+  void Promise.allSettled([loadIndependentValidation(), loadScheduleTextImport()]).finally(() => setTimeout(() => void checkSources(false), 100));
   document.addEventListener('informtit:period-changed', () => setTimeout(() => void checkSources(true), 150));
   document.addEventListener('click', event => {
     if (event.target.closest?.('#refresh-btn')) setTimeout(() => void checkSources(true), 250);
