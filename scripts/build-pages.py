@@ -157,21 +157,23 @@ after_app = '''
   <script src="./pages-period-selector-ui.js?v=5.1"></script>
   <script src="./report-modal-compact-ui.js?v=1.0"></script>
   <script src="./requirements-import-sheets-ui.js?v=4.3"></script>
-  <script src="./results-import-ui.js?v=3.0"></script>
+  <script src="./results-import-ui.js?v=4.1"></script>
   <script src="./schedule-auto-completion-ui.js?v=3.0"></script>
   <script src="./nuclei-paste-definitive-ui.js?v=3.0"></script>
   <script src="./nuclei-population-ui.js?v=3.0"></script>
   <script src="./nuclei-organization.js?v=3.0"></script>
   <script src="./pvc-schedules-ui.js?v=3.0"></script>
-  <script src="./report-health-sheets-ui.js?v=3.2"></script>
+  <script src="./report-health-sheets-ui.js?v=4.0"></script>
   <script src="./pvc-workspace-v3.js?v=3.0"></script>
   <script src="./pages-system-ui.js?v=3.1"></script>
   <script src="./students-ui.js?v=2.0"></script>
   <script src="./pages-document-ui.js?v=2.2"></script>
   <script src="./pages-svd-layout.js?v=1.0"></script>
   <script src="./pages-processes-ui.js?v=2.1"></script>
+  <script src="./schedule-text-import-ui.js?v=1.0"></script>
   <script src="./pages-stability-runtime.js?v=1.2"></script>
-  <script src="./pages-source-status-ui.js?v=1.2"></script>
+  <script src="./period-validation-runtime.js?v=1.0"></script>
+  <script src="./pages-source-status-ui.js?v=1.3"></script>
   <script src="./pages-document-pdf-runtime.js?v=3.2"></script>
 '''
 app_tag = re.search(r'<script[^>]+src="\.\/app\.js[^\"]*"[^>]*></script>', text, flags=re.I)
