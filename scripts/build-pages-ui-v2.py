@@ -6,7 +6,7 @@ site = Path(sys.argv[1] if len(sys.argv) > 1 else '_site')
 
 # Reglas académicas definitivas: período/sedes normalizados, control 60/40,
 # supletorio independiente, prioridad TT, incidencias y reconstrucción de Núcleo.
-subprocess.run([sys.executable, str(Path(__file__).with_name('build-pages-academic-rules.py')), str(site)], check=True)
+subprocess.run([sys.executable, str(Path(__file__).with_name('build-pages-academic-rules-v2.py')), str(site)], check=True)
 
 index = site / 'index.html'
 text = index.read_text(encoding='utf-8')
