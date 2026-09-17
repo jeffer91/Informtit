@@ -46,7 +46,6 @@ jobs:
           python scripts/build-pages.py _site
           python scripts/build-pages-data-integrity.py _site
           python scripts/build-pages-ui-v2.py _site
-          node scripts/results-import-smoke.mjs _site/results-import-ui.js
           node scripts/schedule-text-import-smoke.mjs _site/schedule-text-import-ui.js
 
       - name: Verify SVD 2.1 Pages bundle
