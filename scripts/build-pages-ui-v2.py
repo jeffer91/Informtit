@@ -1,9 +1,16 @@
 from pathlib import Path
+import subprocess
 import sys
 
 site = Path(sys.argv[1] if len(sys.argv) > 1 else '_site')
+
+# Reglas académicas definitivas: período/sedes normalizados, control 60/40,
+# supletorio independiente, prioridad TT, incidencias y reconstrucción de Núcleo.
+subprocess.run([sys.executable, str(Path(__file__).with_name('build-pages-academic-rules.py')), str(site)], check=True)
+
 index = site / 'index.html'
 text = index.read_text(encoding='utf-8')
+text = text.replace('results-import-ui.js?v=4.1', 'results-import-ui.js?v=4.2')
 
 
 def insert_after(marker: str, addition: str) -> None:
@@ -16,7 +23,7 @@ def insert_after(marker: str, addition: str) -> None:
 
 
 insert_after(
-    '<script src="./results-import-ui.js?v=4.1"></script>',
+    '<script src="./results-import-ui.js?v=4.2"></script>',
     '<script src="./three-files-upload-ui.js?v=1.1"></script>'
 )
 insert_after(
